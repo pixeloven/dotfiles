@@ -1,0 +1,17 @@
+# Paths that are never tracked in this repo, one glob per line (matched against the file name).
+# Used by .gitleaks.toml (commit guard) and bin/drift (never suggests them).
+settings.json
+settings.local.json
+.claude.json
+.gitconfig
+.zshrc
+.zprofile
+.bashrc
+.netrc
+hosts.yml
+session.json
+id_rsa*
+id_ed25519*
+*.sock
+*.log
+*.bak-*

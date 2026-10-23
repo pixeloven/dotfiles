@@ -1,0 +1,9 @@
+# Secret scanning for this public repo: default rules plus a block on files that must never be tracked.
+# Keep the path regex in sync with lib/denylist.txt (tests/guardrails.bats enforces it).
+[extend]
+useDefault = true
+
+[[rules]]
+id = "never-tracked-file"
+description = "File type listed in lib/denylist.txt; patch owned keys via a script instead of committing it"
+path = '''(^|/)(settings\.json|settings\.local\.json|\.claude\.json|\.gitconfig|\.zshrc|\.zprofile|\.bashrc|\.netrc|hosts\.yml|session\.json|id_rsa[^/]*|id_ed25519[^/]*|[^/]*\.sock|[^/]*\.log|[^/]*\.bak-[^/]*)$'''

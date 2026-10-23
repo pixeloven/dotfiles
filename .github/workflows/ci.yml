@@ -1,0 +1,34 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install shellcheck chezmoi
+      - name: shellcheck scripts and rendered chezmoi templates
+        run: |
+          shellcheck lib/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh
+          for t in home/.chezmoiscripts/*.tmpl; do
+            chezmoi --source "$PWD" execute-template < "$t" > "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
+            shellcheck "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
+          done
+
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install bats-core jq gitleaks
+      - run: bats tests/claude-settings.bats tests/speak-alert.bats tests/guardrails.bats
+
+  secrets:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: brew install gitleaks
+      - run: gitleaks git --redact --no-banner --config .gitleaks.toml

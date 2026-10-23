@@ -1,0 +1,4 @@
+#!/bin/sh
+# Block commits that add secrets or never-tracked files (see lib/denylist.txt).
+# Enabled per clone with: git config core.hooksPath .githooks
+exec gitleaks git --pre-commit --staged --redact --no-banner --config "$(git rev-parse --show-toplevel)/.gitleaks.toml"
