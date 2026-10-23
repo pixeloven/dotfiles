@@ -19,13 +19,18 @@ case "${1:-}" in
   *) exit 0 ;;
 esac
 
+if [ -n "${SPEAK_ALERT_DRY_RUN:-}" ] && [ "$SPEAK_ALERT_DRY_RUN" != voice ]; then
+  echo "$phrase"
+  exit 0
+fi
+
 voice="${SPEAK_ALERT_VOICE:-$(say -v '?' 2>/dev/null | sed -nE 's/^(.+ \(Premium\)) +en_.*/\1/p' | head -1)}"
 voice_args=()
 [ -n "$voice" ] && voice_args=(-v "$voice")
 
-case "${SPEAK_ALERT_DRY_RUN:-}" in
-  voice) echo "${voice:-system}" ;;
-  ?*) echo "$phrase" ;;
-  *) (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-165}" "$phrase" > /dev/null 2>&1 &) ;;
-esac
+if [ "${SPEAK_ALERT_DRY_RUN:-}" = voice ]; then
+  echo "${voice:-system}"
+else
+  (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-165}" "$phrase" > /dev/null 2>&1 &)
+fi
 exit 0

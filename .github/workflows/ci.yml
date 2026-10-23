@@ -19,10 +19,11 @@ jobs:
 
   test:
     runs-on: macos-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - run: brew install bats-core jq gitleaks
-      - run: bats tests/claude-settings.bats tests/speak-alert.bats tests/guardrails.bats
+      - run: bats tests/claude-settings.bats tests/speak-alert.bats tests/speak-alert-ci.bats tests/guardrails.bats
 
   secrets:
     runs-on: macos-latest
