@@ -26,6 +26,6 @@ voice_args=()
 case "${SPEAK_ALERT_DRY_RUN:-}" in
   voice) echo "${voice:-system}" ;;
   ?*) echo "$phrase" ;;
-  *) (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-200}" "$phrase" > /dev/null 2>&1 &) ;;
+  *) (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-165}" "$phrase" > /dev/null 2>&1 &) ;;
 esac
 exit 0
