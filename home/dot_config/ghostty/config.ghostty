@@ -1,8 +1,8 @@
 # Ghostty config — managed by chezmoi (~/Development/dotfiles). See CUSTOMIZE.md.
 # All options: ghostty +show-config --default --docs
 
-# Theme: follows macOS light/dark
-theme = light:Catppuccin Latte,dark:Catppuccin Mocha
+# Theme: dark only
+theme = Catppuccin Mocha
 
 # Font (ligatures off; remove the two font-feature lines to turn them on)
 font-family = JetBrains Mono

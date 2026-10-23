@@ -5,7 +5,8 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
 
 @test "bat theme set" {
   [ -f "$(bat --config-file)" ]
-  grep -q 'Catppuccin Mocha' "$(bat --config-file)"
+  grep -q '^--theme="Catppuccin Mocha"' "$(bat --config-file)"
+  ! grep -q 'Latte' "$(bat --config-file)"
   bat --list-themes | grep -q 'Catppuccin Mocha'
 }
 
@@ -27,6 +28,6 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
 }
 
 @test "glow config set" {
-  grep -q "^style: \"auto\"" "$HOME/Library/Preferences/glow/glow.yml"
+  grep -q "^style: \"dark\"" "$HOME/Library/Preferences/glow/glow.yml"
   grep -q "^pager: true" "$HOME/Library/Preferences/glow/glow.yml"
 }

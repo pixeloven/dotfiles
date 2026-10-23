@@ -39,3 +39,27 @@ teardown() { rm -rf "$HOME"; }
   run bash -c "echo 'garbage' | '$SCRIPT' stop"
   [ "$status" -eq 0 ]
 }
+
+stub_say() {
+  mkdir -p "$HOME/bin"
+  printf '#!/bin/sh\nprintf "%%s\\n" %s\n' "$1" > "$HOME/bin/say"
+  chmod +x "$HOME/bin/say"
+}
+
+@test "prefers an installed Premium English voice" {
+  stub_say "'Samantha            en_US    # Hello' 'Zoe (Premium)       en_US    # Hello' 'Amélie (Premium)    fr_CA    # Bonjour'"
+  run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN=voice '$SCRIPT' stop"
+  [ "$output" = "Zoe (Premium)" ]
+}
+
+@test "falls back to Samantha without a Premium voice" {
+  stub_say "'Samantha            en_US    # Hello'"
+  run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN=voice '$SCRIPT' stop"
+  [ "$output" = "Samantha" ]
+}
+
+@test "SPEAK_ALERT_VOICE overrides the choice" {
+  stub_say "'Zoe (Premium)       en_US    # Hello'"
+  run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_VOICE=Daniel SPEAK_ALERT_DRY_RUN=voice '$SCRIPT' stop"
+  [ "$output" = "Daniel" ]
+}

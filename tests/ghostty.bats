@@ -12,5 +12,5 @@ GHOSTTY="${GHOSTTY:-/Applications/Ghostty.app/Contents/MacOS/ghostty}"
 @test "ghostty effective theme" {
   run "$GHOSTTY" +show-config
   [ "$status" -eq 0 ]
-  [[ "$(grep '^theme = ' <<<"$output")" == *"Catppuccin Mocha"* ]]
+  [ "$(grep '^theme = ' <<<"$output")" = "theme = Catppuccin Mocha" ]
 }

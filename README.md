@@ -1,6 +1,6 @@
 # dotfiles
 
-Terminal setup as code for macOS: Ghostty, herdr, Claude Code alerts, and bat/delta/glow, all with the Catppuccin theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
+Terminal setup as code for macOS: Ghostty, herdr, Claude Code alerts, and bat/delta/glow, all on the dark Catppuccin Mocha theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
 
 ## What's managed
 

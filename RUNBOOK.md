@@ -38,11 +38,16 @@ Option B, better with technical words:
 
 **Done when:** speaking into a Claude Code prompt inside herdr types the text.
 
-## 5. Spoken alerts on and off
+## 5. Spoken alerts: better voice, on and off
+
+Better voice (free, on-device; the alert picks it up automatically):
+1. System Settings → Accessibility → Spoken Content → System voice → **Manage Voices…**
+2. Under English, download a **(Premium)** voice, e.g. Zoe, Ava or Evan (about 300 MB each).
+3. Check it's installed: `say -v '?' | grep Premium`.
 
 - Off: `touch ~/.config/speak-alert/muted`
 - On: `rm ~/.config/speak-alert/muted`
-- Change the voice or speed for one shell: `export SPEAK_ALERT_VOICE=Daniel SPEAK_ALERT_RATE=190`. See all voices with `say -v '?'`.
+- Pick a specific voice or speed: `export SPEAK_ALERT_VOICE="Ava (Premium)" SPEAK_ALERT_RATE=190`. List voices with `say -v '?'`.
 
 **Done when:** a Claude Code reply ends and you hear "<folder> finished", or nothing while muted.
 

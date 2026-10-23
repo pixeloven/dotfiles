@@ -4,10 +4,9 @@
 onboarding = false
 
 [theme]
+# Dark only: catppuccin is the Mocha palette
 name = "catppuccin"
-auto_switch = true
-dark_name = "catppuccin"
-light_name = "catppuccin-latte"
+auto_switch = false
 
 [ui.toast]
 delivery = "herdr"

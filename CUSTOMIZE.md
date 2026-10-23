@@ -6,7 +6,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 - **Where it lives:** `home/dot_config/ghostty/config.ghostty` → `~/.config/ghostty/config.ghostty`
 - **Common changes:**
-  - Theme: `theme = light:Rose Pine Dawn,dark:Rose Pine`. Browse themes with `ghostty +list-themes` (interactive).
+  - Theme: `theme = Rose Pine`. Browse themes with `ghostty +list-themes` (interactive; press `d` for dark only). To follow macOS light/dark instead: `theme = light:Catppuccin Latte,dark:Catppuccin Mocha`.
   - Font: `font-family = Monaspace Neon`, `font-size = 15`. Installed fonts: `ghostty +list-fonts`.
   - Ligatures on: delete the two `font-feature = -calt` / `-liga` lines.
   - Transparency: `background-opacity = 0.9`.
@@ -33,7 +33,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 - **Where it lives:** `lib/claude-hooks.fragment.json` (the hooks we own) and `home/dot_claude/hooks/executable_speak-alert.sh`. Your `settings.json` itself is never committed.
 - **Common changes:**
   - Spoken phrase: edit the `case` block in `speak-alert.sh`.
-  - Voice and speed: change the defaults `Samantha` / `210` in `speak-alert.sh`. Voices: `say -v '?'`.
+  - Voice and speed: by default the alert uses the first installed English Premium voice (falling back to Samantha) at rate 200. Change it in `speak-alert.sh`, or set `SPEAK_ALERT_VOICE` / `SPEAK_ALERT_RATE`. List voices with `say -v '?'`.
   - Which events speak: add or remove `Stop` / `Notification` entries in the fragment.
   - Theme: `/theme` inside Claude Code (stored in `~/.claude.json`, not tracked).
 - **Try it:** `chezmoi apply` merges the fragment into `~/.claude/settings.json`, with a backup the first time it changes.
@@ -44,9 +44,9 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 - **Where they live:** `home/dot_config/bat/config`, `home/Library/Preferences/glow/glow.yml`, and the git keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh`
 - **Common changes:**
-  - bat theme: `--theme-dark="Catppuccin Macchiato"` (list: `bat --list-themes`).
+  - bat theme: `--theme="Catppuccin Macchiato"` (list: `bat --list-themes`).
   - Side-by-side diffs: in the gitconfig script, `git config --global delta.side-by-side true`.
-  - delta theme: `git config --global delta.syntax-theme "Catppuccin Latte"` (list: `delta --list-syntax-themes`).
+  - delta theme: `git config --global delta.syntax-theme "Dracula"` (list: `delta --list-syntax-themes`).
   - glow width: `width: 120`.
 - **Try it:** run `chezmoi apply`, then `bat README.md`, `git diff` or `glow README.md`.
 - **Keep it:** `/codify`. A git key changed by hand shows up as owned-key drift; put the new value in the script.

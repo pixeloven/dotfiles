@@ -10,6 +10,7 @@ SRC="$REPO/home/dot_config/herdr/config.toml"
 }
 
 @test "herdr theme values" {
-  grep -q '^auto_switch = true' "$SRC"
-  grep -q '^light_name = "catppuccin-latte"' "$SRC"
+  grep -q '^name = "catppuccin"' "$SRC"
+  grep -q '^auto_switch = false' "$SRC"
+  ! grep -q 'latte' "$SRC"
 }
