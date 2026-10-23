@@ -24,7 +24,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "gitleaks catches a token in an allowed file" {
   # Random each run so the fake token never lives in the repo as a fixed string.
-  echo "GITHUB_TOKEN=ghp_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)" > "$TMP/env.sh"
+  echo "GITHUB_TOKEN=ghp_$(head -c 4096 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 36)" > "$TMP/env.sh"
   run gitleaks dir --no-banner --exit-code 3 --config "$REPO/.gitleaks.toml" "$TMP"
   [ "$status" -eq 3 ]
 }
