@@ -1,0 +1,21 @@
+# herdr config — managed by chezmoi (~/Development/dotfiles). See CUSTOMIZE.md.
+# Reload after edits: herdr server reload-config
+
+onboarding = false
+
+[theme]
+name = "catppuccin"
+auto_switch = true
+dark_name = "catppuccin"
+light_name = "catppuccin-latte"
+
+[ui.toast]
+delivery = "herdr"
+
+[ui.sound]
+# Play built-in sounds when agents in background workspaces finish or need you
+enabled = true
+
+[experimental]
+# Inline images (Kitty graphics) through to Ghostty. Set false if images misbehave.
+kitty_graphics = true
