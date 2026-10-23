@@ -31,6 +31,7 @@ voice_args=()
 if [ "${SPEAK_ALERT_DRY_RUN:-}" = voice ]; then
   echo "${voice:-system}"
 else
-  (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-165}" "$phrase" > /dev/null 2>&1 &)
+  # Lead with silence so the audio device is awake before the first word (avoids a clipped, "mic click" start).
+  (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-150}" "[[slnc ${SPEAK_ALERT_LEAD_MS:-500}]] $phrase" > /dev/null 2>&1 &)
 fi
 exit 0
