@@ -1,10 +1,37 @@
 {
   "hooks": {
     "Stop": [
-      { "matcher": "", "hooks": [ { "type": "command", "command": "~/.claude/hooks/speak-alert.sh stop" } ] }
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/speak-alert.sh stop"
+          }
+        ]
+      }
     ],
     "Notification": [
-      { "matcher": "", "hooks": [ { "type": "command", "command": "~/.claude/hooks/speak-alert.sh notify" } ] }
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/speak-alert.sh notify"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"${FM_TASK_ID:-}\" ] || ~/Development/dotfiles/bin/drift --summary 2>/dev/null || true"
+          }
+        ]
+      }
     ]
   }
 }

@@ -58,3 +58,9 @@ teardown() { rm -rf "$TMP"; }
   [ "$(cat "$SETTINGS")" = '{ not json' ]
   [ -z "$(ls "$TMP" | grep '\.bak-' || true)" ]
 }
+
+@test "merge adds the drift notice to SessionStart" {
+  "$MERGE" "$SETTINGS" "$FRAGMENT"
+  [ "$(jq '.hooks.SessionStart | length' "$SETTINGS")" -eq 5 ]
+  [[ "$(jq -r '.hooks.SessionStart[4].hooks[0].command' "$SETTINGS")" == *"bin/drift --summary"* ]]
+}

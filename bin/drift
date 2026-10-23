@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Report local changes that are not yet codified in this repo. Read-only; always exits 0.
+#
+# Usage: drift [--summary | --json]
+#   (default)  one finding per line: <kind>\t<target>\t<suggested action>
+#   --summary  one line "dotfiles: N changes not codified - run /codify", or nothing
+#   --json     findings as a JSON array of {kind, target, action}
+#
+# Kinds: edited, owned-key, pkg-extra, pkg-missing, untracked-config.
+# Paths in lib/denylist.txt and packages in lib/drift-ignore.txt are never reported.
+# DRIFT_CHEZMOI_ARGS adds chezmoi flags (tests use it to point at a scratch source/state).
+set -uo pipefail
+
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck disable=SC2206
+CZ=(chezmoi ${DRIFT_CHEZMOI_ARGS:-})
+WATCHED_DIRS=(.config/ghostty .config/herdr .config/bat Library/Preferences/glow)
+
+denylisted() {
+  local name glob
+  name="$(basename "$1")"
+  while IFS= read -r glob; do
+    case "$glob" in ''|'#'*) continue ;; esac
+    # shellcheck disable=SC2254
+    case "$name" in $glob) return 0 ;; esac
+  done < "$REPO/lib/denylist.txt"
+  return 1
+}
+
+chezmoi_ignored() {
+  local pat
+  while IFS= read -r pat; do
+    case "$pat" in ''|'#'*) continue ;; esac
+    # shellcheck disable=SC2254
+    case "$1" in $pat|$pat/*) return 0 ;; esac
+  done < "$REPO/home/.chezmoiignore"
+  return 1
+}
+
+drift_ignored() {
+  [ -f "$REPO/lib/drift-ignore.txt" ] && grep -qxF "$1" "$REPO/lib/drift-ignore.txt"
+}
+
+emit() { printf '%s\t%s\t%s\n' "$1" "$2" "$3"; }
+
+edited() {
+  local line path
+  "${CZ[@]}" status --exclude scripts 2>/dev/null | while IFS= read -r line; do
+    [ "${line:0:1}" = " " ] && continue
+    path="${line:3}"
+    denylisted "$path" && continue
+    emit edited "$path" "chezmoi re-add ~/$path"
+  done
+}
+
+owned_keys() {
+  local settings="$HOME/.claude/settings.json" fragment="$REPO/lib/claude-hooks.fragment.json"
+  if [ -f "$settings" ] && jq -e . "$settings" > /dev/null 2>&1; then
+    jq -r --slurpfile f "$fragment" '
+      . as $s
+      | $f[0].hooks | to_entries[]
+      | .key as $ev
+      | select(any(.value[].hooks[].command; . as $c | ($s.hooks[$ev] // []) | all(.hooks[]?.command != $c)))
+      | $ev' "$settings" | while IFS= read -r ev; do
+      # shellcheck disable=SC2088  # literal ~ label for humans
+      emit owned-key "~/.claude/settings.json hooks.$ev" "edit lib/claude-hooks.fragment.json then chezmoi apply"
+    done
+  fi
+
+  local line key want have parts
+  grep -E '^git config --global ' "$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh" |
+    while IFS= read -r line; do
+      eval "parts=(${line#git config --global })"
+      key="${parts[0]}" want="${parts[1]}"
+      have="$(git config --global --get "$key" 2>/dev/null || true)"
+      [ "$have" = "$want" ] && continue
+      # shellcheck disable=SC2088  # literal ~ label for humans
+      emit owned-key "~/.gitconfig $key" "edit home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh then chezmoi apply"
+    done
+}
+
+packages() {
+  local listed pkg
+  listed="$(brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
+  { brew leaves --installed-on-request 2>/dev/null; brew list --cask 2>/dev/null; } | sort -u |
+    while IFS= read -r pkg; do
+      [ -z "$pkg" ] && continue
+      grep -qxF "$pkg" <<<"$listed" && continue
+      drift_ignored "$pkg" && continue
+      emit pkg-extra "$pkg" "add to Brewfile, or skip (lib/drift-ignore.txt)"
+    done
+  brew bundle check --verbose --no-upgrade --file="$REPO/Brewfile" 2>/dev/null |
+    sed -nE 's/^→ (Formula|Cask) (.+) needs to be installed.*/\2/p' |
+    while IFS= read -r pkg; do
+      emit pkg-missing "$pkg" "brew bundle --file=$REPO/Brewfile"
+    done
+}
+
+untracked() {
+  local managed dir path
+  managed="$("${CZ[@]}" managed --include files 2>/dev/null)"
+  for dir in "${WATCHED_DIRS[@]}"; do
+    [ -d "$HOME/$dir" ] || continue
+    find "$HOME/$dir" \( -type f -o -type l \) 2>/dev/null | while IFS= read -r path; do
+      path="${path#"$HOME"/}"
+      grep -qxF "$path" <<<"$managed" && continue
+      denylisted "$path" && continue
+      chezmoi_ignored "$path" && continue
+      emit untracked-config "$path" "chezmoi add ~/$path"
+    done
+  done
+}
+
+findings="$({ edited; owned_keys; packages; untracked; } 2>/dev/null)"
+
+case "${1:-}" in
+  --summary)
+    [ -n "$findings" ] && echo "dotfiles: $(grep -c . <<<"$findings") changes not codified - run /codify"
+    ;;
+  --json)
+    jq -Rn '[inputs | select(length > 0) | split("\t") | {kind: .[0], target: .[1], action: .[2]}]' <<<"$findings"
+    ;;
+  *)
+    [ -n "$findings" ] && printf '%s\n' "$findings"
+    ;;
+esac
+exit 0
