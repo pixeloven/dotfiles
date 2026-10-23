@@ -1,0 +1,35 @@
+# Ghostty config — managed by chezmoi (~/Development/dotfiles). See CUSTOMIZE.md.
+# All options: ghostty +show-config --default --docs
+
+# Theme: follows macOS light/dark
+theme = light:Catppuccin Latte,dark:Catppuccin Mocha
+
+# Font (ligatures off; remove the two font-feature lines to turn them on)
+font-family = JetBrains Mono
+font-size = 14
+font-feature = -calt
+font-feature = -liga
+
+# Window
+window-padding-x = 10
+window-padding-y = 8
+window-padding-balance = true
+macos-titlebar-style = tabs
+background-opacity = 0.96
+background-blur = true
+
+# Behaviour
+copy-on-select = clipboard
+shell-integration-features = cursor,sudo,title
+
+# Notify when a long command finishes in an unfocused window
+notify-on-command-finish = unfocused
+notify-on-command-finish-after = 30s
+notify-on-command-finish-action = bell,notify
+bell-features = system,attention,title
+
+# Drop-down terminal from anywhere (needs Accessibility permission, see RUNBOOK.md)
+keybind = global:cmd+grave_accent=toggle_quick_terminal
+
+# Optional tactical look — see RUNBOOK.md "Optional tactical shader"
+# custom-shader = shaders/crt.glsl
