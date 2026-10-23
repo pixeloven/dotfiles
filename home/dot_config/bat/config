@@ -1,0 +1,4 @@
+# bat config — managed by chezmoi (~/Development/dotfiles). See CUSTOMIZE.md.
+--theme-dark="Catppuccin Mocha"
+--theme-light="Catppuccin Latte"
+--style=numbers,changes,header

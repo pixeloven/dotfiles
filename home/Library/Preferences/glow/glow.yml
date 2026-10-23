@@ -1,0 +1,7 @@
+# glow config — managed by chezmoi (~/Development/dotfiles). See CUSTOMIZE.md.
+# style name or JSON path; "auto" follows the terminal's light/dark background
+style: "auto"
+mouse: false
+pager: true
+width: 100
+all: false
