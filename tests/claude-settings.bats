@@ -62,5 +62,16 @@ teardown() { rm -rf "$TMP"; }
 @test "merge adds the drift notice to SessionStart" {
   "$MERGE" "$SETTINGS" "$FRAGMENT"
   [ "$(jq '.hooks.SessionStart | length' "$SETTINGS")" -eq 5 ]
-  [[ "$(jq -r '.hooks.SessionStart[4].hooks[0].command' "$SETTINGS")" == *"bin/drift --summary"* ]]
+  [[ "$(jq -r '.hooks.SessionStart[4].hooks[0].command' "$SETTINGS")" == *"bin/drift --hook"* ]]
+}
+
+@test "merge removes hooks dropped from the fragment" {
+  APPLIED="$TMP/applied.json"
+  jq '.hooks.Stop[0].hooks[0].command = "old-stop-command"' "$FRAGMENT" > "$TMP/old-fragment.json"
+  "$MERGE" "$SETTINGS" "$TMP/old-fragment.json" "$APPLIED"
+  [ "$(jq '[.hooks.Stop[].hooks[].command] | index("old-stop-command")' "$SETTINGS")" = "0" ]
+  "$MERGE" "$SETTINGS" "$FRAGMENT" "$APPLIED"
+  [ "$(jq '[.hooks.Stop[].hooks[].command] | index("old-stop-command")' "$SETTINGS")" = "null" ]
+  [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 1 ]
+  [ "$(jq '[.hooks.SessionStart[] | select(.hooks[0].command | test("axi|herdr"))] | length' "$SETTINGS")" -eq 4 ]
 }

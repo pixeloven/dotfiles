@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Report local changes that are not yet codified in this repo. Read-only; always exits 0.
 #
-# Usage: drift [--summary | --json]
+# Usage: drift [--summary | --hook | --json]
 #   (default)  one finding per line: <kind>\t<target>\t<suggested action>
 #   --summary  one line "dotfiles: N changes not codified - run /codify", or nothing
+#   --hook     the summary as Claude Code hook JSON ({"systemMessage": ...}), shown to the user
 #   --json     findings as a JSON array of {kind, target, action}
 #
 # Kinds: edited, owned-key, pkg-extra, pkg-missing, untracked-config.
@@ -116,6 +117,9 @@ findings="$({ edited; owned_keys; packages; untracked; } 2>/dev/null)"
 case "${1:-}" in
   --summary)
     [ -n "$findings" ] && echo "dotfiles: $(grep -c . <<<"$findings") changes not codified - run /codify"
+    ;;
+  --hook)
+    [ -n "$findings" ] && jq -n --arg m "dotfiles: $(grep -c . <<<"$findings") changes not codified - run /codify" '{systemMessage: $m}'
     ;;
   --json)
     jq -Rn '[inputs | select(length > 0) | split("\t") | {kind: .[0], target: .[1], action: .[2]}]' <<<"$findings"

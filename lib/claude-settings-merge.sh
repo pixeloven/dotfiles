@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
 # Merge the hooks we own into Claude Code's settings.json without tracking that file.
-# Usage: claude-settings-merge.sh <settings-path> <fragment-path>
+# Usage: claude-settings-merge.sh <settings-path> <fragment-path> [applied-path]
 # Appends each fragment hook entry whose commands are not already present; touches nothing else.
+# With applied-path (a copy of the last fragment merged), entries whose commands were in the
+# last fragment but are gone from this one are removed, so changing an owned hook never duplicates it.
 # Exit 0 on write or no-op, 2 when the existing settings file is not valid JSON.
 set -euo pipefail
 
 settings="$1"
 fragment="$2"
+applied="${3:-}"
+
+record_applied() {
+  [ -n "$applied" ] || return 0
+  mkdir -p "$(dirname "$applied")"
+  cp "$fragment" "$applied"
+}
 
 if [ ! -e "$settings" ]; then
   mkdir -p "$(dirname "$settings")"
   jq -n --slurpfile f "$fragment" '{hooks: $f[0].hooks}' > "$settings"
+  record_applied
   exit 0
 fi
 
@@ -22,8 +32,15 @@ fi
 tmp="$(mktemp "$settings.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
-jq --slurpfile f "$fragment" '
-  reduce ($f[0].hooks | to_entries[]) as $ev (.;
+prev='{"hooks":{}}'
+[ -n "$applied" ] && [ -f "$applied" ] && prev="$(cat "$applied")"
+
+jq --slurpfile f "$fragment" --argjson prev "$prev" '
+  ([$prev.hooks[][].hooks[].command] - [$f[0].hooks[][].hooks[].command]) as $retired
+  | if ($retired | length) > 0 and .hooks then
+      .hooks |= with_entries(.value |= map(select(all(.hooks[]?.command; . as $c | ($retired | index([$c])) == null))))
+    else . end
+  | reduce ($f[0].hooks | to_entries[]) as $ev (.;
     reduce $ev.value[] as $entry (.;
       [.hooks[$ev.key][]?.hooks[]?.command] as $have
       | if all($entry.hooks[].command; . as $c | any($have[]; . == $c))
@@ -33,9 +50,11 @@ jq --slurpfile f "$fragment" '
 ' "$settings" > "$tmp"
 
 if [ "$(jq -cS . "$settings")" = "$(jq -cS . "$tmp")" ]; then
+  record_applied
   exit 0
 fi
 
 cp -p "$settings" "$settings.bak-$(date +%Y%m%d%H%M%S)"
 mv "$tmp" "$settings"
 trap - EXIT
+record_applied

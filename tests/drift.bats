@@ -111,3 +111,11 @@ teardown() { rm -rf "$TMP"; }
   [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 1 ]
   [[ "$output" == "dotfiles: 2 changes not codified - run /codify" ]]
 }
+
+@test "hook mode emits a user-visible systemMessage only when drifted" {
+  run "$R/bin/drift" --hook
+  [ -z "$output" ]
+  echo 'font-size = 20' >> "$HOME/.config/ghostty/config.ghostty"
+  run "$R/bin/drift" --hook
+  [ "$(jq -r '.systemMessage' <<<"$output")" = "dotfiles: 1 changes not codified - run /codify" ]
+}

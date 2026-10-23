@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"${FM_TASK_ID:-}\" ] || ~/Development/dotfiles/bin/drift --summary 2>/dev/null || true"
+            "command": "[ -n \"${FM_TASK_ID:-}\" ] || ~/Development/dotfiles/bin/drift --hook 2>/dev/null || true"
           }
         ]
       }
