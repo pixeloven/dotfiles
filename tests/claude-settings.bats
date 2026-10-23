@@ -1,0 +1,60 @@
+#!/usr/bin/env bats
+
+REPO="$BATS_TEST_DIRNAME/.."
+MERGE="$REPO/lib/claude-settings-merge.sh"
+FRAGMENT="$REPO/lib/claude-hooks.fragment.json"
+
+setup() {
+  TMP="$(mktemp -d)"
+  SETTINGS="$TMP/settings.json"
+  cp "$BATS_TEST_DIRNAME/fixtures/settings.existing.json" "$SETTINGS"
+}
+
+teardown() { rm -rf "$TMP"; }
+
+@test "merge adds Stop and Notification hooks" {
+  run "$MERGE" "$SETTINGS" "$FRAGMENT"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 1 ]
+  [[ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh stop"* ]]
+  [[ "$(jq -r '.hooks.Notification[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh notify"* ]]
+}
+
+@test "merge preserves existing SessionStart hooks and unrelated keys" {
+  "$MERGE" "$SETTINGS" "$FRAGMENT"
+  [ "$(jq '[.hooks.SessionStart[] | select(.hooks[0].command | test("axi|herdr"))] | length' "$SETTINGS")" -eq 4 ]
+  [ "$(jq -r '.model' "$SETTINGS")" = "example-model" ]
+  [ "$(jq -c '.enabledPlugins' "$SETTINGS")" = '{"example@market":true}' ]
+  [ "$(jq -r '.effortLevel' "$SETTINGS")" = "high" ]
+}
+
+@test "merge is idempotent" {
+  "$MERGE" "$SETTINGS" "$FRAGMENT"
+  cp "$SETTINGS" "$TMP/first.json"
+  backups_before="$(ls "$TMP" | grep -c '\.bak-' || true)"
+  run "$MERGE" "$SETTINGS" "$FRAGMENT"
+  [ "$status" -eq 0 ]
+  cmp "$SETTINGS" "$TMP/first.json"
+  [ "$(ls "$TMP" | grep -c '\.bak-' || true)" -eq "$backups_before" ]
+}
+
+@test "merge backs up before first write" {
+  "$MERGE" "$SETTINGS" "$FRAGMENT"
+  backup="$(ls "$TMP"/settings.json.bak-* | head -1)"
+  cmp "$backup" "$BATS_TEST_DIRNAME/fixtures/settings.existing.json"
+}
+
+@test "merge creates settings when absent" {
+  rm "$SETTINGS"
+  run "$MERGE" "$SETTINGS" "$FRAGMENT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c 'keys' "$SETTINGS")" = '["hooks"]' ]
+}
+
+@test "merge refuses invalid JSON without writing" {
+  printf '{ not json' > "$SETTINGS"
+  run "$MERGE" "$SETTINGS" "$FRAGMENT"
+  [ "$status" -eq 2 ]
+  [ "$(cat "$SETTINGS")" = '{ not json' ]
+  [ -z "$(ls "$TMP" | grep '\.bak-' || true)" ]
+}

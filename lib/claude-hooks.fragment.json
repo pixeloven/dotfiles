@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "Stop": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "~/.claude/hooks/speak-alert.sh stop" } ] }
+    ],
+    "Notification": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "~/.claude/hooks/speak-alert.sh notify" } ] }
+    ]
+  }
+}

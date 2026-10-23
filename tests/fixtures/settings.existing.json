@@ -1,0 +1,13 @@
+{
+  "effortLevel": "high",
+  "enabledPlugins": { "example@market": true },
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "gh-axi" } ] },
+      { "matcher": "", "hooks": [ { "type": "command", "command": "chrome-devtools-axi" } ] },
+      { "matcher": "", "hooks": [ { "type": "command", "command": "lavish-axi" } ] },
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "bash '/x/.claude/hooks/herdr-agent-state.sh' session" } ] }
+    ]
+  },
+  "model": "example-model"
+}

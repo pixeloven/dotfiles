@@ -1,0 +1,9 @@
+#!/bin/sh
+# Merge the hooks we own into ~/.claude/settings.json (that file is never tracked).
+# Re-runs when either input changes:
+#   fragment: {{ include "../lib/claude-hooks.fragment.json" | sha256sum }}
+#   merge:    {{ include "../lib/claude-settings-merge.sh" | sha256sum }}
+set -eu
+"{{ .chezmoi.workingTree }}/lib/claude-settings-merge.sh" \
+  "$HOME/.claude/settings.json" \
+  "{{ .chezmoi.workingTree }}/lib/claude-hooks.fragment.json"
