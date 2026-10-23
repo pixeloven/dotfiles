@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code hook: speak a short line when an agent stops or needs attention.
-# Usage: speak-alert.sh <stop|notify>   (hook JSON on stdin; uses its "cwd")
+# Usage: speak-alert.sh <stop|notify>   (hook JSON on stdin)
+# stop says a calm done line; notify speaks Claude's own reason (the payload's "message").
 # Voice: SPEAK_ALERT_VOICE, else the first installed English Premium voice, else the macOS system voice
 # (System Settings > Accessibility > Read & Speak > System voice, which can be a Siri voice).
 # Silent for fleet workers (FM_TASK_ID set) and when ~/.config/speak-alert/muted exists.
@@ -9,13 +10,13 @@
 [ -n "${FM_TASK_ID:-}" ] && exit 0
 [ -e "$HOME/.config/speak-alert/muted" ] && exit 0
 
-cwd="$(jq -r '.cwd // empty' 2>/dev/null)"
-project="${cwd:+$(basename "$cwd")}"
-project="${project:-Claude}"
-
 case "${1:-}" in
-  stop) phrase="$project finished" ;;
-  notify) phrase="$project needs you" ;;
+  stop) phrase="All done. Ready for you." ;;
+  notify)
+    phrase="$(jq -r '.message // empty' 2>/dev/null)"
+    phrase="${phrase:-Claude needs you}"
+    case "$phrase" in *[.!?]) ;; *) phrase="$phrase." ;; esac
+    ;;
   *) exit 0 ;;
 esac
 
@@ -32,6 +33,6 @@ if [ "${SPEAK_ALERT_DRY_RUN:-}" = voice ]; then
   echo "${voice:-system}"
 else
   # Lead with silence so the audio device is awake before the first word (avoids a clipped, "mic click" start).
-  (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-150}" "[[slnc ${SPEAK_ALERT_LEAD_MS:-500}]] $phrase" > /dev/null 2>&1 &)
+  (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-120}" "[[slnc ${SPEAK_ALERT_LEAD_MS:-800}]] $phrase" > /dev/null 2>&1 &)
 fi
 exit 0

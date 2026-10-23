@@ -47,7 +47,7 @@ macOS's free Premium voices are on-device and far more natural than the default.
 3. Expand **English**, then click the download icon next to **Zoe (Premium)**, which is the recommended voice. Ava (Premium) and Evan (Premium) are good alternatives. Each is about 300–500 MB.
 4. Wait for the download to finish. You don't need to change the system voice itself.
 5. Check: `say -v '?' | grep Premium` lists the voice.
-6. Listen: `say -v "Zoe (Premium)" "dotfiles finished"`.
+6. Listen: `say -v "Zoe (Premium)" -r 120 "All done. Ready for you."`.
 
 Until a Premium voice is installed, alerts use your macOS **System voice** (e.g. a Siri voice), which is already decent. If several Premium voices are installed, the alert uses the first one alphabetically. To pin one, set `SPEAK_ALERT_VOICE="Zoe (Premium)"`, or change the default in `speak-alert.sh` (see CUSTOMIZE.md).
 
@@ -55,7 +55,7 @@ On and off:
 - Off: `touch ~/.config/speak-alert/muted`
 - On: `rm ~/.config/speak-alert/muted`
 
-**Done when:** a Claude Code reply ends and you hear "<folder> finished" in the Premium voice, or nothing while muted.
+**Done when:** a Claude Code reply ends and you hear "All done. Ready for you." in your chosen voice, or nothing while muted.
 
 ## 6. Optional tactical shader
 

@@ -9,7 +9,7 @@ SCRIPT="$BATS_TEST_DIRNAME/../home/dot_claude/hooks/executable_speak-alert.sh"
   printf '#!/bin/sh\necho called > "%s/say-called"\n' "$HOME" > "$HOME/bin/say"
   chmod +x "$HOME/bin/say"
   run bash -c "echo '{\"cwd\":\"/x/y\"}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN=1 '$SCRIPT' stop"
-  [ "$output" = "y finished" ]
+  [ "$output" = "All done. Ready for you." ]
   [ ! -e "$HOME/say-called" ]
   rm -rf "$HOME"
 }

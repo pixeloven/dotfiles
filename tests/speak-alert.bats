@@ -10,15 +10,20 @@ setup() {
 
 teardown() { rm -rf "$HOME"; }
 
-@test "speaks project on stop" {
+@test "calm done line on stop" {
   run bash -c "echo '{\"cwd\":\"/x/operator\"}' | '$SCRIPT' stop"
   [ "$status" -eq 0 ]
-  [ "$output" = "operator finished" ]
+  [ "$output" = "All done. Ready for you." ]
 }
 
-@test "speaks project on notify" {
-  run bash -c "echo '{\"cwd\":\"/x/operator\"}' | '$SCRIPT' notify"
-  [ "$output" = "operator needs you" ]
+@test "speaks Claude's own reason on notify" {
+  run bash -c "echo '{\"message\":\"Claude needs your permission to use Bash\"}' | '$SCRIPT' notify"
+  [ "$output" = "Claude needs your permission to use Bash." ]
+}
+
+@test "generic needs-you line when notify has no message" {
+  run bash -c "echo '{}' | '$SCRIPT' notify"
+  [ "$output" = "Claude needs you." ]
 }
 
 @test "speak-alert is silent when FM_TASK_ID is set" {
