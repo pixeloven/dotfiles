@@ -1,0 +1,31 @@
+# dotfiles
+
+Terminal setup as code for macOS: Ghostty, herdr, Claude Code alerts, and bat/delta/glow, all with the Catppuccin theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
+
+## What's managed
+
+| Managed in full (safe to publish) | Patched key by key (never committed) |
+|---|---|
+| `~/.config/ghostty/config.ghostty` | `~/.claude/settings.json`: only the hooks in `lib/claude-hooks.fragment.json` |
+| `~/.config/herdr/config.toml` | `~/.gitconfig`: only the delta/merge keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh` |
+| `~/.config/bat/config`, `~/Library/Preferences/glow/glow.yml` | |
+| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/` | |
+
+Files that can hold secrets (`lib/denylist.txt`) are blocked by a pre-commit hook and by CI.
+
+## Rebuild a Mac
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install chezmoi
+chezmoi init --apply --source ~/Development/dotfiles pixeloven
+```
+
+Then follow [RUNBOOK.md](RUNBOOK.md) for the few steps that macOS won't let a script do.
+
+## Day to day
+
+- Change something: see [CUSTOMIZE.md](CUSTOMIZE.md).
+- Changed something by hand? Run `/codify` in Claude Code. A new session also tells you when there's something to codify.
+- `chezmoi diff` shows repo vs machine; `chezmoi apply` makes the machine match the repo.
+- Tests: `bats tests/`.
