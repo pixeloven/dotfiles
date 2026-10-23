@@ -38,18 +38,24 @@ Option B, better with technical words:
 
 **Done when:** speaking into a Claude Code prompt inside herdr types the text.
 
-## 5. Spoken alerts: better voice, on and off
+## 5. Premium voice for spoken alerts
 
-Better voice (free, on-device; the alert picks it up automatically):
-1. System Settings → Accessibility → Spoken Content → System voice → **Manage Voices…**
-2. Under English, download a **(Premium)** voice, e.g. Zoe, Ava or Evan (about 300 MB each).
-3. Check it's installed: `say -v '?' | grep Premium`.
+macOS's free Premium voices are on-device and far more natural than the default. They can't be downloaded from a script. Once one is installed, the alert uses it automatically.
 
+1. Open **System Settings → Accessibility → Read & Speak**. In macOS 26 this panel replaced "Spoken Content"; on macOS 15 and earlier it's still called Spoken Content. Shortcut: type `System voice` in the Settings search box.
+2. Next to **System voice**, click the ⓘ (or the menu) → **Manage Voices…**
+3. Expand **English**, then click the download icon next to **Zoe (Premium)**, which is the recommended voice. Ava (Premium) and Evan (Premium) are good alternatives. Each is about 300–500 MB.
+4. Wait for the download to finish. You don't need to change the system voice itself.
+5. Check: `say -v '?' | grep Premium` lists the voice.
+6. Listen: `say -v "Zoe (Premium)" "dotfiles finished"`.
+
+If several Premium voices are installed, the alert uses the first one alphabetically. To pin one, set `SPEAK_ALERT_VOICE="Zoe (Premium)"`, or change the default in `speak-alert.sh` (see CUSTOMIZE.md).
+
+On and off:
 - Off: `touch ~/.config/speak-alert/muted`
 - On: `rm ~/.config/speak-alert/muted`
-- Pick a specific voice or speed: `export SPEAK_ALERT_VOICE="Ava (Premium)" SPEAK_ALERT_RATE=190`. List voices with `say -v '?'`.
 
-**Done when:** a Claude Code reply ends and you hear "<folder> finished", or nothing while muted.
+**Done when:** a Claude Code reply ends and you hear "<folder> finished" in the Premium voice, or nothing while muted.
 
 ## 6. Optional tactical shader
 
