@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Claude Code hook: speak a short line when an agent stops or needs attention.
 # Usage: speak-alert.sh <stop|notify>   (hook JSON on stdin; uses its "cwd")
-# Voice: SPEAK_ALERT_VOICE, else the first installed English Premium voice, else Samantha.
+# Voice: SPEAK_ALERT_VOICE, else the first installed English Premium voice, else the macOS system voice
+# (System Settings > Accessibility > Read & Speak > System voice, which can be a Siri voice).
 # Silent for fleet workers (FM_TASK_ID set) and when ~/.config/speak-alert/muted exists.
 # Always exits 0 so it can never block Claude Code.
 
@@ -19,11 +20,12 @@ case "${1:-}" in
 esac
 
 voice="${SPEAK_ALERT_VOICE:-$(say -v '?' 2>/dev/null | sed -nE 's/^(.+ \(Premium\)) +en_.*/\1/p' | head -1)}"
-voice="${voice:-Samantha}"
+voice_args=()
+[ -n "$voice" ] && voice_args=(-v "$voice")
 
 case "${SPEAK_ALERT_DRY_RUN:-}" in
-  voice) echo "$voice" ;;
+  voice) echo "${voice:-system}" ;;
   ?*) echo "$phrase" ;;
-  *) (say -v "$voice" -r "${SPEAK_ALERT_RATE:-200}" "$phrase" > /dev/null 2>&1 &) ;;
+  *) (say "${voice_args[@]}" -r "${SPEAK_ALERT_RATE:-200}" "$phrase" > /dev/null 2>&1 &) ;;
 esac
 exit 0

@@ -49,7 +49,7 @@ macOS's free Premium voices are on-device and far more natural than the default.
 5. Check: `say -v '?' | grep Premium` lists the voice.
 6. Listen: `say -v "Zoe (Premium)" "dotfiles finished"`.
 
-If several Premium voices are installed, the alert uses the first one alphabetically. To pin one, set `SPEAK_ALERT_VOICE="Zoe (Premium)"`, or change the default in `speak-alert.sh` (see CUSTOMIZE.md).
+Until a Premium voice is installed, alerts use your macOS **System voice** (e.g. a Siri voice), which is already decent. If several Premium voices are installed, the alert uses the first one alphabetically. To pin one, set `SPEAK_ALERT_VOICE="Zoe (Premium)"`, or change the default in `speak-alert.sh` (see CUSTOMIZE.md).
 
 On and off:
 - Off: `touch ~/.config/speak-alert/muted`

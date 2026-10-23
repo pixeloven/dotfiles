@@ -52,10 +52,10 @@ stub_say() {
   [ "$output" = "Zoe (Premium)" ]
 }
 
-@test "falls back to Samantha without a Premium voice" {
+@test "falls back to the system voice without a Premium voice" {
   stub_say "'Samantha            en_US    # Hello'"
   run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN=voice '$SCRIPT' stop"
-  [ "$output" = "Samantha" ]
+  [ "$output" = "system" ]
 }
 
 @test "SPEAK_ALERT_VOICE overrides the choice" {
