@@ -166,3 +166,55 @@ STUB
   [[ "$output" == *"> [Image #4] Fix the theme"* ]] || false
   [[ "$output" != *"shot.png"* ]] || false
 }
+
+codex_rollout() { # <name> <cwd> : rollout with a commentary note and a final answer
+  mkdir -p "$HOME/.codex/sessions/2026/10/24"
+  printf '%s\n' \
+    "{\"type\":\"session_meta\",\"payload\":{\"id\":\"$1\",\"cwd\":\"$2\"}}" \
+    '{"type":"response_item","timestamp":"2026-10-24T07:00:00.000Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"check it"}]}}' \
+    '{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"Looking around."}]}}' \
+    "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"phase\":\"final_answer\",\"content\":[{\"type\":\"output_text\",\"text\":\"Final from $1.\"}]}}" \
+    > "$HOME/.codex/sessions/2026/10/24/rollout-2026-10-24-$1.jsonl"
+}
+
+@test "codex: shows only the final answer, not commentary" {
+  codex_rollout t1 /nowhere
+  run "$SCRIPT" --codex --raw --session t1
+  [[ "$output" == *"Final from t1."* ]] || false
+  [[ "$output" != *"Looking around."* ]] || false
+}
+
+@test "codex: prefers the newest session for the current folder" {
+  codex_rollout here "$WORK"
+  sleep 1
+  codex_rollout elsewhere /somewhere/else
+  run bash -c "cd '$WORK' && '$SCRIPT' --codex --raw"
+  [[ "$output" == *"Final from here."* ]] || false
+}
+
+@test "a half-written last line doesn't blank the reply" {
+  claude_session p s
+  printf '%s' '{"type":"assistant","message":{"content":[{"type":"te' >> "$HOME/.claude/projects/p/s.jsonl"
+  run "$SCRIPT" --raw --session s
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## Result"* ]] || false
+}
+
+@test "--open inside Codex pins the Codex thread" {
+  mkdir -p "$HOME/bin"
+  cat > "$HOME/bin/herdr" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$HOME/herdr.log"
+[ "$1 $2" = "pane split" ] && echo '{"result":{"pane":{"pane_id":"w1:pZ"}}}'
+exit 0
+STUB
+  chmod +x "$HOME/bin/herdr"
+  run env -u CLAUDE_CODE_SESSION_ID PATH="$HOME/bin:$PATH" HERDR_PANE_ID=w1:pA CODEX_THREAD_ID=019a-thread "$SCRIPT" --open
+  [ "$status" -eq 0 ]
+  grep -q '^pane run w1:pZ lastreply --watch --codex --session 019a-thread$' "$HOME/herdr.log"
+}
+
+@test "rejects a session id with shell characters" {
+  run "$SCRIPT" --raw --session 'x; rm -rf ~'
+  [ "$status" -eq 2 ]
+}
