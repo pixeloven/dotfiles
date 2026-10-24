@@ -4,8 +4,9 @@
 # Theme: dark only
 theme = Catppuccin Mocha
 
-# Font (ligatures off; remove the two font-feature lines to turn them on)
-font-family = JetBrains Mono
+# Font: the Nerd Font build adds the icons eza and the prompt use (ligatures off; remove the two
+# font-feature lines to turn them on)
+font-family = JetBrainsMono Nerd Font
 font-size = 14
 font-feature = -calt
 font-feature = -liga

@@ -15,7 +15,7 @@ set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck disable=SC2206
 CZ=(chezmoi ${DRIFT_CHEZMOI_ARGS:-})
-WATCHED_DIRS=(.config/ghostty .config/herdr .config/bat .config/glow Library/Preferences/glow .claude/themes)
+WATCHED_DIRS=(.config/ghostty .config/herdr .config/bat .config/glow .config/zsh Library/Preferences/glow .claude/themes)
 
 denylisted() { # a glob without / matches the file name, one with / the end of the path
   local name glob
@@ -90,6 +90,15 @@ owned_keys() {
     done
 }
 
+zshrc_line() { # the one line we own in the otherwise private ~/.zshrc
+  local script="$REPO/home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh" line
+  [ -f "$script" ] || return 0
+  line="$(sed -n "s/^LINE='\(.*\)'$/\1/p" "$script")"
+  [ -n "$line" ] && [ -f "$HOME/.zshrc" ] && grep -qxF "$line" "$HOME/.zshrc" && return 0
+  # shellcheck disable=SC2088  # literal ~ label for humans
+  emit owned-key "~/.zshrc dotfiles source line" "chezmoi apply (or run home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh)"
+}
+
 codex_keys() {
   local table key want have
   [ -f "$REPO/lib/codex-owned-keys.txt" ] && command -v codex >/dev/null 2>&1 || return 0
@@ -134,7 +143,7 @@ untracked() {
   done
 }
 
-findings="$({ edited; owned_keys; codex_keys; packages; untracked; } 2>/dev/null)"
+findings="$({ edited; owned_keys; zshrc_line; codex_keys; packages; untracked; } 2>/dev/null)"
 
 case "${1:-}" in
   --summary)

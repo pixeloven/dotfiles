@@ -8,7 +8,8 @@ Steps that scripts can't do, or that macOS asks you to approve yourself. Each on
 2. Install herdr from https://herdr.dev. It installs itself into `~/.local/bin` and updates with `herdr update`.
 3. Run `herdr integration install claude` (and `herdr integration install pi` if you use Pi).
 4. In the repo, enable the secret guard: `git -C ~/Development/dotfiles config core.hooksPath .githooks`.
-5. Do steps 2–4 of this runbook.
+5. Shell: install oh-my-zsh keeping the `~/.zshrc` chezmoi wrote (`sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`), then Node through fnm: `fnm install 22 && fnm default 22`, and in a new tab reinstall the global npm tools listed in step 8. Without oh-my-zsh, `dotfiles.zsh` still loads with plain completion.
+6. Do steps 2–4 of this runbook.
 
 **Done when:** `bats ~/Development/dotfiles/tests/` passes.
 
@@ -73,3 +74,21 @@ On and off:
 2. If no image appears or panes glitch, set `kitty_graphics = false` under `[experimental]` in the herdr config, run `herdr server reload-config`, and then `/codify`.
 
 **Done when:** you see the image, or graphics are turned off and that change is codified.
+
+## 8. One-time `~/.zshrc` cleanup and the nvm → fnm switch
+
+For a Mac set up before the zsh config existed. `~/.zshrc` is never tracked: it holds an API key and the pnpm and antigravity PATH lines. Afterwards it keeps only those private lines plus the `# >>> dotfiles >>>` block that sources `~/.config/zsh/dotfiles.zsh`, which now loads oh-my-zsh (trimmed), the plugins, fnm and Starship.
+
+1. Back up: `cp ~/.zshrc ~/.zshrc.bak-$(date +%Y%m%d)`.
+2. `chezmoi apply`. It writes `~/.config/zsh/`, `~/.config/starship.toml` and the Ghostty font, and appends the marker block to `~/.zshrc`.
+3. Edit `~/.zshrc` by hand and delete the oh-my-zsh lines (`export ZSH=…`, `ZSH_THEME=…`, `plugins=(git)`, `source $ZSH/oh-my-zsh.sh` and the commented template around them) and the three nvm lines (`export NVM_DIR=…` and the two `[ -s "$NVM_DIR/…" ]` lines). Keep the API key, the pnpm and antigravity lines and the marker block. Don't edit inside the block.
+4. Record the global npm tools while nvm's Node is still active: `npm ls -g --depth=0`. At the time of the plan (`docs/plans/2026-10-24-zsh-setup.md`) these were, under Node 22.23.2: `@openai/codex@0.164.0`, `@earendil-works/pi-coding-agent@0.87.1`, `gh-axi@0.1.43`, `tasks-axi@0.2.6`, `quota-axi@0.1.66`, `lavish-axi@0.1.90`, `chrome-devtools-axi@0.1.44`, `gnhf@0.1.44`. Use the versions the command prints; they move.
+5. Open a new tab, then `fnm install 22.23.2 && fnm default 22.23.2`, open another new tab, and `npm install -g` each tool at the version you recorded.
+6. Verify in a fresh tab: `which node` points under fnm (not `~/.nvm`), and each tool resolves and runs, e.g. `codex --version`, `gh-axi --version`, `pi --version`. Check that Codex hooks and the fleet still find `gh-axi` and the other `-axi` tools.
+7. Restart running Claude Code and Codex sessions; they keep their old PATH until restarted.
+
+**Leave `~/.nvm` in place and untouched.** The operator repo's `bin/fm-remote-job-lib.sh` builds remote-job PATHs from nvm's default Node, and `~/.nvm` is the rollback. The two Node installs will drift apart over time, so upgrade both when it matters.
+
+**Roll back:** `cp ~/.zshrc.bak-<date> ~/.zshrc` and open a new tab; nvm and the old prompt are back.
+
+**Done when:** a new Ghostty tab shows the Starship prompt with icons, grey suggestions appear as you type, Ctrl+R, the Tab menu, `z` and `ls` work, `which node` is under fnm, every tool above prints its version, and `drift` reports no `~/.zshrc` finding.

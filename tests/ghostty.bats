@@ -14,3 +14,8 @@ GHOSTTY="${GHOSTTY:-/Applications/Ghostty.app/Contents/MacOS/ghostty}"
   [ "$status" -eq 0 ]
   [ "$(grep '^theme = ' <<<"$output")" = "theme = Catppuccin Mocha" ]
 }
+
+@test "ghostty uses the installed JetBrainsMono Nerd Font" {
+  grep -qx 'font-family = JetBrainsMono Nerd Font' "$REPO/home/dot_config/ghostty/config.ghostty"
+  "$GHOSTTY" +list-fonts | grep -q 'JetBrainsMono Nerd Font'
+}
