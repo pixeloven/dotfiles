@@ -68,7 +68,9 @@ render() {
   if [ -n "$raw" ]; then
     printf '%s\n' "$text"
   elif [ -n "$watch" ]; then
-    printf '%s\n' "$text" | glow -p=false -
+    # Pipe the output so glow can never open its pager (the config turns it on), which
+    # would stall the loop on the first reply. An explicit style keeps the colours.
+    printf '%s\n' "$text" | glow -s dark -w "$(tput cols 2>/dev/null || echo 100)" - | cat
   else
     printf '%s\n' "$text" | glow -
   fi

@@ -52,3 +52,23 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   run "$SCRIPT" --bogus
   [ "$status" -eq 2 ]
 }
+
+@test "watch re-renders when a new reply arrives" {
+  mkdir -p "$HOME/bin" "$HOME/.claude/projects/p"
+  printf '#!/bin/sh\nsed "s/^/RENDER: /"\n' > "$HOME/bin/glow"
+  printf '#!/bin/sh\n' > "$HOME/bin/clear"
+  chmod +x "$HOME/bin/glow" "$HOME/bin/clear"
+  T="$HOME/.claude/projects/p/s.jsonl"
+  cp "$FIX/claude-transcript.jsonl" "$T"
+  PATH="$HOME/bin:$PATH" "$SCRIPT" --watch > "$HOME/out" 2>&1 &
+  pid=$!
+  sleep 1
+  touch -t 203001010000 "$T"
+  echo '{"type":"user","message":{"content":"third"}}' >> "$T"
+  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Fresh reply."}]}}' >> "$T"
+  touch -t 203001010001 "$T"
+  sleep 3
+  kill "$pid"
+  grep -q 'RENDER: ## Result' "$HOME/out"
+  grep -q 'RENDER: Fresh reply.' "$HOME/out"
+}
