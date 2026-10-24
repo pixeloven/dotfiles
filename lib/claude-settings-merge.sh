@@ -2,7 +2,8 @@
 # Merge the hooks we own into a settings file that has a top-level "hooks" object (Claude
 # Code's settings.json, Codex's hooks.json) without tracking that file.
 # Usage: claude-settings-merge.sh <settings-path> <fragment-path> [applied-path]
-# Appends each fragment hook entry whose commands are not already present; touches nothing else.
+# Appends each fragment hook entry whose commands are not already present and refreshes the
+# fields of hooks we own in place; touches nothing else.
 # With applied-path (a copy of the last fragment merged), entries whose commands were in the
 # last fragment but are gone from this one are removed, so changing an owned hook never duplicates it.
 # Exit 0 on write or no-op, 2 when the existing settings file is not valid JSON.
@@ -44,6 +45,12 @@ jq --slurpfile f "$fragment" --argjson prev "$prev" '
         .hooks |= map(select(. as $h | ($retired | index([$h.command])) == null))
         | select((.hooks | length) > 0)))
     else . end
+  # Refresh owned hooks in place, so a changed field (timeout, statusMessage) takes effect.
+  | reduce ($f[0].hooks | to_entries[]) as $ev (.;
+      ([$ev.value[].hooks[] | {key: .command, value: .}] | from_entries) as $owned
+      | if .hooks[$ev.key] then
+          .hooks[$ev.key] |= map(.hooks |= map(. as $h | ($owned[$h.command? // ""] // $h)))
+        else . end)
   | reduce ($f[0].hooks | to_entries[]) as $ev (.;
     reduce $ev.value[] as $entry (.;
       [.hooks[$ev.key][]?.hooks[]?.command] as $have

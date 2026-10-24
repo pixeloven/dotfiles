@@ -99,3 +99,14 @@ teardown() { rm -rf "$TMP"; }
   [[ "$(jq -r '[.hooks.SessionStart[].hooks[].command] | join(" ")' "$H")" == *"gh-axi"* ]] || false
   [[ "$(jq -r '[.hooks.SessionStart[].hooks[].command] | join(" ")' "$H")" == *"drift --hook"* ]] || false
 }
+
+@test "a changed field on an owned hook replaces it instead of being ignored" {
+  APPLIED="$TMP/applied.json"
+  "$MERGE" "$SETTINGS" "$FRAGMENT" "$APPLIED"
+  jq '.hooks.Stop[0].hooks[0].statusMessage = "Spoken alert"' "$FRAGMENT" > "$TMP/named.json"
+  "$MERGE" "$SETTINGS" "$TMP/named.json" "$APPLIED"
+  cmd="$(jq -r '.hooks.Stop[0].hooks[0].command' "$FRAGMENT")"
+  [ "$(jq --arg c "$cmd" '[.hooks.Stop[].hooks[] | select(.command == $c)] | length' "$SETTINGS")" -eq 1 ]
+  [ "$(jq -r --arg c "$cmd" '.hooks.Stop[].hooks[] | select(.command == $c) | .statusMessage' "$SETTINGS")" = "Spoken alert" ]
+  [ "$(jq '[.hooks.SessionStart[] | select(.hooks[0].command | test("axi|herdr"))] | length' "$SETTINGS")" -eq 4 ]
+}
