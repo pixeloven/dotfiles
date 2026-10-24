@@ -87,3 +87,15 @@ teardown() { rm -rf "$TMP"; }
   [ "$(jq '[.hooks.Stop[].hooks[].command] | index("my-own-stop") != null' "$SETTINGS")" = "true" ]
   [ "$(jq '[.hooks.Stop[].hooks[].command] | index("old-stop-command")' "$SETTINGS")" = "null" ]
 }
+
+@test "codex hooks merge keeps the existing SessionStart handlers" {
+  CODEX_FRAGMENT="$REPO/lib/codex-hooks.fragment.json"
+  H="$TMP/hooks.json"
+  jq -n '{hooks: {SessionStart: [{matcher: "", hooks: [{type: "command", command: "gh-axi", timeout: 10}]}]}}' > "$H"
+  run "$MERGE" "$H" "$CODEX_FRAGMENT" "$TMP/codex-applied.json"
+  [ "$status" -eq 0 ]
+  [[ "$(jq -r '[.hooks.Stop[].hooks[].command] | join(" ")' "$H")" == *"speak-alert.sh codex-stop"* ]] || false
+  [[ "$(jq -r '[.hooks.PermissionRequest[].hooks[].command] | join(" ")' "$H")" == *"speak-alert.sh codex-permission"* ]] || false
+  [[ "$(jq -r '[.hooks.SessionStart[].hooks[].command] | join(" ")' "$H")" == *"gh-axi"* ]] || false
+  [[ "$(jq -r '[.hooks.SessionStart[].hooks[].command] | join(" ")' "$H")" == *"drift --hook"* ]] || false
+}

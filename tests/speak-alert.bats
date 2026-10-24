@@ -79,3 +79,45 @@ stub_say() {
   run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_VOICE=Daniel SPEAK_ALERT_DRY_RUN=voice '$SCRIPT' stop"
   [ "$output" = "Daniel" ]
 }
+
+codex_transcript() { # <originator> : a rollout whose first line says how the session started
+  printf '{"type":"session_meta","payload":{"originator":"%s","source":"%s"}}\n' "$1" "$2" > "$HOME/rollout.jsonl"
+}
+
+@test "codex: done line when an interactive Codex turn stops" {
+  codex_transcript codex-tui cli
+  run bash -c "echo '{\"transcript_path\":\"$HOME/rollout.jsonl\",\"last_assistant_message\":\"x\"}' | '$SCRIPT' codex-stop"
+  [ "$output" = "All done. Ready for you." ]
+}
+
+@test "codex: silent for headless codex exec runs" {
+  codex_transcript codex_exec exec
+  run bash -c "echo '{\"transcript_path\":\"$HOME/rollout.jsonl\"}' | '$SCRIPT' codex-stop"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "codex: permission request names the tool" {
+  codex_transcript codex-tui cli
+  run bash -c "echo '{\"transcript_path\":\"$HOME/rollout.jsonl\",\"tool_name\":\"Bash\"}' | '$SCRIPT' codex-permission"
+  [ "$output" = "Codex needs your permission to use Bash." ]
+}
+
+@test "codex: permission request without a tool name" {
+  run bash -c "echo '{}' | '$SCRIPT' codex-permission"
+  [ "$output" = "Codex needs your permission." ]
+}
+
+@test "codex: silent when FM_TASK_ID is set" {
+  codex_transcript codex-tui cli
+  run bash -c "echo '{\"transcript_path\":\"$HOME/rollout.jsonl\"}' | FM_TASK_ID=t1 '$SCRIPT' codex-stop"
+  [ -z "$output" ]
+}
+
+@test "logs what it decided" {
+  codex_transcript codex_exec exec
+  echo "{\"transcript_path\":\"$HOME/rollout.jsonl\"}" | "$SCRIPT" codex-stop
+  echo '{}' | "$SCRIPT" stop
+  grep -q 'codex-stop silent: headless codex exec$' "$HOME/.local/state/speak-alert/events.log"
+  grep -q 'stop spoke: All done. Ready for you.$' "$HOME/.local/state/speak-alert/events.log"
+}

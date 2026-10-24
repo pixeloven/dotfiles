@@ -145,3 +145,15 @@ teardown() { rm -rf "$TMP"; }
   run "$R/bin/drift"
   [[ "$output" == *$'untracked-config\t.config/glow/extra.json'* ]] || false
 }
+
+@test "a missing Codex hook is reported as owned-key" {
+  cp "$REAL_REPO/lib/codex-hooks.fragment.json" "$R/lib/"
+  printf '#!/bin/sh\n' > "$TMP/stub/codex"; chmod +x "$TMP/stub/codex"
+  mkdir -p "$HOME/.codex"
+  jq '{hooks: .hooks}' "$R/lib/codex-hooks.fragment.json" > "$HOME/.codex/hooks.json"
+  run "$R/bin/drift"
+  [[ "$output" != *"codex/hooks.json"* ]] || false
+  jq 'del(.hooks.Stop)' "$HOME/.codex/hooks.json" > "$TMP/h.json" && mv "$TMP/h.json" "$HOME/.codex/hooks.json"
+  run "$R/bin/drift"
+  [[ "$output" == *$'owned-key\t~/.codex/hooks.json hooks.Stop'* ]] || false
+}

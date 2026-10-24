@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Merge the hooks we own into Claude Code's settings.json without tracking that file.
+# Merge the hooks we own into a settings file that has a top-level "hooks" object (Claude
+# Code's settings.json, Codex's hooks.json) without tracking that file.
 # Usage: claude-settings-merge.sh <settings-path> <fragment-path> [applied-path]
 # Appends each fragment hook entry whose commands are not already present; touches nothing else.
 # With applied-path (a copy of the last fragment merged), entries whose commands were in the

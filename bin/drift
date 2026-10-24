@@ -57,18 +57,25 @@ edited() {
   done
 }
 
+owned_hooks() { # <settings> <fragment> <label> : report fragment events missing from settings
+  local settings="$1" fragment="$2" label="$3"
+  [ -f "$settings" ] && jq -e . "$settings" > /dev/null 2>&1 || return 0
+  jq -r --slurpfile f "$fragment" '
+    . as $s
+    | $f[0].hooks | to_entries[]
+    | .key as $ev
+    | select(any(.value[].hooks[].command; . as $c | ($s.hooks[$ev] // []) | all(.hooks[]?.command != $c)))
+    | $ev' "$settings" | while IFS= read -r ev; do
+    emit owned-key "$label hooks.$ev" "edit lib/$(basename "$fragment") then chezmoi apply"
+  done
+}
+
 owned_keys() {
-  local settings="$HOME/.claude/settings.json" fragment="$REPO/lib/claude-hooks.fragment.json"
-  if [ -f "$settings" ] && jq -e . "$settings" > /dev/null 2>&1; then
-    jq -r --slurpfile f "$fragment" '
-      . as $s
-      | $f[0].hooks | to_entries[]
-      | .key as $ev
-      | select(any(.value[].hooks[].command; . as $c | ($s.hooks[$ev] // []) | all(.hooks[]?.command != $c)))
-      | $ev' "$settings" | while IFS= read -r ev; do
-      # shellcheck disable=SC2088  # literal ~ label for humans
-      emit owned-key "~/.claude/settings.json hooks.$ev" "edit lib/claude-hooks.fragment.json then chezmoi apply"
-    done
+  # shellcheck disable=SC2088  # literal ~ labels for humans
+  owned_hooks "$HOME/.claude/settings.json" "$REPO/lib/claude-hooks.fragment.json" "~/.claude/settings.json"
+  if [ -f "$REPO/lib/codex-hooks.fragment.json" ] && command -v codex >/dev/null 2>&1; then
+    # shellcheck disable=SC2088
+    owned_hooks "$HOME/.codex/hooks.json" "$REPO/lib/codex-hooks.fragment.json" "~/.codex/hooks.json"
   fi
 
   local line key want have parts

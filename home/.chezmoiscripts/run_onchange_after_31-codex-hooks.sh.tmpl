@@ -1,0 +1,12 @@
+#!/bin/sh
+# Merge the hooks we own into ~/.codex/hooks.json, keeping every hook we don't own.
+# Codex runs a new or changed hook only after you approve it once in its /hooks review.
+# Re-runs when either input changes:
+#   fragment: {{ include "../lib/codex-hooks.fragment.json" | sha256sum }}
+#   merge:    {{ include "../lib/claude-settings-merge.sh" | sha256sum }}
+set -eu
+command -v codex >/dev/null 2>&1 || exit 0
+"{{ .chezmoi.workingTree }}/lib/claude-settings-merge.sh" \
+  "$HOME/.codex/hooks.json" \
+  "{{ .chezmoi.workingTree }}/lib/codex-hooks.fragment.json" \
+  "$HOME/.local/state/dotfiles/codex-hooks.applied.json"
