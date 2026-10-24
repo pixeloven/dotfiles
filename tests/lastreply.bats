@@ -21,18 +21,18 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   claude_session "$(printf '%s' "$WORK" | sed 's/[^A-Za-z0-9]/-/g')" s1
   run bash -c "cd '$WORK' && '$SCRIPT' --raw"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Checking now."* ]]
-  [[ "$output" == *'```sh'* ]]
-  [[ "$output" != *"Old answer."* ]]
-  [[ "$output" != *"hidden"* ]]
-  [[ "$output" != *"Subagent chatter."* ]]
+  [[ "$output" == *"Checking now."* ]] || false
+  [[ "$output" == *'```sh'* ]] || false
+  [[ "$output" != *"Old answer."* ]] || false
+  [[ "$output" != *"hidden"* ]] || false
+  [[ "$output" != *"Subagent chatter."* ]] || false
 }
 
 @test "falls back to the newest transcript in any project" {
   claude_session other-project s2
   run bash -c "cd '$WORK' && '$SCRIPT' --raw"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"## Result"* ]]
+  [[ "$output" == *"## Result"* ]] || false
 }
 
 @test "prints the latest Codex reply" {
@@ -40,13 +40,15 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   cp "$FIX/codex-rollout.jsonl" "$HOME/.codex/sessions/2026/10/23/rollout-x.jsonl"
   run "$SCRIPT" --codex --raw
   [ "$status" -eq 0 ]
-  [ "$output" = "# Codex result" ]
+  [[ "$output" == *"# Codex result"* ]] || false
+  [[ "$output" == *"> second"* ]] || false
+  [[ "$output" != *"Old codex answer."* ]] || false
 }
 
 @test "explains when there is no transcript" {
   run "$SCRIPT" --raw
   [ "$status" -eq 1 ]
-  [[ "$output" == *"no Claude transcript"* ]]
+  [[ "$output" == *"no Claude transcript"* ]] || false
 }
 
 @test "rejects unknown options" {
@@ -90,8 +92,8 @@ STUB
   echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Other session."}]}}' >> "$HOME/.claude/projects/p/other.jsonl"
   stub_herdr claude mine w1:tA
   run env PATH="$HOME/bin:$PATH" HERDR_TAB_ID=w1:tA "$SCRIPT" --raw
-  [[ "$output" == *"## Result"* ]]
-  [[ "$output" != *"Other session."* ]]
+  [[ "$output" == *"## Result"* ]] || false
+  [[ "$output" != *"Other session."* ]] || false
 }
 
 @test "--session picks a Claude session by id" {
@@ -99,7 +101,7 @@ STUB
   claude_session p newer
   echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Newer."}]}}' >> "$HOME/.claude/projects/p/newer.jsonl"
   run "$SCRIPT" --raw --session wanted
-  [[ "$output" == *"## Result"* ]]
+  [[ "$output" == *"## Result"* ]] || false
 }
 
 @test "in herdr, follows the Codex session in the same tab" {
@@ -108,13 +110,14 @@ STUB
   echo '{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"newest other"}]}}' > "$HOME/.codex/sessions/2026/10/23/rollout-2026-zzz999.jsonl"
   stub_herdr codex abc123 w1:tB
   run env PATH="$HOME/bin:$PATH" HERDR_TAB_ID=w1:tB "$SCRIPT" --codex --raw
-  [ "$output" = "# Codex result" ]
+  [[ "$output" == *"# Codex result"* ]] || false
+  [[ "$output" != *"newest other"* ]] || false
 }
 
 @test "--session for an unknown id explains itself" {
   run "$SCRIPT" --raw --session nope
   [ "$status" -eq 1 ]
-  [[ "$output" == *"no Claude transcript"* ]]
+  [[ "$output" == *"no Claude transcript"* ]] || false
 }
 
 @test "--open splits the current herdr pane and runs watch for this session" {
@@ -135,5 +138,31 @@ STUB
 @test "--open outside herdr explains itself" {
   run env -u HERDR_PANE_ID "$SCRIPT" --open
   [ "$status" -eq 1 ]
-  [[ "$output" == *"herdr"* ]]
+  [[ "$output" == *"herdr"* ]] || false
+}
+
+@test "shows your prompt above the reply" {
+  claude_session p s
+  run "$SCRIPT" --raw --session s
+  [[ "$output" == *"> second question"* ]] || false
+  [[ "$output" != *"first question"* ]] || false
+}
+
+@test "slash commands show as the command, not raw tags" {
+  mkdir -p "$HOME/.claude/projects/p"
+  printf '%s\n' '{"type":"user","message":{"content":"<command-message>lastreply</command-message>\n<command-name>/lastreply</command-name>"}}' \
+    '{"type":"assistant","message":{"content":[{"type":"text","text":"Opened."}]}}' > "$HOME/.claude/projects/p/c.jsonl"
+  run "$SCRIPT" --raw --session c
+  [[ "$output" == *"> /lastreply"* ]] || false
+  [[ "$output" != *"<command"* ]] || false
+}
+
+@test "hidden follow-up entries don't replace your prompt" {
+  mkdir -p "$HOME/.claude/projects/p"
+  printf '%s\n' '{"type":"user","message":{"content":[{"type":"text","text":"[Image #4] Fix the theme"},{"type":"image"}]}}' \
+    '{"type":"user","isMeta":true,"message":{"content":[{"type":"text","text":"[Image: source: /tmp/shot.png]"}]}}' \
+    '{"type":"assistant","message":{"content":[{"type":"text","text":"On it."}]}}' > "$HOME/.claude/projects/p/m.jsonl"
+  run "$SCRIPT" --raw --session m
+  [[ "$output" == *"> [Image #4] Fix the theme"* ]] || false
+  [[ "$output" != *"shot.png"* ]] || false
 }

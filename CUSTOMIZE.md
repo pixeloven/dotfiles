@@ -43,12 +43,13 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 ## bat, delta, glow
 
-- **Where they live:** `home/dot_config/bat/config`, `home/Library/Preferences/glow/glow.yml`, and the git keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh`
+- **Where they live:** `home/dot_config/bat/config`, `home/Library/Preferences/glow/glow.yml.tmpl`, the glow style `home/dot_config/glow/catppuccin-mocha.json`, and the git keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh`
 - **Common changes:**
   - bat theme: `--theme="Catppuccin Macchiato"` (list: `bat --list-themes`).
   - Side-by-side diffs: in the gitconfig script, `git config --global delta.side-by-side true`.
   - delta theme: `git config --global delta.syntax-theme "Dracula"` (list: `delta --list-syntax-themes`).
   - glow width: `width: 120`.
+  - glow colours: edit `catppuccin-mocha.json`, e.g. inline code `"code": {"color": "#a6e3a1"}` for green. `lastreply` uses the same style.
 - **Try it:** run `chezmoi apply`, then `bat README.md`, `git diff` or `glow README.md`.
 - **Keep it:** `/codify`. A git key changed by hand shows up as owned-key drift; put the new value in the script.
 

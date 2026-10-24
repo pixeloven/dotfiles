@@ -6,3 +6,4 @@
 .config/herdr/sessions
 .config/herdr/release-notes.json
 .config/herdr/.plugins.lock
+.config/glow/README.md

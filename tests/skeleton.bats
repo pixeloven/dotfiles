@@ -12,6 +12,6 @@ REPO="$BATS_TEST_DIRNAME/.."
   run brew bundle list --file="$REPO/Brewfile" --all
   [ "$status" -eq 0 ]
   for pkg in ghostty font-jetbrains-mono bat git-delta glow chezmoi; do
-    [[ "$output" == *"$pkg"* ]]
+    [[ "$output" == *"$pkg"* ]] || false
   done
 }

@@ -82,29 +82,56 @@ transcript() {
   printf '%s' "$file"
 }
 
-# Group assistant text into turns split at each real prompt, then keep the last non-empty turn.
+# Split the transcript into turns at each real prompt and keep the last one with reply text.
+# The pane shows it as a review card: your prompt (shortened) and the time, then the reply.
 # shellcheck disable=SC2016  # jq programs, not shell expansions
-CLAUDE_JQ='
-  [ .[] | select(.isSidechain != true and (.type == "user" or .type == "assistant")) ]
-  | reduce .[] as $e ([[]];
+COMMON_JQ='
+  def prompt_text:
+    if (test("<command-name>")) then
+      ((capture("<command-name>(?<n>[^<]*)</command-name>").n) + " "
+        + ((capture("<command-args>(?<a>[^<]*)</command-args>").a) // "")) | sub(" +$"; "")
+    else
+      gsub("<(?<t>[a-z_-]+)( [^>]*)?>[\\s\\S]*?</(?<u>[a-z_-]+)>"; "")
+      | gsub("<[^>]+>"; "") | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "")
+      | if length > 240 then .[0:240] + "…" else . end
+    end;
+  def clock: if . then (sub("\\.[0-9]+"; "") | fromdateiso8601 | localtime | strftime("%I:%M %p") | sub("^0"; "")) else "" end;
+  def card:
+    map(select(.texts | length > 0)) | last
+    | if . == null then "" else
+        "**You** · " + (.time | clock) + "\n\n"
+        + (if .prompt == "" then "> (no text)" else "> " + .prompt end)
+        + "\n\n---\n\n" + (.texts | join("\n\n"))
+      end;'
+# shellcheck disable=SC2016
+CLAUDE_JQ="$COMMON_JQ"'
+  [ .[] | select(.isSidechain != true and .isMeta != true and (.type == "user" or .type == "assistant")) ]
+  | reduce .[] as $e ([{prompt: "", time: null, texts: []}];
       ($e.message.content) as $c
       | if $e.type == "user" then
-          (if ($c | type) == "string" or ([$c[]?.type] | index("tool_result") | not) then . + [[]] else . end)
+          if ($c | type) == "string" then
+            . + [{prompt: ($c | prompt_text), time: $e.timestamp, texts: []}]
+          elif ([$c[]?.type] | index("tool_result") | not) then
+            . + [{prompt: ([$c[]? | select(.type == "text") | .text] | join(" ") | prompt_text), time: $e.timestamp, texts: []}]
+          else . end
         else
-          .[-1] += [ if ($c | type) == "array" then $c[] | select(.type == "text") | .text else $c end ]
+          .[-1].texts += [ if ($c | type) == "array" then $c[] | select(.type == "text") | .text else $c end ]
         end)
-  | map(select(length > 0)) | (last // []) | join("\n\n")'
+  | card'
 # shellcheck disable=SC2016
-CODEX_JQ='
-  [ .[] | select(.type == "response_item" and .payload.type == "message") | .payload ]
-  | reduce .[] as $m ([[]];
-      if $m.role == "user" then . + [[]]
-      elif $m.role == "assistant" then .[-1] += [ $m.content[]? | select(.type == "output_text") | .text ]
+CODEX_JQ="$COMMON_JQ"'
+  [ .[] | select(.type == "response_item" and .payload.type == "message") | .payload + {time: .timestamp} ]
+  | reduce .[] as $m ([{prompt: "", time: null, texts: []}];
+      if $m.role == "user" then
+        ([$m.content[]? | .text // empty] | join(" ") | prompt_text) as $p
+        | if $p == "" then . else . + [{prompt: $p, time: $m.time, texts: []}] end
+      elif $m.role == "assistant" then .[-1].texts += [ $m.content[]? | select(.type == "output_text") | .text ]
       else . end)
-  | map(select(length > 0)) | (last // []) | join("\n\n")'
+  | card'
 
 render() {
-  local file="$1" text
+  local file="$1" text style="$HOME/.config/glow/catppuccin-mocha.json"
+  [ -f "$style" ] || style=dark
   if [ "$agent" = codex ]; then
     text="$(jq -rs "$CODEX_JQ" "$file")"
   else
@@ -115,9 +142,9 @@ render() {
   elif [ -n "$watch" ]; then
     # Pipe the output so glow can never open its pager (the config turns it on), which
     # would stall the loop on the first reply. An explicit style keeps the colours.
-    printf '%s\n' "$text" | glow -s dark -w "$(tput cols 2>/dev/null || echo 100)" - | cat
+    printf '%s\n' "$text" | glow -s "$style" -w "$(tput cols 2>/dev/null || echo 100)" - | cat
   else
-    printf '%s\n' "$text" | glow -
+    printf '%s\n' "$text" | glow -s "$style" -
   fi
 }
 

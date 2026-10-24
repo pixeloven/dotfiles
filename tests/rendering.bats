@@ -28,6 +28,18 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
 }
 
 @test "glow config set" {
-  grep -q "^style: \"dark\"" "$HOME/Library/Preferences/glow/glow.yml"
+  grep -q "^style: \"$HOME/.config/glow/catppuccin-mocha.json\"" "$HOME/Library/Preferences/glow/glow.yml"
   grep -q "^pager: true" "$HOME/Library/Preferences/glow/glow.yml"
+}
+
+@test "glow style is Catppuccin with peach inline code" {
+  S="$BATS_TEST_DIRNAME/../home/dot_config/glow/catppuccin-mocha.json"
+  [ "$(jq -r '.code.color' "$S")" = "#fab387" ]
+  [ "$(jq -r '.document.color' "$S")" = "#cdd6f4" ]
+}
+
+@test "glow renders with the Catppuccin style" {
+  run bash -c "printf '# Hi\\n\\nUse \\`x\\`\\n' | glow -s '$BATS_TEST_DIRNAME/../home/dot_config/glow/catppuccin-mocha.json' -"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Hi"* ]] || false
 }

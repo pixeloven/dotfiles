@@ -16,8 +16,8 @@ teardown() { rm -rf "$TMP"; }
   run "$MERGE" "$SETTINGS" "$FRAGMENT"
   [ "$status" -eq 0 ]
   [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 1 ]
-  [[ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh stop"* ]]
-  [[ "$(jq -r '.hooks.Notification[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh notify"* ]]
+  [[ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh stop"* ]] || false
+  [[ "$(jq -r '.hooks.Notification[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh notify"* ]] || false
 }
 
 @test "merge preserves existing SessionStart hooks and unrelated keys" {
@@ -62,7 +62,7 @@ teardown() { rm -rf "$TMP"; }
 @test "merge adds the drift notice to SessionStart" {
   "$MERGE" "$SETTINGS" "$FRAGMENT"
   [ "$(jq '.hooks.SessionStart | length' "$SETTINGS")" -eq 5 ]
-  [[ "$(jq -r '.hooks.SessionStart[4].hooks[0].command' "$SETTINGS")" == *"bin/drift --hook"* ]]
+  [[ "$(jq -r '.hooks.SessionStart[4].hooks[0].command' "$SETTINGS")" == *"bin/drift --hook"* ]] || false
 }
 
 @test "merge removes hooks dropped from the fragment" {

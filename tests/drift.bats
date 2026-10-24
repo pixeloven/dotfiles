@@ -50,26 +50,26 @@ teardown() { rm -rf "$TMP"; }
 @test "in-place edit reported as edited" {
   echo 'font-size = 20' >> "$HOME/.config/ghostty/config.ghostty"
   run "$R/bin/drift"
-  [[ "$output" == *$'edited\t.config/ghostty/config.ghostty'* ]]
+  [[ "$output" == *$'edited\t.config/ghostty/config.ghostty'* ]] || false
 }
 
 @test "hand-edited owned hook reported as owned-key" {
   jq '.hooks.Stop[0].hooks[0].command = "echo hi"' "$HOME/.claude/settings.json" > "$TMP/s" && mv "$TMP/s" "$HOME/.claude/settings.json"
   run "$R/bin/drift"
-  [[ "$output" == *$'owned-key\t~/.claude/settings.json hooks.Stop'* ]]
+  [[ "$output" == *$'owned-key\t~/.claude/settings.json hooks.Stop'* ]] || false
 }
 
 @test "changed git key reported as owned-key" {
   git config --global delta.side-by-side true
   run "$R/bin/drift"
-  [[ "$output" == *$'owned-key\t~/.gitconfig delta.side-by-side'* ]]
+  [[ "$output" == *$'owned-key\t~/.gitconfig delta.side-by-side'* ]] || false
 }
 
 @test "new ghostty file reported as untracked-config" {
   mkdir -p "$HOME/.config/ghostty/shaders"
   echo shader > "$HOME/.config/ghostty/shaders/crt.glsl"
   run "$R/bin/drift"
-  [[ "$output" == *$'untracked-config\t.config/ghostty/shaders/crt.glsl'* ]]
+  [[ "$output" == *$'untracked-config\t.config/ghostty/shaders/crt.glsl'* ]] || false
 }
 
 @test "drift never proposes a denylisted path" {
@@ -78,15 +78,15 @@ teardown() { rm -rf "$TMP"; }
   : > "$HOME/.config/herdr/herdr-server.log"
   echo 'export X=1' > "$HOME/.zshrc"
   run "$R/bin/drift"
-  [[ "$output" != *herdr.sock* ]]
-  [[ "$output" != *.log* ]]
-  [[ "$output" != *zshrc* ]]
+  [[ "$output" != *herdr.sock* ]] || false
+  [[ "$output" != *.log* ]] || false
+  [[ "$output" != *zshrc* ]] || false
 }
 
 @test "package installed by hand reported as pkg-extra" {
   export STUB_EXTRA_FORMULA=htop
   run "$R/bin/drift"
-  [[ "$output" == *$'pkg-extra\thtop'* ]]
+  [[ "$output" == *$'pkg-extra\thtop'* ]] || false
 }
 
 @test "ignored package not reported" {
@@ -99,7 +99,7 @@ teardown() { rm -rf "$TMP"; }
 @test "missing package reported as pkg-missing" {
   export STUB_MISSING=glow
   run "$R/bin/drift"
-  [[ "$output" == *$'pkg-missing\tglow'* ]]
+  [[ "$output" == *$'pkg-missing\tglow'* ]] || false
 }
 
 @test "summary is one line or empty" {
@@ -109,7 +109,7 @@ teardown() { rm -rf "$TMP"; }
   echo 'font-size = 20' >> "$HOME/.config/ghostty/config.ghostty"
   run "$R/bin/drift" --summary
   [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 1 ]
-  [[ "$output" == "dotfiles: 2 changes not codified - run /codify" ]]
+  [[ "$output" == "dotfiles: 2 changes not codified - run /codify" ]] || false
 }
 
 @test "hook mode emits a user-visible systemMessage only when drifted" {
