@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lastreply: render the newest Claude Code (or Codex) reply with glow, for a herdr split
 # beside the chat. Reads the session transcripts only; never writes anything.
-# Usage: lastreply [--codex] [--watch] [--raw] [--session ID]
+# Usage: lastreply [--open] [--watch] [--codex] [--raw] [--session ID]
 #   --codex       read ~/.codex/sessions instead of ~/.claude/projects
 #   --watch       re-render whenever the transcript changes (Ctrl+C to stop)
 #   --raw         print the markdown without glow
