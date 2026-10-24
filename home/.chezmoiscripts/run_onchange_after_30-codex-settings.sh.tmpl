@@ -1,0 +1,12 @@
+#!/bin/sh
+# Set the Codex settings we own (lib/codex-owned-keys.txt) in ~/.codex/config.toml, one key at
+# a time; that file is never tracked because it can hold connector tokens.
+# Re-runs when either input changes:
+#   keys:   {{ include "../lib/codex-owned-keys.txt" | sha256sum }}
+#   setter: {{ include "../lib/toml-set.sh" | sha256sum }}
+set -eu
+command -v codex >/dev/null 2>&1 || exit 0
+grep -v '^#' "{{ .chezmoi.workingTree }}/lib/codex-owned-keys.txt" | while read -r table key value; do
+  [ -n "$table" ] || continue
+  "{{ .chezmoi.workingTree }}/lib/toml-set.sh" "$HOME/.codex/config.toml" "$table" "$key" "$value"
+done

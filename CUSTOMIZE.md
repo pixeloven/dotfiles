@@ -37,9 +37,22 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Which events speak: add or remove `Stop` / `Notification` entries in the fragment.
   - Theme colours: `home/dot_claude/themes/catppuccin-mocha.json`. Inline code and commands use the `permission` token, e.g. `"permission": "#a6e3a1"` for green. Edits reload live. Pick the theme with `/theme` (stored in `~/.claude.json`, not tracked).
   - Rich view of replies: run `/lastreply` in Claude Code (or `lastreply --open`) to open a herdr split that renders each reply of that session with glow. In a split you opened yourself, `lastreply --watch` follows the agent in the same herdr tab (`--session <id>` to pin one, `--codex` for Codex, `--raw` for plain markdown). Source: `home/dot_local/bin/executable_lastreply`.
+  - Skills: `/lastreply` and `/codify` come from one shared source each in `home/.chezmoitemplates/skills/`, installed for Claude (`home/dot_claude/skills/`) and Codex (`home/dot_agents/skills/`). Edit the shared file, not the per-tool `SKILL.md.tmpl`.
 - **Try it:** `chezmoi apply` merges the fragment into `~/.claude/settings.json`, with a backup the first time it changes.
 - **Keep it:** commit the repo change. Never hand-edit our hooks in `settings.json`; `/codify` reports when that has happened.
 - **Reference:** https://docs.claude.com/en/docs/claude-code/hooks
+
+## Codex
+
+- **Where it lives:** `lib/codex-owned-keys.txt` (the few settings we own, one `<table> <key> <value>` per line), applied by `home/.chezmoiscripts/run_onchange_after_30-codex-settings.sh.tmpl`. Your `~/.codex/config.toml` itself is never committed; it can hold connector tokens.
+- **Common changes:**
+  - Theme: `tui theme "catppuccin-mocha"` sets Codex's built-in syntax-highlighting theme; any built-in name works, e.g. `"dracula"`.
+  - Another owned setting: add a line such as `tui animations false`.
+  - Review pane: `$lastreply` in Codex (or `lastreply --open` in a Codex shell) opens the same glow pane, pinned to that Codex session through `$CODEX_THREAD_ID`. It shows Codex's final answer, not its progress notes.
+  - Skills: `$codify` and `$lastreply`, from the shared sources above.
+- **Try it:** `chezmoi apply`. The first change backs up the file to `~/.codex/config.toml.bak-dotfiles`.
+- **Keep it:** commit the repo change. `/codify` reports when an owned Codex setting has been changed by hand.
+- **Not yet:** spoken alerts and the session-start drift notice for Codex. Both need Codex hooks, which only run after you approve them once in Codex's `/hooks` review.
 
 ## bat, delta, glow
 

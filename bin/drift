@@ -15,15 +15,18 @@ set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck disable=SC2206
 CZ=(chezmoi ${DRIFT_CHEZMOI_ARGS:-})
-WATCHED_DIRS=(.config/ghostty .config/herdr .config/bat Library/Preferences/glow)
+WATCHED_DIRS=(.config/ghostty .config/herdr .config/bat .config/glow Library/Preferences/glow .claude/themes)
 
-denylisted() {
+denylisted() { # a glob without / matches the file name, one with / the end of the path
   local name glob
   name="$(basename "$1")"
   while IFS= read -r glob; do
     case "$glob" in ''|'#'*) continue ;; esac
     # shellcheck disable=SC2254
-    case "$name" in $glob) return 0 ;; esac
+    case "$glob" in
+      */*) case "$1" in $glob|*/$glob) return 0 ;; esac ;;
+      *) case "$name" in $glob) return 0 ;; esac ;;
+    esac
   done < "$REPO/lib/denylist.txt"
   return 1
 }
@@ -80,6 +83,18 @@ owned_keys() {
     done
 }
 
+codex_keys() {
+  local table key want have
+  [ -f "$REPO/lib/codex-owned-keys.txt" ] && command -v codex >/dev/null 2>&1 || return 0
+  grep -v '^#' "$REPO/lib/codex-owned-keys.txt" | while read -r table key want; do
+    [ -n "$table" ] || continue
+    have="$("$REPO/lib/toml-set.sh" --get "$HOME/.codex/config.toml" "$table" "$key" 2>/dev/null || true)"
+    [ "$have" = "$want" ] && continue
+    # shellcheck disable=SC2088  # literal ~ label for humans
+    emit owned-key "~/.codex/config.toml $table.$key" "edit lib/codex-owned-keys.txt then chezmoi apply"
+  done
+}
+
 packages() {
   local listed pkg
   listed="$(brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
@@ -112,7 +127,7 @@ untracked() {
   done
 }
 
-findings="$({ edited; owned_keys; packages; untracked; } 2>/dev/null)"
+findings="$({ edited; owned_keys; codex_keys; packages; untracked; } 2>/dev/null)"
 
 case "${1:-}" in
   --summary)

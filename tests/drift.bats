@@ -119,3 +119,29 @@ teardown() { rm -rf "$TMP"; }
   run "$R/bin/drift" --hook
   [ "$(jq -r '.systemMessage' <<<"$output")" = "dotfiles: 1 changes not codified - run /codify" ]
 }
+
+@test "a changed Codex theme is reported as owned-key" {
+  cp "$REAL_REPO/lib/codex-owned-keys.txt" "$REAL_REPO/lib/toml-set.sh" "$R/lib/"
+  printf '#!/bin/sh\n' > "$TMP/stub/codex"; chmod +x "$TMP/stub/codex"
+  mkdir -p "$HOME/.codex"
+  printf '[tui]\ntheme = "dracula"\n' > "$HOME/.codex/config.toml"
+  run "$R/bin/drift"
+  [[ "$output" == *$'owned-key\t~/.codex/config.toml tui.theme'* ]] || false
+  printf '[tui]\ntheme = "catppuccin-mocha"\n' > "$HOME/.codex/config.toml"
+  run "$R/bin/drift"
+  [[ "$output" != *"tui.theme"* ]] || false
+}
+
+@test "drift never proposes Codex's login or config" {
+  mkdir -p "$HOME/.config/glow"
+  echo '{}' > "$HOME/.config/glow/auth.json"
+  run "$R/bin/drift"
+  [[ "$output" != *auth.json* ]] || false
+}
+
+@test "a new glow style file is reported as untracked-config" {
+  mkdir -p "$HOME/.config/glow"
+  echo '{}' > "$HOME/.config/glow/extra.json"
+  run "$R/bin/drift"
+  [[ "$output" == *$'untracked-config\t.config/glow/extra.json'* ]] || false
+}
