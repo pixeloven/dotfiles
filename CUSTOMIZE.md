@@ -35,7 +35,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Spoken phrase: when an agent finishes it says "All done. Ready for you."; when it needs you it speaks Claude's own reason (e.g. "Claude needs your permission to use Bash."). Edit the `case` block in `speak-alert.sh` to change either.
   - Voice and speed: by default the alert uses the first installed English Premium voice, falling back to your macOS system voice (Read & Speak → System voice, e.g. a Siri voice), at rate 120 words per minute (lower is slower), after 800 ms of silence so the start isn't clipped. Set `SPEAK_ALERT_LEAD_MS` to change the lead-in. Change it in `speak-alert.sh`, or set `SPEAK_ALERT_VOICE` / `SPEAK_ALERT_RATE`. List voices with `say -v '?'`.
   - Which events speak: add or remove `Stop` / `Notification` entries in the fragment.
-  - Theme: `/theme` inside Claude Code (stored in `~/.claude.json`, not tracked).
+  - Theme colours: `home/dot_claude/themes/catppuccin-mocha.json`. Inline code and commands use the `permission` token, e.g. `"permission": "#a6e3a1"` for green. Edits reload live. Pick the theme with `/theme` (stored in `~/.claude.json`, not tracked).
 - **Try it:** `chezmoi apply` merges the fragment into `~/.claude/settings.json`, with a backup the first time it changes.
 - **Keep it:** commit the repo change. Never hand-edit our hooks in `settings.json`; `/codify` reports when that has happened.
 - **Reference:** https://docs.claude.com/en/docs/claude-code/hooks

@@ -22,9 +22,10 @@ Steps that scripts can't do, or that macOS asks you to approve yourself. Each on
 
 ## 3. Claude Code theme
 
-1. In Claude Code, run `/theme` and pick the dark theme. That choice is stored in `~/.claude.json`, which this repo never tracks.
+1. Restart Claude Code once after the first `chezmoi apply`, so it sees `~/.claude/themes/`.
+2. Run `/theme` and pick **Catppuccin Mocha**. That choice is stored in `~/.claude.json`, which this repo never tracks.
 
-**Done when:** Claude Code's colours sit comfortably on Ghostty's Catppuccin background.
+**Done when:** inline code and commands show in peach and your own messages sit on a slightly lighter band.
 
 ## 4. Dictation
 
