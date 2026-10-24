@@ -6,6 +6,7 @@ FIX="$BATS_TEST_DIRNAME/fixtures"
 setup() {
   export HOME="$(mktemp -d)"
   WORK="$HOME/work/my.proj"
+  unset HERDR_TAB_ID
   mkdir -p "$WORK"
 }
 
@@ -71,4 +72,68 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   kill "$pid"
   grep -q 'RENDER: ## Result' "$HOME/out"
   grep -q 'RENDER: Fresh reply.' "$HOME/out"
+}
+
+stub_herdr() { # <agent> <session-id> <tab-id> : herdr agent list reports one agent
+  mkdir -p "$HOME/bin"
+  cat > "$HOME/bin/herdr" <<STUB
+#!/bin/sh
+echo '{"result":{"agents":[{"agent":"$1","agent_session":{"value":"$2"},"tab_id":"$3"}]}}'
+STUB
+  chmod +x "$HOME/bin/herdr"
+}
+
+@test "in herdr, follows the session in the same tab, not the newest one" {
+  claude_session p mine
+  claude_session p other
+  echo '{"type":"user","message":{"content":"x"}}' >> "$HOME/.claude/projects/p/other.jsonl"
+  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Other session."}]}}' >> "$HOME/.claude/projects/p/other.jsonl"
+  stub_herdr claude mine w1:tA
+  run env PATH="$HOME/bin:$PATH" HERDR_TAB_ID=w1:tA "$SCRIPT" --raw
+  [[ "$output" == *"## Result"* ]]
+  [[ "$output" != *"Other session."* ]]
+}
+
+@test "--session picks a Claude session by id" {
+  claude_session p wanted
+  claude_session p newer
+  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Newer."}]}}' >> "$HOME/.claude/projects/p/newer.jsonl"
+  run "$SCRIPT" --raw --session wanted
+  [[ "$output" == *"## Result"* ]]
+}
+
+@test "in herdr, follows the Codex session in the same tab" {
+  mkdir -p "$HOME/.codex/sessions/2026/10/23"
+  cp "$FIX/codex-rollout.jsonl" "$HOME/.codex/sessions/2026/10/23/rollout-2026-abc123.jsonl"
+  echo '{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"newest other"}]}}' > "$HOME/.codex/sessions/2026/10/23/rollout-2026-zzz999.jsonl"
+  stub_herdr codex abc123 w1:tB
+  run env PATH="$HOME/bin:$PATH" HERDR_TAB_ID=w1:tB "$SCRIPT" --codex --raw
+  [ "$output" = "# Codex result" ]
+}
+
+@test "--session for an unknown id explains itself" {
+  run "$SCRIPT" --raw --session nope
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no Claude transcript"* ]]
+}
+
+@test "--open splits the current herdr pane and runs watch for this session" {
+  mkdir -p "$HOME/bin"
+  cat > "$HOME/bin/herdr" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$HOME/herdr.log"
+[ "$1 $2" = "pane split" ] && echo '{"result":{"pane":{"pane_id":"w1:pZ"}}}'
+exit 0
+STUB
+  chmod +x "$HOME/bin/herdr"
+  run env PATH="$HOME/bin:$PATH" HERDR_PANE_ID=w1:pA CLAUDE_CODE_SESSION_ID=abc-123 "$SCRIPT" --open
+  [ "$status" -eq 0 ]
+  grep -q '^pane split --current --direction right' "$HOME/herdr.log"
+  grep -q '^pane run w1:pZ lastreply --watch --session abc-123$' "$HOME/herdr.log"
+}
+
+@test "--open outside herdr explains itself" {
+  run env -u HERDR_PANE_ID "$SCRIPT" --open
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"herdr"* ]]
 }
