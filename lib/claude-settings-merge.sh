@@ -38,7 +38,10 @@ prev='{"hooks":{}}'
 jq --slurpfile f "$fragment" --argjson prev "$prev" '
   ([$prev.hooks[][].hooks[].command] - [$f[0].hooks[][].hooks[].command]) as $retired
   | if ($retired | length) > 0 and .hooks then
-      .hooks |= with_entries(.value |= map(select(all(.hooks[]?.command; . as $c | ($retired | index([$c])) == null))))
+      # Drop only the retired commands; a group is removed only when nothing is left in it.
+      .hooks |= with_entries(.value |= map(
+        .hooks |= map(select(. as $h | ($retired | index([$h.command])) == null))
+        | select((.hooks | length) > 0)))
     else . end
   | reduce ($f[0].hooks | to_entries[]) as $ev (.;
     reduce $ev.value[] as $entry (.;

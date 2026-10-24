@@ -75,3 +75,15 @@ teardown() { rm -rf "$TMP"; }
   [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 1 ]
   [ "$(jq '[.hooks.SessionStart[] | select(.hooks[0].command | test("axi|herdr"))] | length' "$SETTINGS")" -eq 4 ]
 }
+
+@test "retiring a hook keeps other commands that share its group" {
+  APPLIED="$TMP/applied.json"
+  jq '.hooks.Stop[0].hooks[0].command = "old-stop-command"' "$FRAGMENT" > "$TMP/old-fragment.json"
+  "$MERGE" "$SETTINGS" "$TMP/old-fragment.json" "$APPLIED"
+  # The user adds their own command to the same group as ours.
+  jq '(.hooks.Stop[] | select(.hooks[0].command == "old-stop-command") | .hooks) += [{"type":"command","command":"my-own-stop"}]' \
+    "$SETTINGS" > "$TMP/s.json" && mv "$TMP/s.json" "$SETTINGS"
+  "$MERGE" "$SETTINGS" "$FRAGMENT" "$APPLIED"
+  [ "$(jq '[.hooks.Stop[].hooks[].command] | index("my-own-stop") != null' "$SETTINGS")" = "true" ]
+  [ "$(jq '[.hooks.Stop[].hooks[].command] | index("old-stop-command")' "$SETTINGS")" = "null" ]
+}
