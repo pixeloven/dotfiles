@@ -52,7 +52,9 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Skills: `$codify` and `$lastreply`, from the shared sources above.
 - **Try it:** `chezmoi apply`. The first change backs up the file to `~/.codex/config.toml.bak-dotfiles`.
 - **Keep it:** commit the repo change. `/codify` reports when an owned Codex setting has been changed by hand.
-- **Not yet:** spoken alerts and the session-start drift notice for Codex. Both need Codex hooks, which only run after you approve them once in Codex's `/hooks` review.
+  - Spoken alerts and the drift notice: `lib/codex-hooks.fragment.json`, merged into `~/.codex/hooks.json` beside your own hooks. They say "All done. Ready for you." when a turn finishes and "Codex needs your permission to use <tool>." on an approval request; headless `codex exec` runs and fleet workers stay silent. Each `statusMessage` is the name `/hooks` shows.
+- **Approve hooks:** Codex runs a new or changed hook only after you approve it in `/hooks`, so after editing the fragment, approve again.
+- **Check alerts:** `tail ~/.local/state/speak-alert/events.log` shows what each alert decided (spoke, or silent and why).
 
 ## bat, delta, glow
 
