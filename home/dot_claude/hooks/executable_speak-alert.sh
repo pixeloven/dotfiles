@@ -4,10 +4,13 @@
 # stop says a calm done line; notify speaks Claude's own reason (the payload's "message").
 # Voice: SPEAK_ALERT_VOICE, else the first installed English Premium voice, else the macOS system voice
 # (System Settings > Accessibility > Read & Speak > System voice, which can be a Siri voice).
-# Silent for fleet workers (FM_TASK_ID set) and when ~/.config/speak-alert/muted exists.
+# Silent for fleet workers (FM_TASK_ID set), for headless `claude -p` runs such as review
+# pipelines and helper agents (CLAUDE_CODE_ENTRYPOINT other than cli), and when
+# ~/.config/speak-alert/muted exists.
 # Always exits 0 so it can never block Claude Code.
 
 [ -n "${FM_TASK_ID:-}" ] && exit 0
+case "${CLAUDE_CODE_ENTRYPOINT:-cli}" in cli) ;; *) exit 0 ;; esac
 [ -e "$HOME/.config/speak-alert/muted" ] && exit 0
 
 case "${1:-}" in

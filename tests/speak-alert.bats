@@ -5,7 +5,7 @@ SCRIPT="$BATS_TEST_DIRNAME/../home/dot_claude/hooks/executable_speak-alert.sh"
 setup() {
   export HOME="$(mktemp -d)"
   export SPEAK_ALERT_DRY_RUN=1
-  unset FM_TASK_ID
+  unset FM_TASK_ID CLAUDE_CODE_ENTRYPOINT
 }
 
 teardown() { rm -rf "$HOME"; }
@@ -30,6 +30,17 @@ teardown() { rm -rf "$HOME"; }
   run bash -c "echo '{\"cwd\":\"/x/operator\"}' | FM_TASK_ID=t1 '$SCRIPT' stop"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+@test "silent for headless claude -p runs" {
+  run bash -c "echo '{}' | CLAUDE_CODE_ENTRYPOINT=sdk-cli '$SCRIPT' stop"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "speaks in an interactive session" {
+  run bash -c "echo '{}' | CLAUDE_CODE_ENTRYPOINT=cli '$SCRIPT' stop"
+  [ "$output" = "All done. Ready for you." ]
 }
 
 @test "silent when muted file exists" {
