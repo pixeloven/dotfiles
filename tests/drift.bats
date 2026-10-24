@@ -163,7 +163,8 @@ teardown() { rm -rf "$TMP"; }
   echo 'export X=1' > "$HOME/.zshrc"
   run "$R/bin/drift"
   [[ "$output" == *$'owned-key\t~/.zshrc dotfiles source line'* ]] || false
-  sh "$R/home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh"
+  remedy="$(grep 'zshrc dotfiles source line' <<<"$output" | cut -f3)"
+  (cd "$R" && eval "$remedy")
   run "$R/bin/drift"
   [[ "$output" != *zshrc* ]] || false
 }

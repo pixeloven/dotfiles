@@ -20,6 +20,7 @@ else
 fi
 
 # History: large, shared between sessions, no duplicates; a leading space keeps a command out.
+HISTFILE=${HISTFILE:-$HOME/.zsh_history}
 HISTSIZE=100000
 SAVEHIST=100000
 setopt extended_history share_history hist_ignore_all_dups hist_ignore_space hist_reduce_blanks hist_verify
@@ -54,12 +55,8 @@ if [[ -r "$_dotfiles_brew/opt/fzf-tab/share/fzf-tab/fzf-tab.zsh" ]] && (( $+comm
   zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'eza -1 --color=always --icons=auto $realpath'
 fi
 
-# fzf: Ctrl+R history, Ctrl+T files, Alt+C folders. Option+C types ç on macOS unless the
-# terminal sends Option as Alt, so ç opens the folder search too.
-if (( $+commands[fzf] )); then
-  source <(fzf --zsh)
-  bindkey 'ç' fzf-cd-widget
-fi
+# fzf: Ctrl+R history, Ctrl+T files, Alt+C folders.
+(( $+commands[fzf] )) && source <(fzf --zsh)
 
 # zoxide: z <part of a path> jumps there, zi picks interactively.
 (( $+commands[zoxide] )) && eval "$(zoxide init zsh)"

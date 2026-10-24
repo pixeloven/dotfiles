@@ -21,6 +21,8 @@ background-blur = true
 
 # Behaviour
 copy-on-select = clipboard
+# Left Option acts as Alt (fzf's Alt+C works); right Option still types special characters
+macos-option-as-alt = left
 shell-integration-features = cursor,sudo,title
 
 # Notify when a long command finishes in an unfocused window

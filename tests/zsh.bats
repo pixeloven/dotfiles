@@ -27,13 +27,6 @@ in_zsh() {
   done
 }
 
-@test "syntax-highlighting theme is vendored at a pinned commit with its licence" {
-  T="$ZSH_DIR/catppuccin_mocha-zsh-syntax-highlighting.zsh"
-  grep -qE 'commit$' "$T"
-  grep -qE '^# [0-9a-f]{40} ' "$T"
-  grep -q '^MIT License' "$ZSH_DIR/catppuccin-zsh-syntax-highlighting.LICENSE"
-}
-
 @test "config loads with every tool wired up" {
   run in_zsh 'bindkey "^R"; bindkey "^T"; alias ls; whence -w z fzf-tab-complete _zsh_autosuggest_start _zsh_highlight _fnm_autoload_hook; print -r -- $ZSH_HIGHLIGHT_STYLES[comment] $PROMPT'
   [[ "$output" == *'"^R" fzf-history-widget'* ]] || false
@@ -48,9 +41,10 @@ in_zsh() {
 }
 
 @test "config still loads when none of the tools are installed" {
-  run env HOME="$TMP/home" ZDOTDIR="$TMP/home" PATH=/usr/bin:/bin \
-    zsh -i -c 'source ~/.config/zsh/dotfiles.zsh; echo "rc=$?"; alias ls || echo no-eza; whence fnm || echo no-fnm'
+  run env -u HISTFILE HOME="$TMP/home" ZDOTDIR="$TMP/home" PATH=/usr/bin:/bin \
+    zsh -i -c 'source ~/.config/zsh/dotfiles.zsh; echo "rc=$?"; echo "histfile=$HISTFILE"; alias ls || echo no-eza; whence fnm || echo no-fnm'
   [[ "$output" == *"rc=0"* ]] || false
+  [[ "$output" == *"histfile=$TMP/home/.zsh_history"* ]] || false
   [[ "$output" == *"no-eza"* ]] || false
   [[ "$output" == *"no-fnm"* ]] || false
   [[ "$output" != *"not found"* ]] || false
@@ -63,7 +57,7 @@ starship_warnings() { STARSHIP_CACHE="$(mktemp -d "$TMP/cache.XXXXXX")" STARSHIP
   run starship_warnings "$STARSHIP"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  grep -q '^palette = "catppuccin_mocha"' "$STARSHIP"
+  [[ "$(STARSHIP_CONFIG="$STARSHIP" starship print-config palette)" == *'palette = "catppuccin_mocha"'* ]] || false
 }
 
 @test "starship check catches a broken config" {

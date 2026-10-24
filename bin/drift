@@ -96,7 +96,7 @@ zshrc_line() { # the one line we own in the otherwise private ~/.zshrc
   line="$(sed -n "s/^LINE='\(.*\)'$/\1/p" "$script")"
   [ -n "$line" ] && [ -f "$HOME/.zshrc" ] && grep -qxF "$line" "$HOME/.zshrc" && return 0
   # shellcheck disable=SC2088  # literal ~ label for humans
-  emit owned-key "~/.zshrc dotfiles source line" "chezmoi apply (or run home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh)"
+  emit owned-key "~/.zshrc dotfiles source line" "sh home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh"
 }
 
 codex_keys() {
