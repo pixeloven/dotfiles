@@ -1,0 +1,8 @@
+{"type":"user","message":{"role":"user","content":"first question"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Old answer."}]}}
+{"type":"user","message":{"role":"user","content":"second question"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hidden"},{"type":"text","text":"Checking now."},{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
+{"type":"assistant","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"Subagent chatter."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## Result\n\n```sh\necho hi\n```"}]}}
+{"type":"system","content":"noise"}

@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# lastreply: render the newest Claude Code (or Codex) reply with glow, for a herdr split
+# beside the chat. Reads the session transcripts only; never writes anything.
+# Usage: lastreply [--codex] [--watch] [--raw]
+#   --codex  read ~/.codex/sessions instead of ~/.claude/projects
+#   --watch  re-render whenever the transcript changes (Ctrl+C to stop)
+#   --raw    print the markdown without glow
+# Claude: the session for the current folder, else the newest session in any project.
+# A reply is all the text the assistant wrote since your last prompt, across tool calls.
+
+set -uo pipefail
+
+agent=claude watch="" raw=""
+for arg in "$@"; do
+  case "$arg" in
+    --codex) agent=codex ;;
+    --watch) watch=1 ;;
+    --raw) raw=1 ;;
+    -h|--help) sed -n '2,9s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    *) echo "lastreply: unknown option $arg (try --help)" >&2; exit 2 ;;
+  esac
+done
+
+newest() { # newest *.jsonl directly inside the given folders
+  find "$@" -maxdepth 1 -name '*.jsonl' -type f -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -1
+}
+
+transcript() {
+  if [ "$agent" = codex ]; then
+    find "$HOME/.codex/sessions" -name '*.jsonl' -type f -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -1
+    return
+  fi
+  local here file=""
+  here="$HOME/.claude/projects/$(pwd | sed 's/[^A-Za-z0-9]/-/g')"
+  [ -d "$here" ] && file="$(newest "$here")"
+  [ -n "$file" ] || file="$(newest "$HOME"/.claude/projects/*/)"
+  printf '%s' "$file"
+}
+
+# Group assistant text into turns split at each real prompt, then keep the last non-empty turn.
+# shellcheck disable=SC2016  # jq programs, not shell expansions
+CLAUDE_JQ='
+  [ .[] | select(.isSidechain != true and (.type == "user" or .type == "assistant")) ]
+  | reduce .[] as $e ([[]];
+      ($e.message.content) as $c
+      | if $e.type == "user" then
+          (if ($c | type) == "string" or ([$c[]?.type] | index("tool_result") | not) then . + [[]] else . end)
+        else
+          .[-1] += [ if ($c | type) == "array" then $c[] | select(.type == "text") | .text else $c end ]
+        end)
+  | map(select(length > 0)) | (last // []) | join("\n\n")'
+# shellcheck disable=SC2016
+CODEX_JQ='
+  [ .[] | select(.type == "response_item" and .payload.type == "message") | .payload ]
+  | reduce .[] as $m ([[]];
+      if $m.role == "user" then . + [[]]
+      elif $m.role == "assistant" then .[-1] += [ $m.content[]? | select(.type == "output_text") | .text ]
+      else . end)
+  | map(select(length > 0)) | (last // []) | join("\n\n")'
+
+render() {
+  local file="$1" text
+  if [ "$agent" = codex ]; then
+    text="$(jq -rs "$CODEX_JQ" "$file")"
+  else
+    text="$(jq -rs "$CLAUDE_JQ" "$file")"
+  fi
+  if [ -n "$raw" ]; then
+    printf '%s\n' "$text"
+  elif [ -n "$watch" ]; then
+    printf '%s\n' "$text" | glow -p=false -
+  else
+    printf '%s\n' "$text" | glow -
+  fi
+}
+
+file="$(transcript)"
+if [ -z "$file" ]; then
+  echo "lastreply: no $( [ "$agent" = codex ] && echo Codex || echo Claude ) transcript found" >&2
+  exit 1
+fi
+
+if [ -z "$watch" ]; then
+  render "$file"
+  exit 0
+fi
+
+last=""
+while :; do
+  file="$(transcript)"
+  stamp="$file $(stat -f %m "$file" 2>/dev/null)"
+  if [ "$stamp" != "$last" ]; then
+    last="$stamp"
+    clear
+    render "$file"
+  fi
+  sleep 2
+done
