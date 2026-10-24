@@ -12,8 +12,8 @@ auto_switch = false
 delivery = "herdr"
 
 [ui.sound]
-# Play built-in sounds when agents in background workspaces finish or need you
-enabled = true
+# Off: interactive Claude sessions speak their own alerts (~/.claude/hooks/speak-alert.sh)
+enabled = false
 
 [experimental]
 # Inline images (Kitty graphics) through to Ghostty. Set false if images misbehave.
