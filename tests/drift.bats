@@ -157,3 +157,21 @@ teardown() { rm -rf "$TMP"; }
   run "$R/bin/drift"
   [[ "$output" == *$'owned-key\t~/.codex/hooks.json hooks.Stop'* ]] || false
 }
+
+@test "a missing ~/.zshrc source line is reported as owned-key" {
+  cp "$REAL_REPO/home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh" "$R/home/.chezmoiscripts/"
+  echo 'export X=1' > "$HOME/.zshrc"
+  run "$R/bin/drift"
+  [[ "$output" == *$'owned-key\t~/.zshrc dotfiles source line'* ]] || false
+  remedy="$(grep 'zshrc dotfiles source line' <<<"$output" | cut -f3)"
+  (cd "$R" && eval "$remedy")
+  run "$R/bin/drift"
+  [[ "$output" != *zshrc* ]] || false
+}
+
+@test "a new file in ~/.config/zsh is reported as untracked-config" {
+  mkdir -p "$HOME/.config/zsh"
+  echo 'alias x=y' > "$HOME/.config/zsh/extra.zsh"
+  run "$R/bin/drift"
+  [[ "$output" == *$'untracked-config\t.config/zsh/extra.zsh'* ]] || false
+}

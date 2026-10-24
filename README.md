@@ -1,6 +1,6 @@
 # dotfiles
 
-Terminal setup as code for macOS: Ghostty, herdr, Claude Code alerts, and bat/delta/glow, all on the dark Catppuccin Mocha theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
+Terminal setup as code for macOS: Ghostty, herdr, zsh with Starship, Claude Code alerts, and bat/delta/glow, all on the dark Catppuccin Mocha theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
 
 ## What's managed
 
@@ -9,7 +9,8 @@ Terminal setup as code for macOS: Ghostty, herdr, Claude Code alerts, and bat/de
 | `~/.config/ghostty/config.ghostty` | `~/.claude/settings.json`: only the hooks in `lib/claude-hooks.fragment.json` |
 | `~/.config/herdr/config.toml` | `~/.gitconfig`: only the delta/merge keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh` |
 | `~/.config/bat/config`, `~/Library/Preferences/glow/glow.yml` | |
-| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/` | |
+| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
+| `~/.config/zsh/`, `~/.config/starship.toml` | |
 
 Files that can hold secrets (`lib/denylist.txt`) are blocked by a pre-commit hook and by CI.
 
