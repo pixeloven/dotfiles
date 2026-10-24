@@ -6,4 +6,4 @@ useDefault = true
 [[rules]]
 id = "never-tracked-file"
 description = "File type listed in lib/denylist.txt; patch owned keys via a script instead of committing it"
-path = '''(^|/)(settings\.json|settings\.local\.json|\.claude\.json|\.gitconfig|\.zshrc|\.zprofile|\.bashrc|\.netrc|hosts\.yml|session\.json|id_rsa[^/]*|id_ed25519[^/]*|[^/]*\.sock|[^/]*\.log|[^/]*\.bak-[^/]*)$'''
+path = '''(^|/)((settings\.json|settings\.local\.json|\.claude\.json|\.gitconfig|\.zshrc|\.zprofile|\.bashrc|\.netrc|hosts\.yml|session\.json|auth\.json|id_rsa[^/]*|id_ed25519[^/]*|[^/]*\.sock|[^/]*\.log|[^/]*\.bak-[^/]*)|[^/]*codex/config\.toml[^/]*)$'''

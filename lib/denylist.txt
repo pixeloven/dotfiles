@@ -1,4 +1,5 @@
-# Paths that are never tracked in this repo, one glob per line (matched against the file name).
+# Paths that are never tracked in this repo, one glob per line. A glob without / matches the
+# file name; a glob with / matches the end of the path.
 # Used by .gitleaks.toml (commit guard) and bin/drift (never suggests them).
 settings.json
 settings.local.json
@@ -15,3 +16,5 @@ id_ed25519*
 *.sock
 *.log
 *.bak-*
+auth.json
+*codex/config.toml*
