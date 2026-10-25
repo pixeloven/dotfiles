@@ -191,3 +191,36 @@ teardown() { rm -rf "$TMP"; }
   [[ "$output" == *$'untracked-config\t.config/glow/glow.yml'* ]] || false
   [[ "$output" != *Library* ]] || false
 }
+
+persona_home() { # a stub operator home; po-theme.sh only records its calls
+  OP="$TMP/op"
+  mkdir -p "$OP/bin" "$OP/config"
+  printf '#!/bin/sh\necho "$*" >> "%s/calls"\n' "$OP" > "$OP/bin/po-theme.sh"
+  chmod +x "$OP/bin/po-theme.sh"
+  printf '[data]\noperatorPersona = "operator"\noperatorHome = "%s"\n' "$OP" > "$TMP/chezmoi.toml"
+}
+
+@test "operator persona: unset key reports nothing" {
+  persona_home
+  : > "$TMP/chezmoi.toml"
+  echo nautical > "$OP/config/po-theme"
+  run "$R/bin/drift"
+  [[ "$output" != *po-theme* ]] || false
+}
+
+@test "operator persona: selection that disagrees with the key is owned-key" {
+  persona_home
+  echo nautical > "$OP/config/po-theme"
+  run "$R/bin/drift"
+  [[ "$output" == *$'owned-key\t'"$OP/config/po-theme"* ]] || false
+  echo operator > "$OP/config/po-theme"
+  run "$R/bin/drift"
+  [[ "$output" != *po-theme* ]] || false
+}
+
+@test "operator persona: secondmate home is never reported" {
+  persona_home
+  touch "$OP/.fm-secondmate-home"
+  run "$R/bin/drift"
+  [[ "$output" != *po-theme* ]] || false
+}

@@ -1,0 +1,11 @@
+{{- if hasKey . "operatorPersona" -}}
+#!/bin/sh
+# Select the operator persona from the chezmoi data key operatorPersona (set by hand in
+# ~/.config/chezmoi/chezmoi.toml; unset renders nothing, so this never runs).
+# Re-runs when the key, the home or the helper changes:
+#   persona: {{ .operatorPersona }}
+#   home:    {{ get . "operatorHome" | default "~/Development/operator" }}
+#   helper:  {{ include "../lib/operator-persona.sh" | sha256sum }}
+set -eu
+exec "{{ .chezmoi.workingTree }}/lib/operator-persona.sh" {{ .operatorPersona | squote }} {{ get . "operatorHome" | default "~/Development/operator" | squote }}
+{{ end -}}
