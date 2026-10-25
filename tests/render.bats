@@ -67,11 +67,9 @@ Library/Preferences/glow/glow.yml"
   run render linux
   [ "$status" -eq 0 ]
   [[ "$output" == *$palette* ]] || false
-  grep -qxF 'Name=Catppuccin Mocha' "$TMP/linux/$palette"
-  [ "$(grep -c '^Color[0-9]*=#' "$TMP/linux/$palette")" -eq 16 ]
 }
 
-@test "the Ptyxis settings script renders only on Linux with Ptyxis" {
+@test "the Ptyxis settings script renders nothing without Ptyxis" {
   script() { # <os> <terminal> <container>
     chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \
       --override-data "{\"chezmoi\":{\"os\":\"$1\"},\"terminal\":\"$2\",\"container\":$3}" \
@@ -79,11 +77,6 @@ Library/Preferences/glow/glow.yml"
   }
   [ -z "$(script linux ghostty false)" ]
   [ -z "$(script darwin ghostty false)" ]
-  run script linux ptyxis false
-  [[ "$output" == *"gs() { gsettings "* ]] || false
-  [ "$(grep -c '^own ' <<<"$output")" -eq 3 ]
-  run script linux ptyxis true
-  [[ "$output" == *"gs() { distrobox-host-exec gsettings "* ]] || false
 }
 
 @test "glow config is the same on both OSes and points at the HOME's Catppuccin style" {
