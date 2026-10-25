@@ -4,8 +4,8 @@
 # ~/.config/chezmoi/chezmoi.toml; unset renders nothing, so this never runs).
 # Re-runs when the key, the home or the helper changes:
 #   persona: {{ .operatorPersona }}
-#   home:    {{ get . "operatorHome" | default "~/Development/operator" }}
+#   home:    {{ get . "operatorHome" }}
 #   helper:  {{ include "../lib/operator-persona.sh" | sha256sum }}
 set -eu
-exec "{{ .chezmoi.workingTree }}/lib/operator-persona.sh" {{ .operatorPersona | squote }} {{ get . "operatorHome" | default "~/Development/operator" | squote }}
+exec "{{ .chezmoi.workingTree }}/lib/operator-persona.sh" {{ .operatorPersona | squote }}{{ if hasKey . "operatorHome" }} {{ .operatorHome | squote }}{{ end }}
 {{ end -}}

@@ -7,17 +7,19 @@
 # executable bin/po-theme.sh, or is a secondmate home.
 #
 # Usage: operator-persona.sh <name> [home]   (home defaults to ~/Development/operator)
+#        operator-persona.sh --home [home]   prints the resolved home if it would be applied, else exits 1
 set -eu
-name="$1"
+if [ "$1" = --home ]; then mode=home; else mode=apply; name="$1"; fi
 home="${2:-$HOME/Development/operator}"
 # shellcheck disable=SC2088  # matching a literal ~, not expanding one
 case "$home" in "~") home="$HOME" ;; "~/"*) home="$HOME/${home#"~/"}" ;; esac
 po="$home/bin/po-theme.sh"
 
-skip() { echo "operator persona: $1; skipping"; exit 0; }
+skip() { [ "$mode" = apply ] || exit 1; echo "operator persona: $1; skipping"; exit 0; }
 [ -d "$home" ] || skip "no operator home at $home"
 [ -x "$po" ] || skip "$po is not executable"
 [ ! -e "$home/.fm-secondmate-home" ] || skip "$home is a secondmate home"
+[ "$mode" = apply ] || { echo "$home"; exit 0; }
 
 "$po" validate "$name"
 sel="$home/config/po-theme"

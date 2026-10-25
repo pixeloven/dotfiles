@@ -31,9 +31,26 @@ render() { # <chezmoi.toml body>
   [ -z "$output" ]
 }
 
-@test "set key renders a call with the default home" {
-  run render $'[data]\noperatorPersona = "operator"'
-  [[ "$output" == *"operator-persona.sh\" 'operator' '~/Development/operator'"* ]] || false
+@test "set key without operatorHome applies to the default home" {
+  mkdir -p "$HOME/Development"; mv "$OP" "$HOME/Development/operator"
+  render $'[data]\noperatorPersona = "operator"' > "$TMP/script"
+  run sh "$TMP/script"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$HOME/Development/operator/config/po-theme")" = operator ]
+}
+
+@test "--home prints the resolved home only when it would be applied" {
+  run "$REAL_REPO/lib/operator-persona.sh" --home "$OP"
+  [ "$status" -eq 0 ]; [ "$output" = "$OP" ]
+  mkdir -p "$HOME/Development"; mv "$OP" "$HOME/Development/operator"
+  run "$REAL_REPO/lib/operator-persona.sh" --home ""
+  [ "$status" -eq 0 ]; [ "$output" = "$HOME/Development/operator" ]
+  touch "$HOME/Development/operator/.fm-secondmate-home"
+  run "$REAL_REPO/lib/operator-persona.sh" --home "~/Development/operator"
+  [ "$status" -eq 1 ]; [ -z "$output" ]
+  run "$REAL_REPO/lib/operator-persona.sh" --home "$TMP/none"
+  [ "$status" -eq 1 ]; [ -z "$output" ]
+  [ ! -e "$HOME/Development/operator/calls" ]
 }
 
 @test "writes the selection then applies and verifies" {

@@ -120,10 +120,7 @@ operator_persona() { # the persona selection we own when the operatorPersona key
   data="$("${CZ[@]}" data --format json 2>/dev/null)" || return 0
   want="$(jq -r '.operatorPersona // empty' <<<"$data")"
   [ -n "$want" ] || return 0
-  home="$(jq -r '.operatorHome // "~/Development/operator"' <<<"$data")"
-  # shellcheck disable=SC2088  # matching a literal ~, not expanding one
-  case "$home" in "~") home="$HOME" ;; "~/"*) home="$HOME/${home#"~/"}" ;; esac
-  [ -d "$home" ] && [ -x "$home/bin/po-theme.sh" ] && [ ! -e "$home/.fm-secondmate-home" ] || return 0
+  home="$("$REPO/lib/operator-persona.sh" --home "$(jq -r '.operatorHome // empty' <<<"$data")")" || return 0
   have="$(head -n 1 "$home/config/po-theme" 2>/dev/null || true)"
   [ "$have" = "$want" ] && return 0
   emit owned-key "$home/config/po-theme" "set operatorPersona in ~/.config/chezmoi/chezmoi.toml to ${have:-nautical}, or chezmoi apply"
