@@ -14,6 +14,8 @@ jobs:
           shellcheck lib/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh
           for t in home/.chezmoiscripts/*.tmpl; do
             chezmoi --source "$PWD" execute-template < "$t" > "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
+            # opt-in scripts (e.g. operatorPersona) render empty without their data key
+            [ -s "${RUNNER_TEMP}/$(basename "$t" .tmpl)" ] || continue
             shellcheck "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
           done
 
