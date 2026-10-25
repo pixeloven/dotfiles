@@ -197,6 +197,7 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   mkdir -p "$OP/bin" "$OP/config"
   printf '#!/bin/sh\necho "$*" >> "%s/calls"\n' "$OP" > "$OP/bin/po-theme.sh"
   chmod +x "$OP/bin/po-theme.sh"
+  cp "$REAL_REPO/lib/operator-persona.sh" "$R/lib/"
   printf '[data]\noperatorPersona = "operator"\noperatorHome = "%s"\n' "$OP" > "$TMP/chezmoi.toml"
 }
 
@@ -214,6 +215,24 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   run "$R/bin/drift"
   [[ "$output" == *$'owned-key\t'"$OP/config/po-theme"* ]] || false
   echo operator > "$OP/config/po-theme"
+  run "$R/bin/drift"
+  [[ "$output" != *po-theme* ]] || false
+}
+
+@test "operator persona: the suggested command switches the selection back" {
+  persona_home
+  echo nautical > "$OP/config/po-theme"
+  run "$R/bin/drift" --json
+  action="$(jq -r '.[] | select(.target | endswith("config/po-theme")) | .action' <<<"$output")"
+  (cd "$R" && eval "${action#*, or }")
+  [ "$(head -n 1 "$OP/config/po-theme")" = operator ]
+  run "$R/bin/drift"
+  [[ "$output" != *po-theme* ]] || false
+}
+
+@test "operator persona: a missing selection counts as nautical" {
+  persona_home
+  printf '[data]\noperatorPersona = "nautical"\noperatorHome = "%s"\n' "$OP" > "$TMP/chezmoi.toml"
   run "$R/bin/drift"
   [[ "$output" != *po-theme* ]] || false
 }

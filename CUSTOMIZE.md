@@ -95,7 +95,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   ```
 - **What it does:** when the operator home exists, has an executable `bin/po-theme.sh` and is not a secondmate home (`.fm-secondmate-home`), it runs `po-theme.sh validate <name>`, writes the name as the first line of `config/po-theme` only if it differs, then runs `po-theme.sh apply` and `verify`. Anything else is skipped with a message. Dotfiles never writes the operator's `data/` or alias files; `po-theme.sh` stays their only writer.
 - **Try it:** `chezmoi apply` (it re-runs whenever the key or home changes).
-- **Keep it:** the key lives only in your local chezmoi config. If the theme is later switched another way, `/codify` reports `config/po-theme` as an owned-key change; set `operatorPersona` to match, or `chezmoi apply` to switch back. To stop managing it, remove the key.
+- **Keep it:** the key lives only in your local chezmoi config. If the theme is later switched another way, `/codify` reports `config/po-theme` as an owned-key change; set `operatorPersona` to match, or run the `lib/operator-persona.sh <name> <home>` command it suggests to switch back (`chezmoi apply` alone does not re-run it until the key or home changes). To stop managing it, remove the key.
 
 ## Packages
 

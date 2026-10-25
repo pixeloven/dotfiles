@@ -122,8 +122,9 @@ operator_persona() { # the persona selection we own when the operatorPersona key
   [ -n "$want" ] || return 0
   home="$("$REPO/lib/operator-persona.sh" --home "$(jq -r '.operatorHome // empty' <<<"$data")")" || return 0
   have="$(head -n 1 "$home/config/po-theme" 2>/dev/null || true)"
+  have="${have:-nautical}"
   [ "$have" = "$want" ] && return 0
-  emit owned-key "$home/config/po-theme" "set operatorPersona in ~/.config/chezmoi/chezmoi.toml to ${have:-nautical}, or chezmoi apply"
+  emit owned-key "$home/config/po-theme" "set operatorPersona in ~/.config/chezmoi/chezmoi.toml to $have, or lib/operator-persona.sh $(printf '%q %q' "$want" "$home")"
 }
 
 packages() {
