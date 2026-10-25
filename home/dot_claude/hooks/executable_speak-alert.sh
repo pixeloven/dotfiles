@@ -6,7 +6,7 @@
 # Codex: silent for headless `codex exec` runs, read from the session's transcript metadata.
 # Voice: SPEAK_ALERT_VOICE, else the first installed English Premium voice, else the macOS system voice
 # (System Settings > Accessibility > Read & Speak > System voice, which can be a Siri voice).
-# Silent for fleet workers (FM_TASK_ID set), for headless `claude -p` runs such as review
+# Silent where no `say` is installed (Linux, for now), for fleet workers (FM_TASK_ID set), for headless `claude -p` runs such as review
 # pipelines and helper agents (CLAUDE_CODE_ENTRYPOINT other than cli), and when
 # ~/.config/speak-alert/muted exists.
 # Each call adds one line to ~/.local/state/speak-alert/events.log saying what it decided.
@@ -51,12 +51,15 @@ case "${1:-}" in
   *) exit 0 ;;
 esac
 
-note "spoke: $phrase"
-
 if [ -n "${SPEAK_ALERT_DRY_RUN:-}" ] && [ "$SPEAK_ALERT_DRY_RUN" != voice ]; then
+  note "spoke: $phrase"
   echo "$phrase"
   exit 0
 fi
+
+# Linux has no `say`; stay silent rather than log a line that was never spoken.
+command -v say >/dev/null 2>&1 || { note "silent: no speech backend"; exit 0; }
+note "spoke: $phrase"
 
 voice="${SPEAK_ALERT_VOICE:-$(say -v '?' 2>/dev/null | sed -nE 's/^(.+ \(Premium\)) +en_.*/\1/p' | head -1)}"
 voice_args=()

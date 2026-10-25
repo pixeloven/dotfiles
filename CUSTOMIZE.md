@@ -70,6 +70,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Spoken alerts and the drift notice: `lib/codex-hooks.fragment.json`, merged into `~/.codex/hooks.json` beside your own hooks. They say "All done. Ready for you." when a turn finishes and "Codex needs your permission to use <tool>." on an approval request; headless `codex exec` runs and fleet workers stay silent. Each `statusMessage` is the name `/hooks` shows.
 - **Approve hooks:** Codex runs a new or changed hook only after you approve it in `/hooks`, so after editing the fragment, approve again.
 - **Check alerts:** `tail ~/.local/state/speak-alert/events.log` shows what each alert decided (spoke, or silent and why).
+- **Linux:** alerts are silent for now (no `say`); the log says `silent: no speech backend`. The voice approach is tracked in dotfiles issue #1.
 
 ## bat, delta, glow
 
