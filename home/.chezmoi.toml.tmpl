@@ -1,10 +1,6 @@
 {{- $terminal := "ghostty" -}}
 {{- if eq .chezmoi.os "linux" -}}
-{{-   $default := "ghostty" -}}
-{{-   if or (env "VTE_VERSION") (lookPath "ptyxis") (stat "/run/host/usr/bin/ptyxis") -}}
-{{-     $default = "ptyxis" -}}
-{{-   end -}}
-{{-   $terminal = promptChoiceOnce . "terminal" "Terminal app on this Linux machine" (list "ptyxis" "ghostty" "other") $default -}}
+{{-   $terminal = promptChoiceOnce . "terminal" "Terminal app on this Linux machine" (list "ptyxis" "ghostty" "other") "ptyxis" -}}
 {{- end -}}
 {{- $container := or (env "CONTAINER_ID") (stat "/run/.containerenv") (stat "/.dockerenv") | not | not -}}
 # Linux asks one question (the terminal, answered once); macOS asks nothing. This repo holds no

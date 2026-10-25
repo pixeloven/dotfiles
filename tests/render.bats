@@ -83,11 +83,12 @@ keybind = global:cmd+grave_accent=toggle_quick_terminal" ]
   [[ "$output" == *'terminal = "ghostty"'* ]] || false
 }
 
-@test "Linux init records the terminal answer, defaulting to Ptyxis inside a VTE terminal" {
+@test "Linux init records the terminal answer, defaulting to Ptyxis" {
   run init_config linux --promptChoice "Terminal app on this Linux machine=other"
   [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "other"'* ]] || false
-  VTE_VERSION=8000 run init_config linux
+  VTE_VERSION= run init_config linux
+  [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "ptyxis"'* ]] || false
   [[ "$output" == *$'\ncontainer = '* ]] || false
 }
