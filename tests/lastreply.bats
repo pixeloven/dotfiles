@@ -51,6 +51,17 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   [[ "$output" == *"no Claude transcript"* ]] || false
 }
 
+@test "explains when there is no transcript, run from a non-empty folder" {
+  mkdir -p "$WORK/tests"
+  : > "$WORK/notes.txt"
+  run bash -c "cd '$WORK' && '$SCRIPT' --raw"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no Claude transcript found"* ]] || false
+  run bash -c "cd '$WORK' && '$SCRIPT' --codex --raw"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no Codex transcript found"* ]] || false
+}
+
 @test "rejects unknown options" {
   run "$SCRIPT" --bogus
   [ "$status" -eq 2 ]
@@ -74,6 +85,26 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   kill "$pid"
   grep -q 'RENDER: ## Result' "$HOME/out"
   grep -q 'RENDER: Fresh reply.' "$HOME/out"
+}
+
+@test "watch rereads after a one-byte append, and not while the file is unchanged" {
+  mkdir -p "$HOME/bin" "$HOME/.claude/projects/p"
+  # Log each card read (the slurping jq call), then hand off to the real jq.
+  printf '#!/bin/sh\n[ "$1" = -rs ] && echo read >> "%s/reads"\nexec %s "$@"\n' "$HOME" "$(command -v jq)" > "$HOME/bin/jq"
+  printf '#!/bin/sh\ncat\n' > "$HOME/bin/glow"
+  printf '#!/bin/sh\n' > "$HOME/bin/clear"
+  chmod +x "$HOME/bin/jq" "$HOME/bin/glow" "$HOME/bin/clear"
+  T="$HOME/.claude/projects/p/s.jsonl"
+  cp "$FIX/claude-transcript.jsonl" "$T"
+  PATH="$HOME/bin:$PATH" "$SCRIPT" --watch > "$HOME/out" 2>&1 &
+  pid=$!
+  sleep 5
+  idle="$(grep -c . "$HOME/reads")"
+  printf ' ' >> "$T"
+  sleep 3
+  kill "$pid"
+  [ "$idle" -eq 1 ]
+  [ "$(grep -c . "$HOME/reads")" -eq 2 ]
 }
 
 stub_herdr() { # <agent> <session-id> <tab-id> : herdr agent list reports one agent

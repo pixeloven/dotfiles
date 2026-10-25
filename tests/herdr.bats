@@ -3,6 +3,7 @@
 REPO="$BATS_TEST_DIRNAME/.."
 SRC="$REPO/home/dot_config/herdr/config.toml"
 
+# bats test_tags=machine
 @test "herdr config checks clean" {
   run herdr config check
   [ "$status" -eq 0 ]

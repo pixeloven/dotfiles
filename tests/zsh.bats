@@ -27,6 +27,7 @@ in_zsh() {
   done
 }
 
+# bats test_tags=machine
 @test "config loads with every tool wired up" {
   run in_zsh 'bindkey "^R"; bindkey "^T"; alias ls; whence -w z fzf-tab-complete _zsh_autosuggest_start _zsh_highlight _fnm_autoload_hook; print -r -- $ZSH_HIGHLIGHT_STYLES[comment] $PROMPT'
   [[ "$output" == *'"^R" fzf-history-widget'* ]] || false
@@ -86,7 +87,7 @@ starship_warnings() { STARSHIP_CACHE="$(mktemp -d "$TMP/cache.XXXXXX")" STARSHIP
 
 @test "source line script repairs an edited block in place" {
   HOME="$TMP/home" sh "$SOURCE_SCRIPT"
-  sed -i '' "s|dotfiles.zsh\" ] && source|nope|" "$TMP/home/.zshrc"
+  sed -i.bak "s|dotfiles.zsh\" ] && source|nope|" "$TMP/home/.zshrc" && rm "$TMP/home/.zshrc.bak"
   echo 'export AFTER=1' >> "$TMP/home/.zshrc"
   HOME="$TMP/home" sh "$SOURCE_SCRIPT"
   [ "$(grep -cxF "$LINE" "$TMP/home/.zshrc")" -eq 1 ]

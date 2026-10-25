@@ -2,6 +2,7 @@
 
 REPO="$BATS_TEST_DIRNAME/.."
 
+# bats test_tags=machine
 @test "chezmoi sees source root" {
   run chezmoi source-path
   [ "$status" -eq 0 ]

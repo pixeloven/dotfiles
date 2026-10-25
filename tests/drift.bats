@@ -24,7 +24,8 @@ case "$*" in
   "list --cask") echo ghostty ;;
   "bundle list --all --file="*) printf 'bat\nghostty\n' ;;
   "bundle check --verbose --no-upgrade --file="*)
-    [ -n "$STUB_MISSING" ] && { echo "→ Formula $STUB_MISSING needs to be installed."; exit 1; }
+    # Like Homebrew 7, the missing-package lines go to stderr.
+    [ -n "$STUB_MISSING" ] && { echo "→ Formula $STUB_MISSING needs to be installed." >&2; exit 1; }
     echo "The Brewfile's dependencies are satisfied." ;;
 esac
 STUB
@@ -96,10 +97,12 @@ teardown() { rm -rf "$TMP"; }
   [ -z "$output" ]
 }
 
-@test "missing package reported as pkg-missing" {
+@test "missing package reported as pkg-missing, from brew's stderr" {
   export STUB_MISSING=glow
   run "$R/bin/drift"
   [[ "$output" == *$'pkg-missing\tglow'* ]] || false
+  run "$R/bin/drift" --summary
+  [ "$output" = "dotfiles: 1 changes not codified - run /codify" ]
 }
 
 @test "summary is one line or empty" {

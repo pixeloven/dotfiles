@@ -29,4 +29,4 @@ Then follow [RUNBOOK.md](RUNBOOK.md) for the few steps that macOS won't let a sc
 - Change something: see [CUSTOMIZE.md](CUSTOMIZE.md).
 - Changed something by hand? Run `/codify` in Claude Code. A new session also tells you when there's something to codify.
 - `chezmoi diff` shows repo vs machine; `chezmoi apply` makes the machine match the repo.
-- Tests: `bats tests/`.
+- Tests: `bats tests/`. Tests tagged `machine` check the live install; skip them with `bats --filter-tags '!machine' tests/` (as CI does).

@@ -34,10 +34,10 @@ teardown() { rm -rf "$TMP"; }
 
 @test "is a no-op when the value is already set" {
   printf '[tui]\ntheme = "catppuccin-mocha"\n' > "$CFG"
-  before="$(stat -f %m "$CFG")"
-  sleep 1
+  touch -t 200001010000 "$CFG"
+  touch "$TMP/marker"
   "$SET" "$CFG" tui theme '"catppuccin-mocha"'
-  [ "$(stat -f %m "$CFG")" = "$before" ]
+  [ "$CFG" -ot "$TMP/marker" ]
   [ ! -e "$CFG.bak-dotfiles" ]
 }
 

@@ -1,7 +1,12 @@
 #!/usr/bin/env bats
+# bats file_tags=machine
 
 REPO="$BATS_TEST_DIRNAME/.."
-GHOSTTY="${GHOSTTY:-/Applications/Ghostty.app/Contents/MacOS/ghostty}"
+GHOSTTY="${GHOSTTY:-$(command -v ghostty || echo /Applications/Ghostty.app/Contents/MacOS/ghostty)}"
+
+setup() {
+  [ -x "$GHOSTTY" ] || skip "Ghostty not installed"
+}
 
 @test "ghostty config validates" {
   run "$GHOSTTY" +validate-config --config-file="$REPO/home/dot_config/ghostty/config.ghostty"
