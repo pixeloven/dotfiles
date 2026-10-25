@@ -1,9 +1,10 @@
 # Ptyxis palette — managed by chezmoi (~/Development/dotfiles); installed only when terminal = ptyxis.
-# Catppuccin Mocha (no official Ptyxis port), from the values in starship.toml mapped to ANSI
-# colours as in Catppuccin's other terminal ports. Dark only: with no [Light]/[Dark] groups,
-# Ptyxis uses these colours in both modes.
+# Catppuccin Mocha, from the values in starship.toml mapped to ANSI colours as in Catppuccin's
+# other terminal ports. Ptyxis also ships a built-in Gogh-derived "Catppuccin Mocha"; this one
+# differs only in its rosewater cursor, so its Name is suffixed to tell the two apart in
+# Preferences. Dark only: with no [Light]/[Dark] groups, Ptyxis uses these colours in both modes.
 [Palette]
-Name=Catppuccin Mocha
+Name=Catppuccin Mocha (dotfiles)
 Background=#1e1e2e
 Foreground=#cdd6f4
 Cursor=#f5e0dc
