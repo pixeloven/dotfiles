@@ -1,6 +1,6 @@
 # dotfiles
 
-Terminal setup as code for macOS: Ghostty, herdr, zsh with Starship, Claude Code alerts, and bat/delta/glow, all on the dark Catppuccin Mocha theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
+Terminal setup as code for macOS and Linux: Ghostty, herdr, zsh with Starship, Claude Code alerts, and bat/delta/glow, all on the dark Catppuccin Mocha theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
 
 ## What's managed
 
@@ -8,7 +8,7 @@ Terminal setup as code for macOS: Ghostty, herdr, zsh with Starship, Claude Code
 |---|---|
 | `~/.config/ghostty/config.ghostty` | `~/.claude/settings.json`: only the hooks in `lib/claude-hooks.fragment.json` |
 | `~/.config/herdr/config.toml` | `~/.gitconfig`: only the delta/merge keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh` |
-| `~/.config/bat/config`, `~/Library/Preferences/glow/glow.yml` | |
+| `~/.config/bat/config`, glow's `glow.yml` (`~/Library/Preferences/glow/` on macOS, `~/.config/glow/` on Linux) | |
 | `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
 | `~/.config/zsh/`, `~/.config/starship.toml` | |
 
@@ -23,6 +23,8 @@ chezmoi init --apply --source ~/Development/dotfiles pixeloven
 ```
 
 Then follow [RUNBOOK.md](RUNBOOK.md) for the few steps that macOS won't let a script do.
+
+On Linux, install Homebrew and chezmoi the same way and run the same `chezmoi init`. It asks once which terminal you use (Ptyxis by default); macOS asks nothing. The Brewfile's `if OS.mac?` / `if OS.linux?` blocks pick the per-OS packages.
 
 ## Day to day
 

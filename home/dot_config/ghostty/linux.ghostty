@@ -1,0 +1,3 @@
+# Ghostty, Linux only — managed by chezmoi (~/Development/dotfiles). Loaded by config.ghostty.
+# Alt already sends Alt on Linux, so fzf's Alt+C needs no setting. GNOME has no layer-shell, so
+# the quick terminal and background blur are left out.

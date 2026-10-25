@@ -31,13 +31,17 @@ denylisted() { # a glob without / matches the file name, one with / the end of t
   return 1
 }
 
+# .chezmoiignore is a template with per-OS blocks, so chezmoi renders it for this machine.
+# (`chezmoi ignored` lists only ignored source files, not patterns such as herdr's runtime files.)
+IGNORED="$("${CZ[@]}" execute-template < "$REPO/home/.chezmoiignore" 2>/dev/null)"
+
 chezmoi_ignored() {
   local pat
   while IFS= read -r pat; do
     case "$pat" in ''|'#'*) continue ;; esac
     # shellcheck disable=SC2254
     case "$1" in $pat|$pat/*) return 0 ;; esac
-  done < "$REPO/home/.chezmoiignore"
+  done <<<"$IGNORED"
   return 1
 }
 

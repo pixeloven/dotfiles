@@ -1,2 +1,12 @@
-# No prompts on purpose: this repo holds no names, emails, or other personal data.
+{{- $terminal := "ghostty" -}}
+{{- if eq .chezmoi.os "linux" -}}
+{{-   $terminal = promptChoiceOnce . "terminal" "Terminal app on this Linux machine" (list "ptyxis" "ghostty" "other") "ptyxis" -}}
+{{- end -}}
+{{- $container := or (env "CONTAINER_ID") (stat "/run/.containerenv") (stat "/.dockerenv") | not | not -}}
+# Linux asks one question (the terminal, answered once); macOS asks nothing. This repo holds no
+# names, emails, or other personal data.
 sourceDir = "~/Development/dotfiles"
+
+[data]
+terminal = {{ $terminal | quote }}
+container = {{ $container }}

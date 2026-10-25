@@ -33,8 +33,11 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
 
 # bats test_tags=machine
 @test "glow config set" {
-  grep -q "^style: \"$HOME/.config/glow/catppuccin-mocha.json\"" "$HOME/Library/Preferences/glow/glow.yml"
-  grep -q "^pager: true" "$HOME/Library/Preferences/glow/glow.yml"
+  # glow reads ~/Library/Preferences/glow on macOS and ~/.config/glow elsewhere
+  f="$HOME/.config/glow/glow.yml"
+  [ "$(uname -s)" = Darwin ] && f="$HOME/Library/Preferences/glow/glow.yml"
+  grep -q "^style: \"$HOME/.config/glow/catppuccin-mocha.json\"" "$f"
+  grep -q "^pager: true" "$f"
 }
 
 @test "glow style is Catppuccin with peach inline code" {

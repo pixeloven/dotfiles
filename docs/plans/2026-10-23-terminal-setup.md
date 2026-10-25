@@ -17,7 +17,7 @@
 - Customization runbooks: for every tool, explain how to change it and how the change gets recorded.
 - An easy-to-use skill that records manual changes (configs edited in place, packages installed by hand, owned keys changed in patched files) into the repo, so the setup can evolve without losing track of its state.
 - Config as code = chezmoi + Brewfile. Nix/home-manager was considered and rejected as overkill.
-- Scope is this Mac only. Linux, remote, and headless machines are deferred to a later onboarding (chezmoi supports them), so don't add OS templating now.
+- Scope is this Mac only. Linux, remote, and headless machines are deferred to a later onboarding (chezmoi supports them), so don't add OS templating now. *(Superseded 2026-10-24: the repo now supports macOS and Linux from one source tree. Per-OS files are chosen by `home/.chezmoiignore`, and Linux asks which terminal at `chezmoi init`.)*
 
 ## Global Constraints
 
