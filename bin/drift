@@ -94,6 +94,25 @@ owned_keys() {
     done
 }
 
+ptyxis_keys() { # the Ptyxis settings the ptyxis script owns, only where it renders (terminal = ptyxis)
+  local script line schema key want have uuid parts PROFILE
+  script="$("${CZ[@]}" execute-template < "$REPO/home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl" 2>/dev/null)"
+  grep -q '^own ' <<<"$script" || return 0
+  eval "$(grep '^gs() ' <<<"$script")" # gsettings here, or on the host from a distrobox
+  gs list-keys org.gnome.Ptyxis > /dev/null 2>&1 || return 0
+  uuid="$(gs get org.gnome.Ptyxis default-profile-uuid 2>/dev/null | tr -d "'")"
+  # shellcheck disable=SC2034  # read by the eval of the own lines
+  PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$uuid/"
+  grep '^own ' <<<"$script" | while IFS= read -r line; do
+    eval "parts=(${line#own })"
+    schema="${parts[0]}" key="${parts[1]}" want="${parts[2]}"
+    [ -z "$uuid" ] && [[ "$schema" == *.Profile:* ]] && continue
+    have="$(gs get "$schema" "$key" 2>/dev/null || true)"
+    [ "$have" = "$want" ] && continue
+    emit owned-key "${schema%%:*} $key" "edit home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl then chezmoi apply"
+  done
+}
+
 zshrc_line() { # the one line we own in the otherwise private ~/.zshrc
   local script="$REPO/home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh" line
   [ -f "$script" ] || return 0
@@ -160,7 +179,7 @@ untracked() {
   done
 }
 
-findings="$({ edited; owned_keys; zshrc_line; codex_keys; operator_persona; packages; untracked; } 2>/dev/null)"
+findings="$({ edited; owned_keys; ptyxis_keys; zshrc_line; codex_keys; operator_persona; packages; untracked; } 2>/dev/null)"
 
 case "${1:-}" in
   --summary)

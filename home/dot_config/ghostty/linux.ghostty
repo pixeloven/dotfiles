@@ -1,3 +1,7 @@
 # Ghostty, Linux only — managed by chezmoi (~/Development/dotfiles). Loaded by config.ghostty.
 # Alt already sends Alt on Linux, so fzf's Alt+C needs no setting. GNOME has no layer-shell, so
 # the quick terminal and background blur are left out.
+
+# Ghostty on the host with your tools in a distrobox: open every tab inside the box (set the
+# box's name; `distrobox list` shows it). Not needed when Ghostty itself runs in the box.
+# command = distrobox enter ubuntu-dev

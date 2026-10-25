@@ -1,0 +1,29 @@
+{{ if and (eq .chezmoi.os "linux") (eq (get . "terminal") "ptyxis") -}}
+#!/bin/sh
+# Set the three Ptyxis settings we own: the font, and the default profile's palette (the
+# catppuccin-mocha.palette chezmoi puts in ~/.local/share/org.gnome.Ptyxis/palettes). Every
+# other Ptyxis setting is left alone. bin/drift reads the `own` lines below.
+# Ptyxis and its GSettings schema exist only on the host, so in a distrobox gsettings runs there.
+set -eu
+{{ if get . "container" -}}
+gs() { distrobox-host-exec gsettings "$@"; }
+{{- else -}}
+gs() { gsettings "$@"; }
+{{- end }}
+own() { gs set "$@"; }
+
+if ! gs list-keys org.gnome.Ptyxis >/dev/null 2>&1; then
+  echo "ptyxis: Ptyxis settings (org.gnome.Ptyxis) not found; font and palette not set" >&2
+  exit 0
+fi
+own org.gnome.Ptyxis use-system-font false
+own org.gnome.Ptyxis font-name "'JetBrainsMono Nerd Font 14'"
+
+uuid="$(gs get org.gnome.Ptyxis default-profile-uuid | tr -d "'")"
+if [ -z "$uuid" ]; then
+  echo "ptyxis: no default profile yet; open Ptyxis once, then run: chezmoi state delete-bucket --bucket=scriptState && chezmoi apply" >&2
+  exit 0
+fi
+PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$uuid/"
+own "$PROFILE" palette "'catppuccin-mocha'"
+{{ end -}}

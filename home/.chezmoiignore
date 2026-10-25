@@ -16,3 +16,7 @@
 Library
 .config/ghostty/macos.ghostty
 {{- end }}
+{{- if not (and (eq .chezmoi.os "linux") (eq (get . "terminal") "ptyxis")) }}
+# The Ptyxis palette only where Ptyxis is the terminal (Linux, terminal = ptyxis)
+.local/share/org.gnome.Ptyxis
+{{- end }}

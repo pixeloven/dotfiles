@@ -9,11 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: brew install shellcheck chezmoi
+      # Templates render as Linux with Ptyxis in a distrobox, so the Linux-only Ptyxis script isn't empty.
       - name: shellcheck scripts and rendered chezmoi templates
         run: |
           shellcheck lib/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh
           for t in home/.chezmoiscripts/*.tmpl; do
-            chezmoi --source "$PWD" execute-template < "$t" > "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
+            chezmoi --source "$PWD" execute-template --override-data '{"chezmoi":{"os":"linux"},"terminal":"ptyxis","container":true}' \
+              < "$t" > "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
             # opt-in scripts (e.g. operatorPersona) render empty without their data key
             [ -s "${RUNNER_TEMP}/$(basename "$t" .tmpl)" ] || continue
             shellcheck "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
