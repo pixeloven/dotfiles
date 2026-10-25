@@ -16,6 +16,15 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 - **Keep it:** `/codify` or `chezmoi edit ~/.config/ghostty/config.ghostty`
 - **Reference:** `ghostty +show-config --default --docs`, https://ghostty.org/docs/config
 
+## Ptyxis (Linux, when it's your terminal)
+
+- **Where it lives:** `home/dot_local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` → `~/.local/share/org.gnome.Ptyxis/palettes/`, and `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl`, which sets only the font and the default profile's palette in GSettings. Every other Ptyxis preference stays yours. From a distrobox it sets them on the host through `distrobox-host-exec`.
+- **Common changes:**
+  - Font: change `font-name` in the script, e.g. `"'JetBrainsMono Nerd Font 13'"`.
+  - Colours: edit the palette file, or point the script's `palette` line at another palette by file name without `.palette`.
+- **Try it:** Ptyxis → Preferences shows the change at once.
+- **Keep it:** edit the script or palette, then `chezmoi apply`. `drift` reports a font or palette changed in Preferences as `owned-key`.
+
 ## Shell (zsh)
 
 - **Where it lives:** `home/dot_config/zsh/dotfiles.zsh` → `~/.config/zsh/dotfiles.zsh` (oh-my-zsh settings, history, completion, fzf-tab, fzf, zoxide, fnm, eza aliases, autosuggestions, syntax highlighting, Starship) and `home/dot_config/starship.toml` → `~/.config/starship.toml`. Your `~/.zshrc` itself is never committed; it keeps your private lines plus one line, inside a `# >>> dotfiles >>>` marker block, that sources `dotfiles.zsh` (added by `home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh`).

@@ -119,3 +119,17 @@ For an Ubuntu distrobox on an image-based host such as Bazzite, where the host a
    **Done when:** `herdr --version` prints a version, `fc-list | grep -q 'JetBrainsMono Nerd Font'` succeeds, and text you select in a herdr pane pastes into a host app with `ctrl+v` (herdr copies through the Brewfile's `wl-copy`/`xclip` when the terminal ignores OSC 52, as Ptyxis does).
 
 **Done when:** every check above passes and `bats ~/Development/dotfiles/tests/` passes inside the container.
+
+## 10. Ghostty on Linux (only if you chose `ghostty`)
+
+Ptyxis is the Linux default and needs nothing here: `chezmoi apply` installs the Catppuccin Mocha palette and sets the font and the default profile's palette. This section is for a machine whose `chezmoi init` answer was `ghostty`. Ghostty isn't on Flathub, so pick one of these:
+
+- **AppImage via Gear Lever (recommended).** Download the community Ghostty AppImage (linked from https://ghostty.org/docs/install/binary), open it with Gear Lever on the host and let it integrate the app into the menu. Updates go through Gear Lever.
+- **COPR via `rpm-ostree install ghostty`.** Works, but layers a package onto the host image, which Bazzite discourages. Only if you accept layering.
+- **The community `.deb` inside the Ubuntu container**, then `distrobox-export --app ghostty` from inside the box to put it in the host's app menu.
+
+When Ghostty runs on the host (AppImage or COPR) and your tools live in the container, uncomment `command = distrobox enter ubuntu-dev` in `~/.config/ghostty/linux.ghostty` (use your box's name from `distrobox list`), then `/codify`. A Ghostty exported from the container already starts inside it.
+
+If programs in the container complain about an unknown terminal (`TERM=xterm-ghostty`; Ghostty's terminfo lives at a host path), copy the entry into the shared `~/.terminfo` by running `infocmp -x xterm-ghostty | tic -x -` on the host. herdr panes reset `TERM` to `xterm-256color`, so only the herdr client itself sees it. Not verified yet.
+
+**Done when:** Ghostty opens from the app menu with the Catppuccin Mocha theme, a new tab lands in the container (`echo $CONTAINER_ID` prints the box), and `bats ~/Development/dotfiles/tests/ghostty.bats` passes.

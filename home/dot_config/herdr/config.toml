@@ -16,5 +16,6 @@ delivery = "herdr"
 enabled = false
 
 [experimental]
-# Inline images (Kitty graphics) through to Ghostty. Set false if images misbehave.
+# Inline images (Kitty graphics) in terminals that support them, such as Ghostty; a no-op in
+# Ptyxis, which has no Kitty graphics. Set false if images misbehave.
 kitty_graphics = true

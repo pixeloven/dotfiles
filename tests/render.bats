@@ -6,8 +6,11 @@ REPO="$BATS_TEST_DIRNAME/.."
 
 setup() {
   TMP="$(mktemp -d)"
-  # A fixed config rather than `chezmoi init`, because --override-data doesn't reach init.
-  printf 'sourceDir = "%s"\n\n[data]\nterminal = "ghostty"\ncontainer = false\n' "$REPO" > "$TMP/chezmoi.toml"
+  config ghostty
+}
+
+config() { # <terminal> : a fixed config rather than `chezmoi init`, because --override-data doesn't reach init
+  printf 'sourceDir = "%s"\n\n[data]\nterminal = "%s"\ncontainer = false\n' "$REPO" "$1" > "$TMP/chezmoi.toml"
 }
 
 teardown() { rm -rf "$TMP"; }
@@ -48,13 +51,32 @@ Library/Preferences/glow/glow.yml"
   [ "$(grep -v 'config file template has changed' <<<"$output")" = "$expected" ]
 }
 
-@test "Linux gets glow in ~/.config and linux.ghostty, and no ~/Library" {
+@test "Linux with Ghostty gets glow in ~/.config and linux.ghostty, and no ~/Library or Ptyxis palette" {
   run render linux
   [ "$status" -eq 0 ]
   [[ "$output" == *.config/glow/glow.yml* ]] || false
   [[ "$output" == *.config/ghostty/linux.ghostty* ]] || false
   [[ "$output" != *macos.ghostty* ]] || false
+  [[ "$output" != *org.gnome.Ptyxis* ]] || false
   [ ! -e "$TMP/linux/Library" ]
+}
+
+@test "Linux with Ptyxis also gets the Catppuccin Ptyxis palette" {
+  palette=.local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette
+  config ptyxis
+  run render linux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$palette* ]] || false
+}
+
+@test "the Ptyxis settings script renders nothing without Ptyxis" {
+  script() { # <os> <terminal> <container>
+    chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \
+      --override-data "{\"chezmoi\":{\"os\":\"$1\"},\"terminal\":\"$2\",\"container\":$3}" \
+      < "$REPO/home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl"
+  }
+  [ -z "$(script linux ghostty false)" ]
+  [ -z "$(script darwin ghostty false)" ]
 }
 
 @test "glow config is the same on both OSes and points at the HOME's Catppuccin style" {
