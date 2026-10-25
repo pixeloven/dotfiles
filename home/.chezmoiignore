@@ -1,9 +1,11 @@
 # Repo-only files never applied to $HOME live outside home/ (see .chezmoiroot).
 # herdr runtime files are never managed
 .config/herdr/*.sock
+.config/herdr/*.sock.agent
 .config/herdr/*.log
 .config/herdr/session.json
 .config/herdr/sessions
+.config/herdr/session-snapshots
 .config/herdr/release-notes.json
 .config/herdr/.plugins.lock
 .config/glow/README.md

@@ -77,9 +77,13 @@ teardown() { rm -rf "$TMP"; }
   mkdir -p "$HOME/.config/herdr"
   : > "$HOME/.config/herdr/herdr.sock"
   : > "$HOME/.config/herdr/herdr-server.log"
+  ln -s /nonexistent/agent.sock "$HOME/.config/herdr/herdr.sock.agent"
+  mkdir -p "$HOME/.config/herdr/session-snapshots"
+  echo '{}' > "$HOME/.config/herdr/session-snapshots/session-1-0.json"
   echo 'export X=1' > "$HOME/.zshrc"
   run "$R/bin/drift"
   [[ "$output" != *herdr.sock* ]] || false
+  [[ "$output" != *session-snapshots* ]] || false
   [[ "$output" != *.log* ]] || false
   [[ "$output" != *zshrc* ]] || false
 }
