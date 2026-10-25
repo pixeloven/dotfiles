@@ -62,6 +62,17 @@ stub_say() {
   chmod +x "$HOME/bin/say"
 }
 
+@test "silent and logged when no say is installed" {
+  # A PATH holding only what the hook needs, so the host's own say (macOS) is hidden.
+  mkdir -p "$HOME/nosay"
+  for c in bash jq date mkdir wc tail mv cat; do ln -s "$(command -v "$c")" "$HOME/nosay/$c"; done
+  run env -u SPEAK_ALERT_DRY_RUN PATH="$HOME/nosay" "$HOME/nosay/bash" "$SCRIPT" stop </dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -q 'stop silent: no speech backend$' "$HOME/.local/state/speak-alert/events.log"
+  ! grep -q 'spoke:' "$HOME/.local/state/speak-alert/events.log"
+}
+
 @test "prefers an installed Premium English voice" {
   stub_say "'Samantha            en_US    # Hello' 'Zoe (Premium)       en_US    # Hello' 'Amélie (Premium)    fr_CA    # Bonjour'"
   run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN=voice '$SCRIPT' stop"

@@ -42,6 +42,8 @@ Option B, better with technical words:
 
 ## 5. Premium voice for spoken alerts
 
+macOS only. On Linux, alerts are silent for now; the voice approach is tracked in dotfiles issue #1.
+
 macOS's free Premium voices are on-device and far more natural than the default. They can't be downloaded from a script. Once one is installed, the alert uses it automatically.
 
 1. Open **System Settings → Accessibility → Read & Speak**. In macOS 26 this panel replaced "Spoken Content"; on macOS 15 and earlier it's still called Spoken Content. Shortcut: type `System voice` in the Settings search box.
