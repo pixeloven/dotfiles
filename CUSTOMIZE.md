@@ -4,14 +4,14 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 ## Ghostty
 
-- **Where it lives:** `home/dot_config/ghostty/config.ghostty` → `~/.config/ghostty/config.ghostty`
+- **Where it lives:** `home/dot_config/ghostty/config.ghostty` → `~/.config/ghostty/config.ghostty`, which loads the per-OS `macos.ghostty` or `linux.ghostty` beside it
 - **Common changes:**
   - Theme: `theme = Rose Pine`. Browse themes with `ghostty +list-themes` (interactive; press `d` for dark only). To follow macOS light/dark instead: `theme = light:Catppuccin Latte,dark:Catppuccin Mocha`.
   - Font: `font-family = Monaspace Neon`, `font-size = 15`. Installed fonts: `ghostty +list-fonts`.
   - Ligatures on: delete the two `font-feature = -calt` / `-liga` lines.
   - Transparency: `background-opacity = 0.9`.
   - A keybind: `keybind = cmd+shift+enter=toggle_split_zoom`.
-  - Option as Alt: `macos-option-as-alt = left` (the default here) lets left Option+C open fzf's folder search; use `true` for both Options or delete the line to type special characters with either.
+  - Option as Alt (in `macos.ghostty`): `macos-option-as-alt = left` (the default here) lets left Option+C open fzf's folder search; use `true` for both Options or delete the line to type special characters with either.
 - **Try it:** `cmd+shift+,` reloads.
 - **Keep it:** `/codify` or `chezmoi edit ~/.config/ghostty/config.ghostty`
 - **Reference:** `ghostty +show-config --default --docs`, https://ghostty.org/docs/config
@@ -73,7 +73,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 ## bat, delta, glow
 
-- **Where they live:** `home/dot_config/bat/config`, `home/Library/Preferences/glow/glow.yml.tmpl`, the glow style `home/dot_config/glow/catppuccin-mocha.json`, and the git keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh`
+- **Where they live:** `home/dot_config/bat/config`, `home/.chezmoitemplates/glow.yml` (installed to `~/Library/Preferences/glow/glow.yml` on macOS and `~/.config/glow/glow.yml` on Linux), the glow style `home/dot_config/glow/catppuccin-mocha.json`, and the git keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh`
 - **Common changes:**
   - bat theme: `--theme="Catppuccin Macchiato"` (list: `bat --list-themes`).
   - Side-by-side diffs: in the gitconfig script, `git config --global delta.side-by-side true`.

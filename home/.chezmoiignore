@@ -7,3 +7,12 @@
 .config/herdr/release-notes.json
 .config/herdr/.plugins.lock
 .config/glow/README.md
+{{- if eq .chezmoi.os "darwin" }}
+# macOS: glow reads ~/Library/Preferences/glow; Ghostty loads macos.ghostty
+.config/glow/glow.yml
+.config/ghostty/linux.ghostty
+{{- else }}
+# Linux: glow reads ~/.config/glow; Ghostty loads linux.ghostty
+Library
+.config/ghostty/macos.ghostty
+{{- end }}

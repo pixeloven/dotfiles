@@ -1,0 +1,7 @@
+# Ghostty, macOS only — managed by chezmoi (~/Development/dotfiles). Loaded by config.ghostty.
+macos-titlebar-style = tabs
+background-blur = true
+# Left Option acts as Alt (fzf's Alt+C works); right Option still types special characters
+macos-option-as-alt = left
+# Drop-down terminal from anywhere (needs Accessibility permission, see RUNBOOK.md)
+keybind = global:cmd+grave_accent=toggle_quick_terminal

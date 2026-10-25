@@ -32,8 +32,24 @@ jobs:
           echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
           sudo apt-get update && sudo apt-get install -y zsh
       - run: brew install bats-core jq gitleaks chezmoi starship
-      # Tests tagged machine check the live install (Ghostty, herdr, ~/.gitconfig, ...).
-      - run: bats --filter-tags '!machine' tests/
+      # Tests tagged machine check the live install (Ghostty, herdr, ~/.gitconfig, ...); render runs below.
+      - run: bats --filter-tags '!machine,!render' tests/
+
+  render:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: put Homebrew on PATH (Linux)
+        if: runner.os == 'Linux'
+        run: echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+      - run: brew install bats-core chezmoi
+      # Renders the source for macOS and for Linux into throwaway HOMEs on each runner.
+      - run: bats tests/render.bats
 
   secrets:
     runs-on: macos-latest

@@ -20,12 +20,13 @@ setup() {
   [ "$(grep '^theme = ' <<<"$output")" = "theme = Catppuccin Mocha" ]
 }
 
-# The effective value of "$1" when Ghostty loads only the tracked config.
+# The effective value of "$1" when Ghostty loads only the tracked config (and this OS's include).
 tracked_setting() {
-  local tmp
+  local tmp os=linux
+  [ "$(uname -s)" = Darwin ] && os=macos
   tmp="$(mktemp -d)"
   mkdir -p "$tmp/ghostty"
-  cp "$REPO/home/dot_config/ghostty/config.ghostty" "$tmp/ghostty/"
+  cp "$REPO/home/dot_config/ghostty/config.ghostty" "$REPO/home/dot_config/ghostty/$os.ghostty" "$tmp/ghostty/"
   XDG_CONFIG_HOME="$tmp" HOME="$tmp" "$GHOSTTY" +show-config | sed -n "s/^$1 = //p"
   rm -rf "$tmp"
 }
@@ -36,5 +37,6 @@ tracked_setting() {
 }
 
 @test "ghostty sends left Option as Alt" {
+  [ "$(uname -s)" = Darwin ] || skip "macOS only"
   [ "$(tracked_setting macos-option-as-alt)" = "left" ]
 }

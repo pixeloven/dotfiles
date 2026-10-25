@@ -1,5 +1,7 @@
 # Apps
-cask "ghostty"
+if OS.mac?
+  cask "ghostty"
+end
 cask "font-jetbrains-mono"
 cask "font-jetbrains-mono-nerd-font"
 cask "1password-cli"
@@ -32,3 +34,9 @@ brew "fnm"
 brew "bats-core"
 brew "shellcheck"
 brew "gitleaks"
+
+# Linux only: clipboard helpers for herdr when the terminal ignores OSC 52 (Ptyxis/VTE)
+if OS.linux?
+  brew "wl-clipboard"
+  brew "xclip"
+end

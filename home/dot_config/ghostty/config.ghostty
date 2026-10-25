@@ -15,14 +15,10 @@ font-feature = -liga
 window-padding-x = 10
 window-padding-y = 8
 window-padding-balance = true
-macos-titlebar-style = tabs
 background-opacity = 0.96
-background-blur = true
 
 # Behaviour
 copy-on-select = clipboard
-# Left Option acts as Alt (fzf's Alt+C works); right Option still types special characters
-macos-option-as-alt = left
 shell-integration-features = cursor,sudo,title
 
 # Notify when a long command finishes in an unfocused window
@@ -31,8 +27,9 @@ notify-on-command-finish-after = 30s
 notify-on-command-finish-action = bell,notify
 bell-features = system,attention,title
 
-# Drop-down terminal from anywhere (needs Accessibility permission, see RUNBOOK.md)
-keybind = global:cmd+grave_accent=toggle_quick_terminal
+# Per-OS settings; the other OS's file is never installed (see home/.chezmoiignore)
+config-file = ?macos.ghostty
+config-file = ?linux.ghostty
 
 # Optional tactical look — see RUNBOOK.md "Optional tactical shader"
 # custom-shader = shaders/crt.glsl

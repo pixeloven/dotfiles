@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs on every apply but installs only when something in the Brewfile is missing. On a distrobox the
+# host and the container share $HOME (and chezmoi's script state) but each has its own Homebrew.
+set -eu
+command -v brew >/dev/null 2>&1 || { echo "dotfiles: brew not found; skipping the Brewfile" >&2; exit 0; }
+f="{{ .chezmoi.workingTree }}/Brewfile"
+brew bundle check --no-upgrade --file="$f" >/dev/null 2>&1 || brew bundle --no-upgrade --file="$f"

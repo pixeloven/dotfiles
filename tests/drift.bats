@@ -178,3 +178,16 @@ teardown() { rm -rf "$TMP"; }
   run "$R/bin/drift"
   [[ "$output" == *$'untracked-config\t.config/zsh/extra.zsh'* ]] || false
 }
+
+@test "the ignore file's per-OS blocks follow the OS" {
+  mkdir -p "$HOME/.config/glow" "$HOME/Library/Preferences/glow"
+  echo 'pager: true' > "$HOME/.config/glow/glow.yml"
+  echo 'pager: true' > "$HOME/Library/Preferences/glow/glow.yml"
+  base="$DRIFT_CHEZMOI_ARGS"
+  DRIFT_CHEZMOI_ARGS="$base --override-data {\"chezmoi\":{\"os\":\"darwin\"}}" run "$R/bin/drift"
+  [[ "$output" == *$'untracked-config\tLibrary/Preferences/glow/glow.yml'* ]] || false
+  [[ "$output" != *.config/glow/glow.yml* ]] || false
+  DRIFT_CHEZMOI_ARGS="$base --override-data {\"chezmoi\":{\"os\":\"linux\"}}" run "$R/bin/drift"
+  [[ "$output" == *$'untracked-config\t.config/glow/glow.yml'* ]] || false
+  [[ "$output" != *Library* ]] || false
+}
