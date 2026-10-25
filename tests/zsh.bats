@@ -42,13 +42,68 @@ in_zsh() {
 }
 
 @test "config still loads when none of the tools are installed" {
-  run env -u HISTFILE HOME="$TMP/home" ZDOTDIR="$TMP/home" PATH=/usr/bin:/bin \
+  run env -u HISTFILE HOME="$TMP/home" ZDOTDIR="$TMP/home" HOMEBREW_PREFIX="$TMP/no-brew" PATH=/usr/bin:/bin \
     zsh -i -c 'source ~/.config/zsh/dotfiles.zsh; echo "rc=$?"; echo "histfile=$HISTFILE"; alias ls || echo no-eza; whence fnm || echo no-fnm'
   [[ "$output" == *"rc=0"* ]] || false
   [[ "$output" == *"histfile=$TMP/home/.zsh_history"* ]] || false
   [[ "$output" == *"no-eza"* ]] || false
   [[ "$output" == *"no-fnm"* ]] || false
   [[ "$output" != *"not found"* ]] || false
+}
+
+# PATH as dotfiles.zsh leaves it, one dir per line, with a fake Homebrew at $TMP/brew.
+# $1 is the starting PATH, $2 the ostree marker file (absent unless the test creates it).
+brew_path() {
+  local zsh; zsh="$(command -v zsh)"
+  mkdir -p "$TMP/brew/bin" "$TMP/brew/sbin"
+  HOME="$TMP/home" HOMEBREW_PREFIX="$TMP/brew" DOTFILES_OSTREE_MARKER="${2:-$TMP/no-ostree}" PATH="$1" \
+    "$zsh" -f -c 'source ~/.config/zsh/dotfiles.zsh; print -rl -- $path'
+}
+lines() { printf '%s\n' "$@"; }
+
+@test "homebrew goes ahead of the system dirs, behind ~/.local/bin" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local h="$TMP/home" b="$TMP/brew"
+  run brew_path "$h/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$b/bin"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(lines "$h/.local/bin" "$b/bin" "$b/sbin" /usr/local/bin /usr/bin /bin /usr/sbin /sbin)" ]
+}
+
+@test "homebrew stays behind ~/.local/bin even when ~/.local/bin came after the system dirs" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local h="$TMP/home" b="$TMP/brew"
+  run brew_path "$b/bin:/opt/tool/bin:/usr/bin:/bin:$h/.local/bin"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(lines /opt/tool/bin "$h/.local/bin" "$b/bin" "$b/sbin" /usr/bin /bin)" ]
+}
+
+@test "homebrew already ahead of the system dirs stays put (macOS after brew shellenv)" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local start="$TMP/home/.local/bin:$TMP/brew/bin:$TMP/brew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  run brew_path "$start"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(tr : '\n' <<<"$start")" ]
+}
+
+@test "an image-based host (ostree marker) keeps homebrew last" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local h="$TMP/home" b="$TMP/brew"
+  touch "$TMP/ostree-booted"
+  run brew_path "$b/bin:$h/.local/bin:/usr/bin:/bin" "$TMP/ostree-booted"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(lines "$h/.local/bin" /usr/bin /bin "$b/bin" "$b/sbin")" ]
+}
+
+@test "homebrew is found when HOMEBREW_PREFIX is unset" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local p found=
+  for p in /opt/homebrew /usr/local /home/linuxbrew/.linuxbrew; do [ -x "$p/bin/brew" ] && { found=$p; break; }; done
+  [ -n "$found" ] || skip "no Homebrew in a standard prefix"
+  run env -u HOMEBREW_PREFIX HOME="$TMP/home" DOTFILES_OSTREE_MARKER="$TMP/no-ostree" PATH=/usr/bin:/bin \
+    "$(command -v zsh)" -f -c 'source ~/.config/zsh/dotfiles.zsh; print -r -- "prefix=$HOMEBREW_PREFIX"; print -rl -- $path'
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "prefix=$found" ]
+  [ "$found" = /usr/local ] || [ "${lines[1]}" = "$found/bin" ]
 }
 
 # Starship prints each config warning once per cache dir, so every check gets a fresh one.

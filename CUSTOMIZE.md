@@ -6,20 +6,20 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 - **Where it lives:** `home/dot_config/ghostty/config.ghostty` → `~/.config/ghostty/config.ghostty`, which loads the per-OS `macos.ghostty` or `linux.ghostty` beside it
 - **Common changes:**
-  - Theme: `theme = Rose Pine`. Browse themes with `ghostty +list-themes` (interactive; press `d` for dark only). To follow macOS light/dark instead: `theme = light:Catppuccin Latte,dark:Catppuccin Mocha`.
+  - Theme: `theme = Rose Pine`. Browse themes with `ghostty +list-themes` (interactive; press `d` for dark only). To follow the system light/dark instead: `theme = light:Catppuccin Latte,dark:Catppuccin Mocha`.
   - Font: `font-family = Monaspace Neon`, `font-size = 15`. Installed fonts: `ghostty +list-fonts`.
   - Ligatures on: delete the two `font-feature = -calt` / `-liga` lines.
   - Transparency: `background-opacity = 0.9`.
-  - A keybind: `keybind = cmd+shift+enter=toggle_split_zoom`.
+  - A keybind: `keybind = cmd+shift+enter=toggle_split_zoom` (on Linux, `ctrl+shift+enter`).
   - Option as Alt (in `macos.ghostty`): `macos-option-as-alt = left` (the default here) lets left Option+C open fzf's folder search; use `true` for both Options or delete the line to type special characters with either.
-- **Try it:** `cmd+shift+,` reloads.
+- **Try it:** `cmd+shift+,` reloads (`ctrl+shift+,` on Linux).
 - **Keep it:** `/codify` or `chezmoi edit ~/.config/ghostty/config.ghostty`
 - **Reference:** `ghostty +show-config --default --docs`, https://ghostty.org/docs/config
 
 ## Shell (zsh)
 
 - **Where it lives:** `home/dot_config/zsh/dotfiles.zsh` → `~/.config/zsh/dotfiles.zsh` (oh-my-zsh settings, history, completion, fzf-tab, fzf, zoxide, fnm, eza aliases, autosuggestions, syntax highlighting, Starship) and `home/dot_config/starship.toml` → `~/.config/starship.toml`. Your `~/.zshrc` itself is never committed; it keeps your private lines plus one line, inside a `# >>> dotfiles >>>` marker block, that sources `dotfiles.zsh` (added by `home/.chezmoiscripts/run_onchange_after_40-zshrc-source.sh`).
-- **What you get:** grey suggestions as you type (→ accepts), Ctrl+R history search, Ctrl+T file search, Alt+C (left Option+C in Ghostty) folder jump, a fuzzy Tab menu with previews, `z <part of a path>` / `zi` to jump to folders you've visited, `ls`/`ll`/`la`/`lt` through eza with icons and git status, and Node versions from fnm that switch on `cd` into a folder with `.node-version` or `.nvmrc`.
+- **What you get:** grey suggestions as you type (→ accepts), Ctrl+R history search, Ctrl+T file search, Alt+C folder jump (left Option+C in Ghostty on macOS), a fuzzy Tab menu with previews, `z <part of a path>` / `zi` to jump to folders you've visited, `ls`/`ll`/`la`/`lt` through eza with icons and git status, and Node versions from fnm that switch on `cd` into a folder with `.node-version` or `.nvmrc`.
 - **Common changes:**
   - Prompt: edit `starship.toml`, e.g. `[directory] style = "bold blue"`, or add a module such as `$rust` to `format`. Colours are names from the `catppuccin_mocha` palette at the bottom.
   - Suggestion colour: `ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#7f849c'` in `dotfiles.zsh`.
