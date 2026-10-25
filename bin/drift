@@ -121,7 +121,8 @@ packages() {
       drift_ignored "$pkg" && continue
       emit pkg-extra "$pkg" "add to Brewfile, or skip (lib/drift-ignore.txt)"
     done
-  brew bundle check --verbose --no-upgrade --file="$REPO/Brewfile" 2>/dev/null |
+  # Homebrew prints the "needs to be installed" lines on stderr.
+  brew bundle check --verbose --no-upgrade --file="$REPO/Brewfile" 2>&1 |
     sed -nE 's/^→ (Formula|Cask) (.+) needs to be installed.*/\2/p' |
     while IFS= read -r pkg; do
       emit pkg-missing "$pkg" "brew bundle --file=$REPO/Brewfile"

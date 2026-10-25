@@ -18,12 +18,22 @@ jobs:
           done
 
   test:
-    runs-on: macos-latest
-    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - run: brew install bats-core jq gitleaks
-      - run: bats tests/claude-settings.bats tests/speak-alert.bats tests/speak-alert-ci.bats tests/guardrails.bats
+      - name: put Homebrew on PATH (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+          sudo apt-get update && sudo apt-get install -y zsh
+      - run: brew install bats-core jq gitleaks chezmoi starship
+      # Tests tagged machine check the live install (Ghostty, herdr, ~/.gitconfig, ...).
+      - run: bats --filter-tags '!machine' tests/
 
   secrets:
     runs-on: macos-latest

@@ -3,6 +3,7 @@
 REPO="$BATS_TEST_DIRNAME/.."
 GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
 
+# bats test_tags=machine
 @test "bat theme set" {
   [ -f "$(bat --config-file)" ]
   grep -q '^--theme="Catppuccin Mocha"' "$(bat --config-file)"
@@ -10,10 +11,12 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
   bat --list-themes | grep -q 'Catppuccin Mocha'
 }
 
+# bats test_tags=machine
 @test "delta is git pager" {
   [ "$(git config --global core.pager)" = "delta" ]
 }
 
+# bats test_tags=machine
 @test "gitconfig script is idempotent" {
   sh "$GITCONFIG_SCRIPT"
   first="$(git config --global --list | sort)"
@@ -21,12 +24,14 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
   [ "$(git config --global --list | sort)" = "$first" ]
 }
 
+# bats test_tags=machine
 @test "user email untouched" {
   before="$(git config --global user.email || true)"
   sh "$GITCONFIG_SCRIPT"
   [ "$(git config --global user.email || true)" = "$before" ]
 }
 
+# bats test_tags=machine
 @test "glow config set" {
   grep -q "^style: \"$HOME/.config/glow/catppuccin-mocha.json\"" "$HOME/Library/Preferences/glow/glow.yml"
   grep -q "^pager: true" "$HOME/Library/Preferences/glow/glow.yml"
@@ -38,6 +43,7 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
   [ "$(jq -r '.document.color' "$S")" = "#cdd6f4" ]
 }
 
+# bats test_tags=machine
 @test "glow renders with the Catppuccin style" {
   run bash -c "printf '# Hi\\n\\nUse \\`x\\`\\n' | glow -s '$BATS_TEST_DIRNAME/../home/dot_config/glow/catppuccin-mocha.json' -"
   [ "$status" -eq 0 ]
