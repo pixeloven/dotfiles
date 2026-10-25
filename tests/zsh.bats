@@ -42,8 +42,9 @@ in_zsh() {
 }
 
 @test "config still loads when none of the tools are installed" {
+  local zsh; zsh="$(command -v zsh)" # on Linux zsh may come only from Homebrew, off the PATH below
   run env -u HISTFILE HOME="$TMP/home" ZDOTDIR="$TMP/home" HOMEBREW_PREFIX="$TMP/no-brew" PATH=/usr/bin:/bin \
-    zsh -i -c 'source ~/.config/zsh/dotfiles.zsh; echo "rc=$?"; echo "histfile=$HISTFILE"; alias ls || echo no-eza; whence fnm || echo no-fnm'
+    "$zsh" -i -c 'source ~/.config/zsh/dotfiles.zsh; echo "rc=$?"; echo "histfile=$HISTFILE"; alias ls || echo no-eza; whence fnm || echo no-fnm'
   [[ "$output" == *"rc=0"* ]] || false
   [[ "$output" == *"histfile=$TMP/home/.zsh_history"* ]] || false
   [[ "$output" == *"no-eza"* ]] || false
