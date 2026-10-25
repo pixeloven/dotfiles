@@ -3,6 +3,33 @@
 # ~/.zshrc stays private. Load order matters: oh-my-zsh (runs compinit) → fzf-tab → fzf →
 # zoxide → autosuggestions → syntax highlighting → starship. Each tool is skipped when absent.
 
+# Homebrew: find it (Apple Silicon, Intel, Linux) and put it ahead of the system dirs, so its
+# node/git/etc. win over the distro's; ~/.local/bin stays ahead of it. Image-based hosts
+# (Bazzite/Silverblue, marked by /run/ostree-booted) keep brew last on purpose. On macOS
+# `brew shellenv` already ran, so nothing moves. DOTFILES_OSTREE_MARKER is a test seam.
+if [[ -z ${HOMEBREW_PREFIX:-} ]]; then
+  for _p in /opt/homebrew /usr/local /home/linuxbrew/.linuxbrew $HOME/.linuxbrew; do
+    [[ -x $_p/bin/brew ]] && { eval "$($_p/bin/brew shellenv)"; break; }
+  done
+  unset _p
+fi
+if [[ -n ${HOMEBREW_PREFIX:-} && $HOMEBREW_PREFIX != /usr/local ]]; then
+  path=(${path:#$HOMEBREW_PREFIX/(bin|sbin)})
+  _dotfiles_front=($HOMEBREW_PREFIX/bin $HOMEBREW_PREFIX/sbin)
+  if [[ -e ${DOTFILES_OSTREE_MARKER:-/run/ostree-booted} ]]; then
+    path+=($_dotfiles_front)
+  else
+    integer _i=${path[(i)(/usr/local/bin|/usr/bin|/bin|/usr/sbin|/sbin)]}
+    if (( ${path[(Ie)$HOME/.local/bin]} > _i )); then
+      path=(${path:#$HOME/.local/bin})
+      _dotfiles_front=($HOME/.local/bin $_dotfiles_front)
+    fi
+    path[_i,_i-1]=($_dotfiles_front)
+    unset _i
+  fi
+  unset _dotfiles_front
+fi
+
 [[ -o interactive ]] || return 0
 
 _dotfiles_brew="${HOMEBREW_PREFIX:-/opt/homebrew}"

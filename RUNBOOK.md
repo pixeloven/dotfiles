@@ -1,6 +1,6 @@
 # Runbook: manual steps
 
-Steps that scripts can't do, or that macOS asks you to approve yourself. Each one ends with a **Done when** check.
+Steps that scripts can't do, or that the OS asks you to approve yourself. Each one ends with a **Done when** check. A new Linux machine starts at section 9 instead of section 1.
 
 ## 1. New Mac bootstrap
 
@@ -14,6 +14,8 @@ Steps that scripts can't do, or that macOS asks you to approve yourself. Each on
 **Done when:** `bats ~/Development/dotfiles/tests/` passes.
 
 ## 2. macOS permissions for Ghostty
+
+macOS only.
 
 1. System Settings → Notifications → Ghostty: turn on **Allow notifications**.
 2. System Settings → Privacy & Security → Accessibility: turn on **Ghostty**. The global `cmd+`` drop-down terminal needs this.
@@ -29,6 +31,8 @@ Steps that scripts can't do, or that macOS asks you to approve yourself. Each on
 **Done when:** inline code and commands show in peach and your own messages sit on a slightly lighter band.
 
 ## 4. Dictation
+
+macOS only for now.
 
 Option A, nothing to install:
 1. System Settings → Keyboard → Dictation: turn **on**, and set the shortcut to **Press 🌐 twice** (Fn twice).
@@ -65,7 +69,7 @@ On and off:
 
 1. Download a scanline/CRT shader (e.g. from https://github.com/hackr-sh/ghostty-shaders) to `~/.config/ghostty/shaders/crt.glsl`.
 2. In `~/.config/ghostty/config.ghostty`, uncomment `custom-shader = shaders/crt.glsl`.
-3. Reload Ghostty with `cmd+shift+,`.
+3. Reload Ghostty with `cmd+shift+,` (`ctrl+shift+,` on Linux).
 4. Like it? Run `/codify` to keep both files. If you don't like it or the fans spin up, re-comment the line.
 
 **Done when:** the effect shows and `/codify` has recorded it, or you've reverted it.
@@ -79,7 +83,7 @@ On and off:
 
 ## 8. One-time `~/.zshrc` cleanup and the nvm → fnm switch
 
-For a Mac set up before the zsh config existed. `~/.zshrc` is never tracked: it holds an API key and the pnpm and antigravity PATH lines. Afterwards it keeps only those private lines plus the `# >>> dotfiles >>>` block that sources `~/.config/zsh/dotfiles.zsh`, which now loads oh-my-zsh (trimmed), the plugins, fnm and Starship.
+For a Mac set up before the zsh config existed. Linux machines never had nvm; section 9 sets up fnm directly. `~/.zshrc` is never tracked: it holds an API key and the pnpm and antigravity PATH lines. Afterwards it keeps only those private lines plus the `# >>> dotfiles >>>` block that sources `~/.config/zsh/dotfiles.zsh`, which now loads oh-my-zsh (trimmed), the plugins, fnm and Starship.
 
 1. Back up: `cp ~/.zshrc ~/.zshrc.bak-$(date +%Y%m%d)`.
 2. `chezmoi apply`. It writes `~/.config/zsh/`, `~/.config/starship.toml` and the Ghostty font, and appends the marker block to `~/.zshrc`.
@@ -89,8 +93,29 @@ For a Mac set up before the zsh config existed. `~/.zshrc` is never tracked: it 
 6. Verify in a fresh tab: `which node` points under fnm (not `~/.nvm`), and each tool resolves and runs, e.g. `codex --version`, `gh-axi --version`, `pi --version`. Check that Codex hooks and the fleet still find `gh-axi` and the other `-axi` tools.
 7. Restart running Claude Code and Codex sessions; they keep their old PATH until restarted.
 
-**Leave `~/.nvm` in place and untouched.** The operator repo's `bin/fm-remote-job-lib.sh` builds remote-job PATHs from nvm's default Node, and `~/.nvm` is the rollback. The two Node installs will drift apart over time, so upgrade both when it matters.
+**Keep `~/.nvm` only until the operator's remote jobs know fnm.** Its one remaining use: the operator repo's `bin/fm-remote-job-lib.sh` builds remote-job PATHs from nvm's default Node and doesn't look for fnm yet. A fix that teaches it fnm has been sent upstream. Until that lands, leave `~/.nvm` untouched (it is also the rollback below) and upgrade both Node installs when it matters, since they drift apart. Once it lands and a remote job finds `node` without nvm, `rm -rf ~/.nvm`.
 
 **Roll back:** `cp ~/.zshrc.bak-<date> ~/.zshrc` and open a new tab; nvm and the old prompt are back.
 
 **Done when:** a new Ghostty tab shows the Starship prompt with icons, grey suggestions appear as you type, Ctrl+R, the Tab menu, `z` and `ls` work, `which node` is under fnm, every tool above prints its version, and `drift` reports no `~/.zshrc` finding.
+
+## 9. New Linux (distrobox) bootstrap
+
+For an Ubuntu distrobox on an image-based host such as Bazzite, where the host and the container share `$HOME` but each has its own Homebrew at `/home/linuxbrew/.linuxbrew`. Run every step inside the container unless it says host. Shared `$HOME` means `~/.zshrc`, `~/.gitconfig`, `~/.oh-my-zsh` and fnm's Node (`~/.local/share/fnm`) are the same files on both sides, so skip any step whose check already passes.
+
+1. Homebrew and chezmoi: `sudo apt-get update && sudo apt-get install -y build-essential procps curl file git`, then the Homebrew installer from the README, then `eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"` for this shell only (don't add it to `~/.bashrc`, which the host reads too; `dotfiles.zsh` finds brew itself), `brew install chezmoi` and `chezmoi init --apply --source ~/Development/dotfiles pixeloven`.
+   **Done when:** `brew bundle check --file ~/Development/dotfiles/Brewfile` says the dependencies are satisfied.
+2. zsh as the container's login shell, from apt so a container rebuild can't strand it: `sudo apt-get install -y zsh && sudo chsh -s /usr/bin/zsh "$USER"`. This edits only the container's `/etc/passwd`; the host keeps its shell.
+   **Done when:** after `exit` and `distrobox enter` again, `ps -p $$ -o comm=` prints `zsh` and `which node` is not `/usr/bin/node` (Homebrew sits ahead of the system dirs inside the container; on the host it stays last).
+3. oh-my-zsh, keeping the `~/.zshrc` chezmoi wrote: `sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`.
+   **Done when:** `~/.oh-my-zsh/oh-my-zsh.sh` exists and a new zsh shows the Starship prompt with grey suggestions as you type.
+4. Node through fnm: first record the global npm tools under Homebrew's Node with `npm ls -g --depth=0` (on the first Linux machine: `chrome-devtools-axi`, `gh-axi`, `quota-axi`, `tasks-axi`). Then `fnm install 22 && fnm default 22` (the Mac's major), open a new shell, and `npm install -g` each tool at the version you recorded. Homebrew's `node` stays installed for anything that doesn't run `fnm env`, such as scripts and the operator's remote jobs.
+   **Done when:** in a new shell `which node` is under fnm and `gh-axi --version` prints a version.
+5. Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`.
+   **Done when:** `git config user.name` and `git config user.email` print your values.
+6. delta on the host: the host reads the same `~/.gitconfig`, whose pager is `delta`. `distrobox-host-exec /home/linuxbrew/.linuxbrew/bin/brew install git-delta` (that path is resolved on the host, so it's the host's Homebrew).
+   **Done when:** in a host terminal (outside the container), `delta --version` prints a version and `git -C ~/Development/dotfiles log -p -1` pages through delta.
+7. Do steps 2–4 of section 1 (herdr, its Claude integration, the repo's secret guard) and section 3 if this `$HOME` hasn't had them yet.
+   **Done when:** `herdr --version` prints a version, `fc-list | grep -q 'JetBrainsMono Nerd Font'` succeeds, and text you select in a herdr pane pastes into a host app with `ctrl+v` (herdr copies through the Brewfile's `wl-copy`/`xclip` when the terminal ignores OSC 52, as Ptyxis does).
+
+**Done when:** every check above passes and `bats ~/Development/dotfiles/tests/` passes inside the container.

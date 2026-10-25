@@ -24,7 +24,22 @@ chezmoi init --apply --source ~/Development/dotfiles pixeloven
 
 Then follow [RUNBOOK.md](RUNBOOK.md) for the few steps that macOS won't let a script do.
 
-On Linux, install Homebrew and chezmoi the same way and run the same `chezmoi init`. It asks once which terminal you use (Ptyxis by default); macOS asks nothing. The Brewfile's `if OS.mac?` / `if OS.linux?` blocks pick the per-OS packages.
+## Set up Linux (distrobox)
+
+Tested on an Ubuntu 24.04 distrobox on Bazzite. Inside the container:
+
+```sh
+sudo apt-get update && sudo apt-get install -y build-essential procps curl file git zsh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+brew install chezmoi
+chezmoi init --apply --source ~/Development/dotfiles pixeloven
+sudo chsh -s /usr/bin/zsh "$USER"
+```
+
+`chezmoi init` asks once which terminal you use (Ptyxis by default); macOS asks nothing. The Brewfile's `if OS.mac?` / `if OS.linux?` blocks pick the per-OS packages. Inside the container, zsh puts Homebrew ahead of the system dirs so its Node and git win over apt's; on an image-based host (`/run/ostree-booted`) Homebrew stays last. Node comes from fnm on both OSes.
+
+Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the global npm tools, your git name and email (dotfiles never sets them), delta in the host's Homebrew, and the clipboard check.
 
 ## Day to day
 
