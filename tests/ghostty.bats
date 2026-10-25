@@ -40,3 +40,9 @@ tracked_setting() {
   [ "$(uname -s)" = Darwin ] || skip "macOS only"
   [ "$(tracked_setting macos-option-as-alt)" = "left" ]
 }
+
+@test "ghostty loads the macOS include's window settings" {
+  [ "$(uname -s)" = Darwin ] || skip "macOS only"
+  [ "$(tracked_setting macos-titlebar-style)" = "tabs" ]
+  [ "$(tracked_setting background-blur)" = "true" ]
+}

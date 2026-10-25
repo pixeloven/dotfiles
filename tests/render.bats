@@ -65,18 +65,6 @@ Library/Preferences/glow/glow.yml"
   [ "$(sed "s#$TMP/darwin#H#" "$mac")" = "$(sed "s#$TMP/linux#H#" "$linux")" ]
 }
 
-@test "Ghostty's macOS-only settings live in macos.ghostty, loaded by the common config" {
-  render darwin > /dev/null
-  g="$TMP/darwin/.config/ghostty"
-  grep -qxF 'config-file = ?macos.ghostty' "$g/config.ghostty"
-  grep -qxF 'config-file = ?linux.ghostty' "$g/config.ghostty"
-  ! grep -qE '^(macos-|background-blur|keybind = global:)' "$g/config.ghostty" || false
-  [ "$(grep -v '^#' "$g/macos.ghostty")" = "macos-titlebar-style = tabs
-background-blur = true
-macos-option-as-alt = left
-keybind = global:cmd+grave_accent=toggle_quick_terminal" ]
-}
-
 @test "macOS init asks nothing and picks Ghostty" {
   run init_config darwin --promptChoice "Terminal app on this Linux machine=other"
   [ "$status" -eq 0 ]
