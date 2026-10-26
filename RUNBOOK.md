@@ -9,7 +9,8 @@ Steps that scripts can't do, or that the OS asks you to approve yourself. Each o
 3. Run `herdr integration install claude` (and `herdr integration install pi` if you use Pi).
 4. In the repo, enable the secret guard: `git -C ~/Development/dotfiles config core.hooksPath .githooks`.
 5. Shell: install oh-my-zsh keeping the `~/.zshrc` chezmoi wrote (`sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`), then Node through fnm: `fnm install 22 && fnm default 22`, and in a new tab reinstall the global npm tools listed in step 8. Without oh-my-zsh, `dotfiles.zsh` still loads with plain completion.
-6. Do steps 2–4 of this runbook.
+6. Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`. Then add the PixelOven identity from section 9 step 6.
+7. Do steps 2–4 of this runbook.
 
 **Done when:** `bats ~/Development/dotfiles/tests/` passes.
 
@@ -113,9 +114,18 @@ For an Ubuntu distrobox on an image-based host such as Bazzite, where the host a
    **Done when:** in a new shell `which node` is under fnm and `gh-axi --version` prints a version.
 5. Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`.
    **Done when:** `git config user.name` and `git config user.email` print your values.
-6. delta on the host: the host reads the same `~/.gitconfig`, whose pager is `delta`. `distrobox-host-exec /home/linuxbrew/.linuxbrew/bin/brew install git-delta` (that path is resolved on the host, so it's the host's Homebrew).
+6. PixelOven identity, by hand, so the global (work) email never lands in public PixelOven commits. Write `~/.gitconfig-pixeloven` containing `[user]` and `email = <your GitHub noreply address>`, then add to `~/.gitconfig`:
+   ```ini
+   [includeIf "hasconfig:remote.*.url:https://github.com/pixeloven/**"]
+       path = ~/.gitconfig-pixeloven
+   [includeIf "hasconfig:remote.*.url:git@github.com:pixeloven/**"]
+       path = ~/.gitconfig-pixeloven
+   ```
+   It needs git 2.36 or later, and it also covers the no-mistakes gate repos under `~/.no-mistakes/repos`, whose remotes are github.com/pixeloven URLs. Merges made on the GitHub website use the account's commit email instead; Settings → Emails → "Keep my email addresses private" makes them use the noreply address.
+   **Done when:** `git -C ~/Development/dotfiles config user.email` prints the noreply address and a non-PixelOven repo still prints the global one.
+7. delta on the host: the host reads the same `~/.gitconfig`, whose pager is `delta`. `distrobox-host-exec /home/linuxbrew/.linuxbrew/bin/brew install git-delta` (that path is resolved on the host, so it's the host's Homebrew).
    **Done when:** in a host terminal (outside the container), `delta --version` prints a version and `git -C ~/Development/dotfiles log -p -1` pages through delta.
-7. Do steps 2–4 of section 1 (herdr, its Claude integration, the repo's secret guard) and section 3 if this `$HOME` hasn't had them yet.
+8. Do steps 2–4 of section 1 (herdr, its Claude integration, the repo's secret guard) and section 3 if this `$HOME` hasn't had them yet.
    **Done when:** `herdr --version` prints a version, `fc-list | grep -q 'JetBrainsMono Nerd Font'` succeeds, and text you select in a herdr pane pastes into a host app with `ctrl+v` (herdr copies through the Brewfile's `wl-copy`/`xclip` when the terminal ignores OSC 52, as Ptyxis does).
 
 **Done when:** every check above passes and `bats ~/Development/dotfiles/tests/` passes inside the container.
