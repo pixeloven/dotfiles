@@ -18,12 +18,11 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 ## Ptyxis (Linux, when it's your terminal)
 
-- **Where it lives:** `home/dot_local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` → `~/.local/share/org.gnome.Ptyxis/palettes/`, and `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl`, which sets only the font and the default profile's palette in GSettings. Every other Ptyxis preference stays yours. From a distrobox it sets them on the host through `distrobox-host-exec`.
+- **Where it lives:** `home/dot_local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` → `~/.local/share/org.gnome.Ptyxis/palettes/`, and `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl`, which sets only the default profile's palette in GSettings. Every other Ptyxis preference, the font included, stays yours. From a distrobox it sets it on the host through `distrobox-host-exec`.
 - **Common changes:**
-  - Font: change `font-name` in the script, e.g. `"'JetBrainsMono Nerd Font 13'"`.
   - Colours: edit the palette file, or point the script's `palette` line at another palette by file name without `.palette`.
 - **Try it:** Ptyxis → Preferences shows the change at once.
-- **Keep it:** edit the script or palette, then `chezmoi apply`. `drift` reports a font or palette changed in Preferences as `owned-key`.
+- **Keep it:** edit the script or palette, then `chezmoi apply`. `drift` reports a palette changed in Preferences as `owned-key`.
 
 ## Shell (zsh)
 
