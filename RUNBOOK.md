@@ -8,11 +8,11 @@ Steps that scripts can't do, or that the OS asks you to approve yourself. Each o
 2. Install herdr from https://herdr.dev. It installs itself into `~/.local/bin` and updates with `herdr update`.
 3. Run `herdr integration install claude` (and `herdr integration install pi` if you use Pi).
 4. In the repo, enable the secret guard: `git -C ~/Development/dotfiles config core.hooksPath .githooks`.
-5. Shell: install oh-my-zsh keeping the `~/.zshrc` chezmoi wrote (`sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`), then Node through fnm: `fnm install 22 && fnm default 22`, and in a new tab reinstall the global npm tools listed in step 8. Without oh-my-zsh, `dotfiles.zsh` still loads with plain completion.
+5. Shell: install oh-my-zsh keeping the `~/.zshrc` chezmoi wrote (`sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`), then Node through fnm: `fnm install 22 && fnm default 22`, and in a new tab reinstall the global npm tools listed in step 8. Without oh-my-zsh, `dotfiles.zsh` still loads with plain completion. After installing Claude Code and the npm tools (Codex, pi), run `chezmoi apply` again so they get crew and its packs.
 6. Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`. Optionally, add a separate PixelOven identity as in section 9 step 6.
 7. Do steps 2–4 of this runbook.
 
-**Done when:** `bats ~/Development/dotfiles/tests/` passes.
+**Done when:** `bats ~/Development/dotfiles/tests/` passes and `~/Development/dotfiles/lib/agent-plugins.sh check` prints nothing.
 
 ## 2. macOS permissions for Ghostty
 
@@ -110,8 +110,8 @@ For an Ubuntu distrobox on an image-based host such as Bazzite, where the host a
    **Done when:** after `exit` and `distrobox enter` again, `ps -p $$ -o comm=` prints `zsh` and `which node` is not `/usr/bin/node` (Homebrew sits ahead of the system dirs inside the container; on the host it stays last).
 3. oh-my-zsh, keeping the `~/.zshrc` chezmoi wrote: `sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`.
    **Done when:** `~/.oh-my-zsh/oh-my-zsh.sh` exists and a new zsh shows the Starship prompt with grey suggestions as you type.
-4. Node through fnm: first record the global npm tools under Homebrew's Node with `npm ls -g --depth=0` (on the first Linux machine: `chrome-devtools-axi`, `gh-axi`, `quota-axi`, `tasks-axi`). Then `fnm install 22 && fnm default 22` (the Mac's major), open a new shell, and `npm install -g` each tool at the version you recorded. Homebrew's `node` stays installed for anything that doesn't run `fnm env`, such as scripts and the operator's remote jobs.
-   **Done when:** in a new shell `which node` is under fnm and `gh-axi --version` prints a version.
+4. Node through fnm: first record the global npm tools under Homebrew's Node with `npm ls -g --depth=0` (on the first Linux machine: `chrome-devtools-axi`, `gh-axi`, `quota-axi`, `tasks-axi`). Then `fnm install 22 && fnm default 22` (the Mac's major), open a new shell, and `npm install -g` each tool at the version you recorded. Homebrew's `node` stays installed for anything that doesn't run `fnm env`, such as scripts and the operator's remote jobs. After installing Claude Code and the npm tools (Codex, pi), run `chezmoi apply` again so they get crew and its packs.
+   **Done when:** in a new shell `which node` is under fnm, `gh-axi --version` prints a version, and `~/Development/dotfiles/lib/agent-plugins.sh check` prints nothing.
 5. Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`.
    **Done when:** `git config user.name` and `git config user.email` print your values.
 6. Optional: if you want a separate identity for PixelOven repos, set it by hand. Write `~/.gitconfig-pixeloven` containing `[user]` and `email = <your GitHub noreply address>`, then add to `~/.gitconfig`:

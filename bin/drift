@@ -7,7 +7,7 @@
 #   --hook     the summary as Claude Code hook JSON ({"systemMessage": ...}), shown to the user
 #   --json     findings as a JSON array of {kind, target, action}
 #
-# Kinds: edited, owned-key, pkg-extra, pkg-missing, untracked-config.
+# Kinds: edited, owned-key, pkg-extra, pkg-missing, plugin-missing, plugin-behind, untracked-config.
 # Paths in lib/denylist.txt and packages in lib/drift-ignore.txt are never reported.
 # DRIFT_CHEZMOI_ARGS adds chezmoi flags (tests use it to point at a scratch source/state).
 set -uo pipefail
@@ -146,6 +146,12 @@ operator_persona() { # the persona selection we own when the operatorPersona key
   emit owned-key "$home/config/po-theme" "set operatorPersona in ~/.config/chezmoi/chezmoi.toml to $have, or lib/operator-persona.sh $(printf '%q %q' "$want" "$home")"
 }
 
+agent_plugins() { # crew and its packs for Claude Code, Codex and pi, unless agentPlugins = false
+  [ -x "$REPO/lib/agent-plugins.sh" ] || return 0
+  [ "$("${CZ[@]}" data --format json 2>/dev/null | jq -r '.agentPlugins')" = false ] && return 0
+  "$REPO/lib/agent-plugins.sh" check
+}
+
 packages() {
   local listed pkg
   listed="$(brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
@@ -179,7 +185,7 @@ untracked() {
   done
 }
 
-findings="$({ edited; owned_keys; ptyxis_keys; zshrc_line; codex_keys; operator_persona; packages; untracked; } 2>/dev/null)"
+findings="$({ edited; owned_keys; ptyxis_keys; zshrc_line; codex_keys; operator_persona; agent_plugins; packages; untracked; } 2>/dev/null)"
 
 case "${1:-}" in
   --summary)

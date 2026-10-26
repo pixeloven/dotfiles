@@ -80,6 +80,19 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 - **Check alerts:** `tail ~/.local/state/speak-alert/events.log` shows what each alert decided (spoke, or silent and why).
 - **Linux:** alerts are silent for now (no `say`); the log says `silent: no speech backend`. The voice approach is tracked in dotfiles issue #1.
 
+## Agent plugins (crew)
+
+- **Where it lives:** `lib/agent-plugins.txt` lists the plugins kept installed at user scope for Claude Code, Codex and pi: crew and its four packs (`infra-skills`, `planning-skills`, `identity-skills`, `language-skills`) from the `pixeloven` marketplace (github.com/pixeloven/marketplace). `lib/agent-plugins.sh` does the work; `home/.chezmoiscripts/run_after_60-agent-plugins.sh.tmpl` runs its `ensure` on every `chezmoi apply`.
+- **What it does:** for each tool that is installed, it adds the marketplace if needed and installs only the plugins that are missing. Claude Code and Codex install from the marketplace; pi installs each one as `git:github.com/pixeloven/<name>@<sha>`, at the catalogue's commit SHA. A tool installed later gets the plugins at the next `chezmoi apply`. On pi you get crew's skills and its readable roles; there is no in-session dispatch there (orchestrate from the operator instead).
+- **A plugin you disable stays disabled:** an installed plugin is never re-installed, because `claude plugin install` and `codex plugin add` would turn it back on. `update` skips it too, and `/codify` doesn't report it.
+- **Common changes:**
+  - Add or drop a plugin: edit `lib/agent-plugins.txt`, then `chezmoi apply`. Dropping a name stops managing it; uninstall it yourself if you want it gone.
+  - New versions: they arrive only when a reviewed re-pin merges in the marketplace. Then run `~/Development/dotfiles/lib/agent-plugins.sh update`, which brings Claude Code, Codex and pi to the catalogue's pins together. Claude's own auto-update for the marketplace stays off.
+  - Opt a machine out: `agentPlugins = false` under `[data]` in your untracked `~/.config/chezmoi/chezmoi.toml`. Nothing is installed or reported then; already installed plugins stay.
+  - Operator home: with `operatorHome` set, `home/.chezmoiscripts/run_onchange_after_61-operator-crew-fence.sh.tmpl` runs that home's own `bin/po-crew.sh fence`, which keeps crew out of the operator home's own sessions. It skips until the home has that script.
+- **Try it:** `chezmoi apply`, then `~/Development/dotfiles/lib/agent-plugins.sh check`; it prints nothing when every tool is at the pins.
+- **Keep it:** commit the repo change. `/codify` reports `plugin-missing` (run `chezmoi apply`) and `plugin-behind` (the installed commit isn't the catalogue's; run `lib/agent-plugins.sh update`).
+
 ## bat, delta, glow
 
 - **Where they live:** `home/dot_config/bat/config`, `home/.chezmoitemplates/glow.yml` (installed to `~/Library/Preferences/glow/glow.yml` on macOS and `~/.config/glow/glow.yml` on Linux), the glow style `home/dot_config/glow/catppuccin-mocha.json`, and the git keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh`
