@@ -58,20 +58,19 @@ setting() { # <schema> <key> : the stored value
   awk -F '\t' -v s="$1" -v k="$2" '$1 == s && $2 == k { v = $3 } END { print v }' "$GS_DB"
 }
 
-@test "on the host it sets exactly the three owned settings" {
+@test "on the host it sets only the palette, never the font" {
   PATH="$HOST_BIN:$PATH" run ptyxis_script ptyxis false
   [ "$status" -eq 0 ]
-  [ "$(setting org.gnome.Ptyxis use-system-font)" = false ]
-  [ "$(setting org.gnome.Ptyxis font-name)" = "'JetBrainsMono Nerd Font 14'" ]
   [ "$(setting "$PROFILE" palette)" = "'catppuccin-mocha'" ]
-  [ "$(grep -c ' set ' "$GS_LOG")" -eq 3 ]
+  [ "$(grep -c ' set ' "$GS_LOG")" -eq 1 ]
+  ! grep -q -e font-name -e use-system-font "$GS_LOG"
 }
 
-@test "in a distrobox it sets them on the host through distrobox-host-exec" {
+@test "in a distrobox it sets it on the host through distrobox-host-exec" {
   run ptyxis_script ptyxis true
   [ "$status" -eq 0 ]
   [ "$(setting "$PROFILE" palette)" = "'catppuccin-mocha'" ]
-  [ "$(grep -c '^host set ' "$GS_LOG")" -eq 3 ]
+  [ "$(grep -c '^host set ' "$GS_LOG")" -eq 1 ]
   ! grep -q '^local' "$GS_LOG"
 }
 
@@ -79,17 +78,16 @@ setting() { # <schema> <key> : the stored value
   rm "$GS_DB"
   run ptyxis_script ptyxis true
   [ "$status" -eq 0 ]
-  [[ "$output" == *"not found; font and palette not set"* ]] || false
+  [[ "$output" == *"not found; palette not set"* ]] || false
   ! grep -q ' set ' "$GS_LOG"
 }
 
-@test "without a default profile it sets the font and explains the palette" {
+@test "without a default profile it sets nothing and explains the palette" {
   printf 'org.gnome.Ptyxis\tdefault-profile-uuid\t%s\n' "''" > "$GS_DB"
   run ptyxis_script ptyxis true
   [ "$status" -eq 0 ]
   [[ "$output" == *"no default profile yet"* ]] || false
-  [ "$(setting org.gnome.Ptyxis font-name)" = "'JetBrainsMono Nerd Font 14'" ]
-  [ "$(grep -c '^host set ' "$GS_LOG")" -eq 2 ]
+  ! grep -q ' set ' "$GS_LOG"
 }
 
 @test "with Ghostty chosen the script is empty" {
@@ -105,15 +103,15 @@ drift() { # <terminal> : drift's findings on Linux with these answers, in a dist
     "$REAL_REPO/bin/drift"
 }
 
-@test "drift reports a changed Ptyxis font or palette as owned-key" {
+@test "drift reports a changed Ptyxis palette as owned-key, and ignores the font" {
   ptyxis_script ptyxis true
   run drift ptyxis
   [[ "$output" != *org.gnome.Ptyxis* ]] || false
   printf 'org.gnome.Ptyxis\tfont-name\t%s\n' "'Monospace 12'" >> "$GS_DB"
   printf '%s\tpalette\t%s\n' "$PROFILE" "'gnome'" >> "$GS_DB"
   run drift ptyxis
-  [[ "$output" == *$'owned-key\torg.gnome.Ptyxis font-name'* ]] || false
   [[ "$output" == *$'owned-key\torg.gnome.Ptyxis.Profile palette'* ]] || false
+  [[ "$output" != *font-name* ]] || false
   [[ "$output" != *use-system-font* ]] || false
 }
 

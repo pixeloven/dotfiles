@@ -122,7 +122,7 @@ For an Ubuntu distrobox on an image-based host such as Bazzite, where the host a
 
 ## 10. Ghostty on Linux (only if you chose `ghostty`)
 
-Ptyxis is the Linux default and needs nothing here: `chezmoi apply` installs the Catppuccin Mocha palette and sets the font and the default profile's palette. This section is for a machine whose `chezmoi init` answer was `ghostty`. Ghostty isn't on Flathub, so pick one of these:
+Ptyxis is the Linux default and needs nothing here: `chezmoi apply` installs the Catppuccin Mocha palette and sets it as the default profile's palette; the font stays the system's. This section is for a machine whose `chezmoi init` answer was `ghostty`. Ghostty isn't on Flathub, so pick one of these:
 
 - **AppImage via Gear Lever (recommended).** Download the community Ghostty AppImage (linked from https://ghostty.org/docs/install/binary), open it with Gear Lever on the host and let it integrate the app into the menu. Updates go through Gear Lever.
 - **COPR via `rpm-ostree install ghostty`.** Works, but layers a package onto the host image, which Bazzite discourages. Only if you accept layering.
