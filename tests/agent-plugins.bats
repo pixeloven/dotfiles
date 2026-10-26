@@ -256,7 +256,7 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
   run "$LIB" check
   [ "$status" -eq 0 ]
   [[ "$output" == *$'plugin-missing\tclaude language-skills@pixeloven\tchezmoi apply'* ]] || false
-  [[ "$output" == *$'plugin-behind\tclaude crew@pixeloven\t'*'/lib/agent-plugins.sh update'* ]] || false
+  [[ "$output" == *$'plugin-behind\tclaude crew@pixeloven\tinstalled differs from this machine\'s local catalogue copy; run '*'/lib/agent-plugins.sh update'* ]] || false
   [[ "$output" == *$'plugin-behind\tcodex planning-skills@pixeloven\t'* ]] || false
   [[ "$output" == *$'plugin-missing\tpi identity-skills@pixeloven\tchezmoi apply'* ]] || false
   [[ "$output" == *$'plugin-behind\tpi infra-skills@pixeloven\t'* ]] || false

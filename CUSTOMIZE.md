@@ -91,7 +91,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Opt a machine out: `agentPlugins = false` under `[data]` in your untracked `~/.config/chezmoi/chezmoi.toml`. Nothing is installed or reported then; already installed plugins stay.
   - Operator home: with `operatorHome` set, `home/.chezmoiscripts/run_onchange_after_61-operator-crew-fence.sh.tmpl` runs that home's own `bin/po-crew.sh fence`, which keeps crew out of the operator home's own sessions. It skips until the home has that script.
 - **Try it:** `chezmoi apply`, then `~/Development/dotfiles/lib/agent-plugins.sh check`; it prints nothing when every tool is at the pins.
-- **Keep it:** commit the repo change. `/codify` reports `plugin-missing` (run `chezmoi apply`) and `plugin-behind` (the installed commit isn't the catalogue's; run `lib/agent-plugins.sh update`).
+- **Keep it:** commit the repo change. `/codify` reports `plugin-missing` (run `chezmoi apply`) and `plugin-behind` (the installed commit differs from this machine's local catalogue copy; run `lib/agent-plugins.sh update`). The check stays offline, so it doesn't see a re-pin newly published in the marketplace: the operator's crew check finds that on demand, and `lib/agent-plugins.sh update` fetches the catalogue and applies it.
 
 ## bat, delta, glow
 

@@ -8,6 +8,8 @@
 #   --json     findings as a JSON array of {kind, target, action}
 #
 # Kinds: edited, owned-key, pkg-extra, pkg-missing, plugin-missing, plugin-behind, untracked-config.
+# plugin-behind: an installed plugin differs from this machine's local catalogue copy. The check is offline,
+# so a newly published marketplace re-pin is found by the operator's crew check and lib/agent-plugins.sh update.
 # Paths in lib/denylist.txt and packages in lib/drift-ignore.txt are never reported.
 # DRIFT_CHEZMOI_ARGS adds chezmoi flags (tests use it to point at a scratch source/state).
 set -uo pipefail

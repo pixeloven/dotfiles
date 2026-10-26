@@ -7,6 +7,9 @@
 #   update  bring every installed, enabled plugin to the catalogue's current pins
 #   check   read-only; one drift line per finding, as bin/drift prints them:
 #           plugin-missing / plugin-behind <tab> <tool> <name>@pixeloven <tab> <suggested action>
+#           plugin-behind means the installed commit differs from this machine's local catalogue copy.
+#           check stays offline (bin/drift runs it at session start), so it never sees a re-pin newly
+#           published in the marketplace; the operator's crew check (on demand) and `update` detect that.
 # Exit 0, or 1 when an install or update failed (check always exits 0).
 # CLAUDE_CONFIG_DIR, CODEX_HOME and PI_CODING_AGENT_DIR move each tool's home, as the tools themselves do;
 # AGENT_PLUGINS_MARKETPLACE_URL moves the catalogue that `update` and a first pi install fetch (tests use it).
@@ -27,6 +30,7 @@ trap '[ -z "$TMPD" ] || rm -rf "$TMPD"' EXIT
 
 names() { grep -vE '^[[:space:]]*(#|$)' "$REPO/lib/agent-plugins.txt"; }
 say() { echo "agent plugins: $*" >&2; }
+BEHIND="installed differs from this machine's local catalogue copy; run $REPO/lib/agent-plugins.sh update"
 emit() { printf '%s\t%s\t%s\n' "$1" "$2 $3@$MARKET" "$4"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -97,7 +101,7 @@ claude_check() {
     want="$(pinned "$p")"
     got="$(jq -r --arg id "$p@$MARKET" '.plugins[$id][]? | select(.scope == "user") | .gitCommitSha // empty' \
       "$CLAUDE_DIR/plugins/installed_plugins.json" 2>/dev/null)"
-    [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind claude "$p" "$REPO/lib/agent-plugins.sh update"
+    [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind claude "$p" "$BEHIND"
   done
 }
 
@@ -139,7 +143,7 @@ codex_check() {
     want="$(pinned "$p")"
     version="$(awk -v n="$p" '$1 == n { print $3 }' <<<"$list")"
     got="$(git -C "$CODEX_DIR/plugins/cache/$MARKET/$p/$version" rev-parse HEAD 2>/dev/null)"
-    [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind codex "$p" "$REPO/lib/agent-plugins.sh update"
+    [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind codex "$p" "$BEHIND"
   done
 }
 
@@ -179,7 +183,7 @@ pi_check() {
   for p in $(names); do
     entry="$(pi_entry "$p")" || { emit plugin-missing pi "$p" "chezmoi apply"; continue; }
     want="$(pinned "$p")"
-    [ -n "$want" ] && [ "$entry" != "$(pi_ref "$p")@$want" ] && emit plugin-behind pi "$p" "$REPO/lib/agent-plugins.sh update"
+    [ -n "$want" ] && [ "$entry" != "$(pi_ref "$p")@$want" ] && emit plugin-behind pi "$p" "$BEHIND"
   done
 }
 
