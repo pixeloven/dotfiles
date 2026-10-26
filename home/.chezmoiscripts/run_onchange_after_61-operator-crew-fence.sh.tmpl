@@ -1,0 +1,15 @@
+{{- if and (hasKey . "operatorHome") (ne (toString (get . "agentPlugins")) "false") -}}
+{{- $home := regexReplaceAll "^~" (toString .operatorHome) .chezmoi.homeDir -}}
+{{- $fence := joinPath $home "bin/po-crew.sh" -}}
+#!/bin/sh
+# Keep crew out of the operator home's own sessions by running that home's bin/po-crew.sh fence;
+# dotfiles never writes the operator's files itself. Renders only when the chezmoi data key
+# operatorHome is set, and skips until the home has that script.
+# Re-runs when the home changes or the script appears:
+#   home:  {{ $home }}
+#   fence: {{ if stat $fence }}present{{ else }}absent{{ end }}
+set -eu
+fence={{ $fence | squote }}
+[ -x "$fence" ] || { echo "operator crew fence: $fence is not executable; skipping"; exit 0; }
+exec "$fence" fence {{ $home | squote }}
+{{ end -}}

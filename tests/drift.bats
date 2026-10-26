@@ -247,3 +247,19 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   run "$R/bin/drift"
   [[ "$output" != *po-theme* ]] || false
 }
+
+@test "agent plugins: a missing plugin is plugin-missing, unless agentPlugins = false" {
+  cp "$REAL_REPO/lib/agent-plugins.sh" "$REAL_REPO/lib/agent-plugins.txt" "$R/lib/"
+  unset CLAUDE_CONFIG_DIR CODEX_HOME PI_CODING_AGENT_DIR
+  printf '#!/bin/sh\necho "[]"\n' > "$TMP/stub/claude"
+  printf '#!/bin/sh\nexit 1\n' > "$TMP/stub/codex"
+  printf '#!/bin/sh\n' > "$TMP/stub/pi"
+  chmod +x "$TMP/stub/claude" "$TMP/stub/codex" "$TMP/stub/pi"
+  run "$R/bin/drift"
+  [[ "$output" == *$'plugin-missing\tclaude crew@pixeloven\tchezmoi apply'* ]] || false
+  [[ "$output" == *$'plugin-missing\tcodex crew@pixeloven\tchezmoi apply'* ]] || false
+  [[ "$output" == *$'plugin-missing\tpi crew@pixeloven\tchezmoi apply'* ]] || false
+  printf '[data]\nagentPlugins = false\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" != *plugin-* ]] || false
+}

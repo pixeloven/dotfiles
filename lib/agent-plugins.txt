@@ -1,0 +1,8 @@
+# Agent plugins kept installed at user scope for Claude Code, Codex and pi, one name per line, from
+# the pixeloven marketplace (github.com/pixeloven/marketplace), whose commit SHAs are the only pins.
+# Applied by lib/agent-plugins.sh; opt a machine out with agentPlugins = false (see CUSTOMIZE.md).
+crew
+infra-skills
+planning-skills
+identity-skills
+language-skills
