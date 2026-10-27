@@ -1,7 +1,17 @@
 #!/bin/sh
-# Runs on every apply but installs only when something in the Brewfile is missing. On a distrobox the
-# host and the container share $HOME (and chezmoi's script state) but each has its own Homebrew.
+# Runs on every apply but installs only when something in the Brewfile is missing. Two chezmoi init
+# choices steer it. installTarget = "distrobox" (Linux) installs only inside a container, so a
+# chezmoi run on the host (by hand or by an agent) never fills the host's Homebrew; "host", the
+# default, installs on the main OS. opsTools = true adds the Brewfile's ops tools block, through a
+# HOMEBREW_ variable because brew passes only those to the Brewfile. Missing keys mean the defaults.
+# DOTFILES_CONTAINER_MARKER is a test seam.
 set -eu
+{{ if eq (toString (get . "installTarget")) "distrobox" -}}
+[ -e "${DOTFILES_CONTAINER_MARKER:-/run/.containerenv}" ] || { echo "dotfiles: installTarget is distrobox and this is the host; skipping the Brewfile (run chezmoi apply in the box)" >&2; exit 0; }
+{{ end -}}
 command -v brew >/dev/null 2>&1 || { echo "dotfiles: brew not found; skipping the Brewfile" >&2; exit 0; }
+{{ if eq (toString (get . "opsTools")) "true" -}}
+export HOMEBREW_DOTFILES_OPS_TOOLS=1
+{{ end -}}
 f="{{ .chezmoi.workingTree }}/Brewfile"
 brew bundle check --no-upgrade --file="$f" >/dev/null 2>&1 || brew bundle --no-upgrade --file="$f"

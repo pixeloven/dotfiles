@@ -107,6 +107,48 @@ lines() { printf '%s\n' "$@"; }
   [ "$found" = /usr/local ] || [ "${lines[1]}" = "$found/bin" ]
 }
 
+# The no-mistakes variables dotfiles.zsh leaves set. $1 is the installTarget answer chezmoi renders
+# into dotfiles-target.zsh (none: no such file, as on macOS or before chezmoi init), $2 the
+# container marker file.
+nm_env() {
+  local zsh; zsh="$(command -v zsh)"
+  if [ "$1" != none ]; then
+    chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template --override-data "{\"installTarget\":\"$1\"}" \
+      < "$ZSH_DIR/dotfiles-target.zsh.tmpl" > "$TMP/home/.config/zsh/dotfiles-target.zsh"
+  else
+    rm -f "$TMP/home/.config/zsh/dotfiles-target.zsh"
+  fi
+  env -u NM_HOME -u NM_TEST_START_DAEMON HOME="$TMP/home" HOMEBREW_PREFIX="$TMP/no-brew" \
+    DOTFILES_OSTREE_MARKER="$TMP/no-ostree" DOTFILES_CONTAINER_MARKER="$2" PATH=/usr/bin:/bin \
+    "$zsh" -f -c 'source ~/.config/zsh/dotfiles.zsh; print -r -- "start=${NM_TEST_START_DAEMON-unset} home=${NM_HOME-unset} leak=${_dotfiles_install_target-unset}"'
+}
+
+@test "installTarget distrobox, inside the box: the no-mistakes daemon runs detached in the box" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  touch "$TMP/containerenv"
+  run nm_env distrobox "$TMP/containerenv"
+  [ "$status" -eq 0 ]
+  [ "$output" = "start=1 home=$TMP/home/.no-mistakes leak=unset" ]
+}
+
+@test "installTarget distrobox, on the host: no-mistakes keeps its managed service" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  run nm_env distrobox "$TMP/no-containerenv"
+  [ "$status" -eq 0 ]
+  [ "$output" = "start=unset home=unset leak=unset" ]
+}
+
+@test "installTarget host, or no answer, keeps no-mistakes' managed service even in a container" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  touch "$TMP/containerenv"
+  local target
+  for target in host none; do
+    run nm_env "$target" "$TMP/containerenv"
+    [ "$status" -eq 0 ]
+    [ "$output" = "start=unset home=unset leak=unset" ] || { echo "$target: $output"; false; }
+  done
+}
+
 # Starship prints each config warning once per cache dir, so every check gets a fresh one.
 starship_warnings() { STARSHIP_CACHE="$(mktemp -d "$TMP/cache.XXXXXX")" STARSHIP_CONFIG="$1" starship prompt 2>&1 >/dev/null; }
 

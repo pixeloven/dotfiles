@@ -13,6 +13,8 @@
 # macOS: glow reads ~/Library/Preferences/glow; Ghostty loads macos.ghostty
 .config/glow/glow.yml
 .config/ghostty/linux.ghostty
+# macOS: installTarget is Linux only
+.config/zsh/dotfiles-target.zsh
 {{- else }}
 # Linux: glow reads ~/.config/glow; Ghostty loads linux.ghostty
 Library

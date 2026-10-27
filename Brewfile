@@ -40,3 +40,20 @@ if OS.linux?
   brew "wl-clipboard"
   brew "xclip"
 end
+
+# Ops tools, only when chezmoi init's opsTools answer is yes (any OS); the brew-bundle script sets
+# HOMEBREW_DOTFILES_OPS_TOOLS from it. docker is the CLI only; RUNBOOK section 9a has the
+# podman-socket option for a distrobox. terraform comes from HashiCorp's tap (not in
+# homebrew-core: BUSL licence).
+if ENV["HOMEBREW_DOTFILES_OPS_TOOLS"] == "1"
+  tap "hashicorp/tap"
+  tap "siderolabs/tap"
+  brew "kubernetes-cli"
+  brew "helm"
+  brew "argocd"
+  brew "siderolabs/tap/talosctl"
+  brew "siderolabs/tap/omnictl"
+  brew "hashicorp/tap/terraform"
+  brew "ansible"
+  brew "docker"
+end

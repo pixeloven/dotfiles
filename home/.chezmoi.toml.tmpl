@@ -1,12 +1,19 @@
 {{- $terminal := "ghostty" -}}
+{{- $installTarget := "host" -}}
 {{- if eq .chezmoi.os "linux" -}}
 {{-   $terminal = promptChoiceOnce . "terminal" "Terminal app on this Linux machine" (list "ptyxis" "ghostty" "other") "ptyxis" -}}
+{{-   $suggested := "host" -}}
+{{-   if or (stat "/run/ostree-booted") (stat "/run/host/run/ostree-booted") -}}{{ $suggested = "distrobox" }}{{- end -}}
+{{-   $installTarget = promptChoiceOnce . "installTarget" "Install tools on this host, or only inside a distrobox" (list "host" "distrobox") $suggested -}}
 {{- end -}}
+{{- $opsTools := promptBoolOnce . "opsTools" "Install the ops tools (kubectl, helm, argocd, talosctl, omnictl, terraform, ansible, docker CLI)" false -}}
 {{- $container := or (env "CONTAINER_ID") (stat "/run/.containerenv") (stat "/.dockerenv") | not | not -}}
-# Linux asks one question (the terminal, answered once); macOS asks nothing. This repo holds no
-# names, emails, or other personal data.
+# Linux asks the terminal and where tools install; both OSes ask about the ops tools. Each is asked
+# once. This repo holds no names, emails, or other personal data.
 sourceDir = "~/Development/dotfiles"
 
 [data]
 terminal = {{ $terminal | quote }}
+installTarget = {{ $installTarget | quote }}
+opsTools = {{ $opsTools }}
 container = {{ $container }}

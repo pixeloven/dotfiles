@@ -22,7 +22,10 @@ setup() {
 case "$*" in
   "leaves --installed-on-request") printf '%s\n' bat $STUB_EXTRA_FORMULA ;;
   "list --cask") echo ghostty ;;
-  "bundle list --all --file="*) printf 'bat\nghostty\n' ;;
+  "bundle list --all --file="*) printf 'bat\nghostty\n'
+    # The Brewfile's ops tools block, read through the variable the real Brewfile checks.
+    [ "$HOMEBREW_DOTFILES_OPS_TOOLS" = 1 ] && echo kubernetes-cli
+    exit 0 ;;
   "bundle check --verbose --no-upgrade --file="*)
     # Like Homebrew 7, the missing-package lines go to stderr.
     [ -n "$STUB_MISSING" ] && { echo "→ Formula $STUB_MISSING needs to be installed." >&2; exit 1; }
@@ -107,6 +110,25 @@ teardown() { rm -rf "$TMP"; }
   [[ "$output" == *$'pkg-missing\tglow'* ]] || false
   run "$R/bin/drift" --summary
   [ "$output" = "dotfiles: 1 changes not codified - run /codify" ]
+}
+
+@test "ops tools count as listed only when opsTools is true" {
+  export STUB_EXTRA_FORMULA=kubernetes-cli
+  run "$R/bin/drift"
+  [[ "$output" == *$'pkg-extra\tkubernetes-cli'* ]] || false
+  printf '[data]\nopsTools = true\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" != *kubernetes-cli* ]] || false
+}
+
+@test "installTarget distrobox checks no packages outside a container" {
+  export STUB_MISSING=glow DOTFILES_CONTAINER_MARKER="$TMP/no-containerenv"
+  printf '[data]\ninstallTarget = "distrobox"\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" != *pkg-missing* ]] || false
+  touch "$TMP/containerenv"
+  DOTFILES_CONTAINER_MARKER="$TMP/containerenv" run "$R/bin/drift"
+  [[ "$output" == *$'pkg-missing\tglow'* ]] || false
 }
 
 @test "summary is one line or empty" {

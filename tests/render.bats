@@ -87,10 +87,40 @@ Library/Preferences/glow/glow.yml"
   [ "$(sed "s#$TMP/darwin#H#" "$mac")" = "$(sed "s#$TMP/linux#H#" "$linux")" ]
 }
 
-@test "macOS init asks nothing and picks Ghostty" {
-  run init_config darwin --promptChoice "Terminal app on this Linux machine=other"
+@test "macOS init asks only about the ops tools, and picks Ghostty and the host" {
+  run init_config darwin --promptChoice "Terminal app on this Linux machine=other" \
+    --promptChoice "Install tools on this host, or only inside a distrobox=distrobox"
   [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "ghostty"'* ]] || false
+  [[ "$output" == *'installTarget = "host"'* ]] || false
+  [[ "$output" == *'opsTools = false'* ]] || false
+}
+
+@test "init records the ops tools answer on both OSes, defaulting to no" {
+  local os
+  for os in darwin linux; do
+    run init_config "$os" --promptBool "Install the ops tools (kubectl, helm, argocd, talosctl, omnictl, terraform, ansible, docker CLI)=true"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'opsTools = true'* ]] || { echo "$os: $output"; false; }
+  done
+}
+
+@test "Linux init records where tools install" {
+  run init_config linux --promptChoice "Install tools on this host, or only inside a distrobox=distrobox"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'installTarget = "distrobox"'* ]] || false
+  { [ -e /run/ostree-booted ] || [ -e /run/host/run/ostree-booted ]; } && skip "an image-based host suggests distrobox"
+  run init_config linux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'installTarget = "host"'* ]] || false
+}
+
+@test "the installTarget answer reaches zsh on Linux only" {
+  run render linux
+  [[ "$output" == *.config/zsh/dotfiles-target.zsh* ]] || false
+  grep -qx '_dotfiles_install_target="host"' "$TMP/linux/.config/zsh/dotfiles-target.zsh"
+  run render darwin
+  [[ "$output" != *dotfiles-target* ]] || false
 }
 
 @test "Linux init records the terminal answer, defaulting to Ptyxis" {
