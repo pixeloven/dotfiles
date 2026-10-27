@@ -33,6 +33,7 @@ case "$*" in
   "plugin list --json") cat "$d/claude-list.json" ;;
   "plugin marketplace list --json") cat "$d/claude-mkt.json" ;;
   "plugin marketplace add "*) echo '[{"name":"pixeloven"}]' > "$d/claude-mkt.json" ;;
+  "plugin marketplace update "*) [ ! -e "$d/offline" ] ;;
   "plugin install "*)
     jq --arg id "$3" '. + [{id: $id, scope: "user", enabled: true}]' "$d/claude-list.json" > "$d/t" && mv "$d/t" "$d/claude-list.json" ;;
 esac
@@ -45,6 +46,7 @@ case "$*" in
   "plugin list --marketplace pixeloven --json") cat "$d/codex-list.json" ;;
   "plugin marketplace list --json") cat "$d/codex-mkt.json" ;;
   "plugin marketplace add "*) echo '{"marketplaces":[{"name":"pixeloven"}]}' > "$d/codex-mkt.json" ;;
+  "plugin marketplace upgrade "*) [ ! -e "$d/offline" ] ;;
   "plugin add "*)
     n="${3%@*}"
     jq --arg n "$n" '.installed |= (map(select(.name != $n)) + [{name: $n, installed: true, enabled: true, version: "1.0.0"}])' \
@@ -137,6 +139,7 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
     calls | grep -qxF "codex plugin add $p@pixeloven --json"
   done
   [ "$(installs | wc -l | tr -d ' ')" -eq 15 ]
+  [ -z "$(calls | grep -E 'marketplace (update|upgrade)')" ] # a marketplace added just now is current
 }
 
 @test "ensure installs only the missing names" {
@@ -146,6 +149,7 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
   run "$LIB" ensure
   [ "$status" -eq 0 ]
   [ -z "$(calls | grep 'marketplace add')" ]
+  [ -z "$(calls | grep 'marketplace upgrade')" ] # Codex has every plugin, so its marketplace is left alone
   [ "$(installs | grep -c '^claude ')" -eq 1 ]
   calls | grep -qxF "claude plugin install language-skills@pixeloven --scope user --json"
   [ -z "$(installs | grep '^codex ')" ]
@@ -153,6 +157,29 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
   [ -z "$(installs | grep 'pixeloven/crew')" ]
   run "$LIB" ensure
   [ "$(installs | wc -l | tr -d ' ')" -eq 5 ]
+}
+
+@test "ensure refreshes an existing marketplace before installing from it, and installs from the local copy when offline" {
+  claude_has crew true infra-skills true planning-skills true identity-skills true
+  codex_has crew true infra-skills true planning-skills true identity-skills true
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  [ "$(calls | grep -c 'marketplace update')" -eq 1 ]
+  [ "$(calls | grep -c 'marketplace upgrade')" -eq 1 ]
+  calls | grep -A1 -xF "claude plugin marketplace update pixeloven --json" | grep -qxF "claude plugin install language-skills@pixeloven --scope user --json"
+  calls | grep -A1 -xF "codex plugin marketplace upgrade pixeloven --json" | grep -qxF "codex plugin add language-skills@pixeloven --json"
+  claude_has crew true infra-skills true planning-skills true identity-skills true
+  codex_has crew true infra-skills true planning-skills true identity-skills true
+  touch "$CLAUDE_CONFIG_DIR/offline" "$CODEX_HOME/offline"; rm "$TMP/calls"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"could not refresh claude's pixeloven marketplace; using this machine's local copy"* ]] || false
+  [[ "$output" == *"could not refresh codex's pixeloven marketplace; using this machine's local copy"* ]] || false
+  calls | grep -qxF "claude plugin install language-skills@pixeloven --scope user --json"
+  calls | grep -qxF "codex plugin add language-skills@pixeloven --json"
+  rm "$TMP/calls"
+  run "$LIB" ensure # nothing missing any more, so nothing is refreshed
+  [ -z "$(calls | grep -E 'marketplace (update|upgrade)')" ]
 }
 
 @test "a disabled plugin is never re-installed" {

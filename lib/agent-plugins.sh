@@ -65,6 +65,12 @@ catalogue() { # set CATALOGUE once: check stays offline on the local copy; ensur
   esac
 }
 
+refresh() { # <tool> <args...> : refresh a tool's marketplace clone before ensure installs from it; when that
+  # fails (offline), warn and let the install use this machine's local copy, as catalogue does for pi
+  say "$*"
+  "$@" </dev/null >/dev/null || say "could not refresh $1's $MARKET marketplace; using this machine's local copy, which may be behind"
+}
+
 pinned() { # <name> : the catalogue's commit SHA for name, or nothing
   [ -n "$CATALOGUE" ] || return 0
   jq -r --arg n "$1" '.plugins[]? | select(.name == $n) | .source.sha // empty' "$CATALOGUE" 2>/dev/null
@@ -80,13 +86,15 @@ claude_list() { # "<name> <enabled>" for each pixeloven plugin installed at user
     jq -r --arg m "@$MARKET" '.[]? | select(.scope == "user" and (.id | endswith($m))) | "\(.id | rtrimstr($m)) \(.enabled)"'
 }
 
-claude_ensure() {
-  local list p
+claude_ensure() { # a marketplace added just now is current; an existing one is refreshed before the first install
+  local list p fresh=""
   claude plugin marketplace list --json 2>/dev/null | jq -e --arg m "$MARKET" 'any(.[]?; .name == $m)' >/dev/null ||
-    run claude plugin marketplace add "$SOURCE" --json
+    { run claude plugin marketplace add "$SOURCE" --json; fresh=1; }
   list="$(claude_list)"
   for p in $(names); do
-    listed "$list" "$p" >/dev/null || run claude plugin install "$p@$MARKET" --scope user --json
+    listed "$list" "$p" >/dev/null && continue
+    [ -n "$fresh" ] || { refresh claude plugin marketplace update "$MARKET" --json; fresh=1; }
+    run claude plugin install "$p@$MARKET" --scope user --json
   done
 }
 
@@ -122,13 +130,15 @@ codex_list() { # "<name> <enabled> <version>" for each installed pixeloven plugi
     jq -r '.installed[]? | select(.installed != false) | "\(.name) \(.enabled) \(.version)"'
 }
 
-codex_ensure() {
-  local list p
+codex_ensure() { # as claude_ensure
+  local list p fresh=""
   codex plugin marketplace list --json 2>/dev/null | jq -e --arg m "$MARKET" 'any(.marketplaces[]?; .name == $m)' >/dev/null ||
-    run codex plugin marketplace add "$SOURCE" --json
+    { run codex plugin marketplace add "$SOURCE" --json; fresh=1; }
   list="$(codex_list)"
   for p in $(names); do
-    listed "$list" "$p" >/dev/null || run codex plugin add "$p@$MARKET" --json
+    listed "$list" "$p" >/dev/null && continue
+    [ -n "$fresh" ] || { refresh codex plugin marketplace upgrade "$MARKET" --json; fresh=1; }
+    run codex plugin add "$p@$MARKET" --json
   done
 }
 
