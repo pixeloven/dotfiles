@@ -33,6 +33,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Suggestion colour: `ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#7f849c'` in `dotfiles.zsh`.
   - fzf colours: `FZF_DEFAULT_OPTS` in `dotfiles.zsh`; the Tab menu uses the same colours.
   - An alias or option: add it to `dotfiles.zsh` if it's safe to publish; anything private (keys, tokens, machine paths) goes in `~/.zshrc` outside the marker block.
+  - 1Password variables: the `[data.opEnv]` table in your untracked `~/.config/chezmoi/chezmoi.toml` (name → `op://` ref), read into the shell by `home/dot_config/zsh/op-env.zsh.tmpl`. It works only when the service-account token is in `~/.config/harmony/op-sa-token`; see RUNBOOK section 11.
   - Syntax-highlighting colours: `catppuccin_mocha-zsh-syntax-highlighting.zsh` is vendored from Catppuccin (MIT, pinned commit in its header); edit it, or replace it with a newer copy and update the commit.
 - **Try it:** `chezmoi apply`, then open a new tab (or `exec zsh`). `starship explain` shows what each prompt segment is.
 - **Keep it:** `/codify` or `chezmoi edit ~/.config/zsh/dotfiles.zsh`. `/codify` also reports when the `~/.zshrc` source line is missing.
