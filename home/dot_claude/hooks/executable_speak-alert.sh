@@ -32,6 +32,7 @@ note() { # <decision> : log one line, keeping the log short
 mode="${1:-}"
 done_line="All done. Ready for you."
 summaries_on() { [ -e "$HOME/.config/speak-alert/summaries" ]; }
+muted() { [ -e "$HOME/.config/speak-alert/muted" ]; }
 
 codex_headless() { # <hook json> : true for a headless `codex exec` session
   # Codex hooks don't say whether the session is headless; its transcript's first line does.
@@ -153,6 +154,7 @@ render() { # <wav> : render $phrase with $engine into this file, with the lead-i
 
 speak() { # <phrase> : say it with the chosen engine (or the dry run's stand-in)
   phrase="$1"
+  muted && { note "silent: muted"; return; }
   # Dry runs, for tests: any value prints the phrase, except voice, engine, cache (the file a
   # rendered alert lives in) and play (renders, then prints the player instead of playing).
   case "${SPEAK_ALERT_DRY_RUN:-}" in
@@ -198,12 +200,13 @@ speak() { # <phrase> : say it with the chosen engine (or the dry run's stand-in)
   case "$mode" in *summary) [ "$phrase" = "$done_line" ] || keep="" ;; esac
   if [ -n "${SPEAK_ALERT_DRY_RUN:-}" ]; then
     [ -s "$wav" ] || render "$wav" || { note "failed: $engine render"; return; }
+    muted && { note "silent: muted"; return; }
     echo "${player[*]} $wav"
     return
   fi
   (
     { [ -s "$wav" ] || render "$wav"; } || { note "failed: $engine render"; exit 0; }
-    "${player[@]}" "$wav"
+    if muted; then note "silent: muted"; else "${player[@]}" "$wav"; fi
     [ -n "$keep" ] || rm -f "$wav"
   ) > /dev/null 2>&1 < /dev/null &
 }
@@ -221,7 +224,7 @@ fi
 
 [ -n "${FM_TASK_ID:-}" ] && { note "silent: fleet worker"; exit 0; }
 case "${CLAUDE_CODE_ENTRYPOINT:-cli}" in cli) ;; *) note "silent: headless claude"; exit 0 ;; esac
-[ -e "$HOME/.config/speak-alert/muted" ] && { note "silent: muted"; exit 0; }
+muted && { note "silent: muted"; exit 0; }
 
 case "$mode" in
   stop)

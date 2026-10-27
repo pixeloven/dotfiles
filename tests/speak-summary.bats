@@ -165,3 +165,14 @@ codex_payload() { # <originator> <source> <reply>
   run bash -c "PATH='$HOME/bin:$PATH' SPEAK_ALERT_SUMMARIZER=claude-all '$SCRIPT' codex-summary < '$HOME/payload.json'"
   [ "$output" = "dotfiles. Haiku line." ]
 }
+
+@test "a mute pressed while Haiku summarizes silences that summary" {
+  summaries_on
+  payload "A long reply about the socket race."
+  stub_claude "touch '$HOME/.config/speak-alert/muted'; echo 'Fixed the socket race.'"
+  run bash -c "PATH='$HOME/bin:$PATH' SPEAK_ALERT_SUMMARIZER=claude '$SCRIPT' summary < '$HOME/payload.json'"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -q 'summary silent: muted$' "$HOME/.local/state/speak-alert/events.log"
+  ! grep -q 'spoke:' "$HOME/.local/state/speak-alert/events.log"
+}
