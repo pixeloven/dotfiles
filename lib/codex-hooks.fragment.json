@@ -11,6 +11,17 @@
             "statusMessage": "Dotfiles: spoken alert when a turn finishes"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/speak-alert.sh codex-summary",
+            "timeout": 10,
+            "statusMessage": "Dotfiles: spoken summary when a turn finishes (opt-in)"
+          }
+        ]
       }
     ],
     "PermissionRequest": [

@@ -47,6 +47,9 @@ init_config() { # <os> [chezmoi flags] : render .chezmoi.toml.tmpl as `chezmoi i
 .config/zsh/catppuccin_mocha-zsh-syntax-highlighting.zsh
 .config/zsh/dotfiles.zsh
 .local/bin/lastreply
+.local/bin/speak-kokoro
+.local/bin/voice
+.local/bin/voice-cloud
 Library/Preferences/glow/glow.yml"
   [ "$(grep -v 'config file template has changed' <<<"$output")" = "$expected" ]
 }
@@ -58,6 +61,7 @@ Library/Preferences/glow/glow.yml"
   [[ "$output" == *.config/ghostty/linux.ghostty* ]] || false
   [[ "$output" != *macos.ghostty* ]] || false
   [[ "$output" != *org.gnome.Ptyxis* ]] || false
+  [[ "$output" == *.local/bin/dictate* ]] || false
   [ ! -e "$TMP/linux/Library" ]
 }
 

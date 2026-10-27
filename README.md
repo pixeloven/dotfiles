@@ -2,6 +2,8 @@
 
 Terminal setup as code for macOS and Linux: Ghostty, herdr, zsh with Starship, Claude Code alerts, and bat/delta/glow, all on the dark Catppuccin Mocha theme. Managed with [chezmoi](https://chezmoi.io) and a Homebrew `Brewfile`.
 
+**Mute:** `voice mute` and `voice unmute` silence or restore spoken alerts and summaries for Claude Code and Codex. `voice toggle` flips mute and can sit on a key in any desktop (RUNBOOK section 4c). `voice status` shows what is on.
+
 ## What's managed
 
 | Managed in full (safe to publish) | Patched key by key (never committed) |
@@ -9,7 +11,7 @@ Terminal setup as code for macOS and Linux: Ghostty, herdr, zsh with Starship, C
 | `~/.config/ghostty/config.ghostty` | `~/.claude/settings.json`: only the hooks in `lib/claude-hooks.fragment.json` |
 | `~/.config/herdr/config.toml` | `~/.gitconfig`: only the delta/merge keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh` |
 | `~/.config/bat/config`, glow's `glow.yml` (`~/Library/Preferences/glow/` on macOS, `~/.config/glow/` on Linux) | |
-| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
+| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/`, the voice helpers `~/.local/bin/voice`, `speak-kokoro`, `voice-cloud` and (Linux) `dictate` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
 | `~/.config/zsh/`, `~/.config/starship.toml` | |
 | Linux with Ptyxis: `~/.local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` | Ptyxis GSettings: only the default profile's palette in `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl` |
 | | Claude Code, Codex and pi plugin registries (`~/.claude/plugins/`, `~/.codex/config.toml`, `~/.pi/agent/settings.json`): only the plugins in `lib/agent-plugins.txt`, installed when missing and never re-installed |

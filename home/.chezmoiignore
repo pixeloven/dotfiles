@@ -15,6 +15,8 @@
 .config/ghostty/linux.ghostty
 # macOS: installTarget is Linux only
 .config/zsh/dotfiles-target.zsh
+# macOS: VoiceInk is the push-to-talk (Brewfile); dictate is the Linux one
+.local/bin/dictate
 {{- else }}
 # Linux: glow reads ~/.config/glow; Ghostty loads linux.ghostty
 Library

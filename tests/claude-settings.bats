@@ -15,7 +15,7 @@ teardown() { rm -rf "$TMP"; }
 @test "merge adds Stop and Notification hooks" {
   run "$MERGE" "$SETTINGS" "$FRAGMENT"
   [ "$status" -eq 0 ]
-  [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 1 ]
+  [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 2 ]
   [[ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh stop"* ]] || false
   [[ "$(jq -r '.hooks.Notification[0].hooks[0].command' "$SETTINGS")" == *"speak-alert.sh notify"* ]] || false
 }
@@ -59,6 +59,22 @@ teardown() { rm -rf "$TMP"; }
   [ -z "$(ls "$TMP" | grep '\.bak-' || true)" ]
 }
 
+@test "merge adds the spoken summary as its own async Stop hook" {
+  "$MERGE" "$SETTINGS" "$FRAGMENT"
+  [ "$(jq -r '.hooks.Stop[1].hooks[0].command' "$SETTINGS")" = "~/.claude/hooks/speak-alert.sh summary" ]
+  [ "$(jq '.hooks.Stop[1].hooks[0].async' "$SETTINGS")" = "true" ]
+  [ "$(jq '.hooks.Stop[0].hooks[0] | has("async")' "$SETTINGS")" = "false" ]
+}
+
+@test "merge onto the previous fragment adds the summary hook without duplicating the done line" {
+  APPLIED="$TMP/applied.json"
+  jq 'del(.hooks.Stop[1])' "$FRAGMENT" > "$TMP/old-fragment.json"
+  "$MERGE" "$SETTINGS" "$TMP/old-fragment.json" "$APPLIED"
+  "$MERGE" "$SETTINGS" "$FRAGMENT" "$APPLIED"
+  [ "$(jq '[.hooks.Stop[].hooks[] | select(.command == "~/.claude/hooks/speak-alert.sh stop")] | length' "$SETTINGS")" -eq 1 ]
+  [ "$(jq '[.hooks.Stop[].hooks[] | select(.command == "~/.claude/hooks/speak-alert.sh summary")] | length' "$SETTINGS")" -eq 1 ]
+}
+
 @test "merge adds the drift notice to SessionStart" {
   "$MERGE" "$SETTINGS" "$FRAGMENT"
   [ "$(jq '.hooks.SessionStart | length' "$SETTINGS")" -eq 5 ]
@@ -72,7 +88,7 @@ teardown() { rm -rf "$TMP"; }
   [ "$(jq '[.hooks.Stop[].hooks[].command] | index("old-stop-command")' "$SETTINGS")" = "0" ]
   "$MERGE" "$SETTINGS" "$FRAGMENT" "$APPLIED"
   [ "$(jq '[.hooks.Stop[].hooks[].command] | index("old-stop-command")' "$SETTINGS")" = "null" ]
-  [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 1 ]
+  [ "$(jq '.hooks.Stop | length' "$SETTINGS")" -eq 2 ]
   [ "$(jq '[.hooks.SessionStart[] | select(.hooks[0].command | test("axi|herdr"))] | length' "$SETTINGS")" -eq 4 ]
 }
 
@@ -95,6 +111,7 @@ teardown() { rm -rf "$TMP"; }
   run "$MERGE" "$H" "$CODEX_FRAGMENT" "$TMP/codex-applied.json"
   [ "$status" -eq 0 ]
   [[ "$(jq -r '[.hooks.Stop[].hooks[].command] | join(" ")' "$H")" == *"speak-alert.sh codex-stop"* ]] || false
+  [[ "$(jq -r '[.hooks.Stop[].hooks[].command] | join(" ")' "$H")" == *"speak-alert.sh codex-summary"* ]] || false
   [[ "$(jq -r '[.hooks.PermissionRequest[].hooks[].command] | join(" ")' "$H")" == *"speak-alert.sh codex-permission"* ]] || false
   [[ "$(jq -r '[.hooks.SessionStart[].hooks[].command] | join(" ")' "$H")" == *"gh-axi"* ]] || false
   [[ "$(jq -r '[.hooks.SessionStart[].hooks[].command] | join(" ")' "$H")" == *"drift --hook"* ]] || false
