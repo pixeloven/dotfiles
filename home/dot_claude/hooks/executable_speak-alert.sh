@@ -66,10 +66,11 @@ HEURISTIC_JQ='
   | (if ($s | length) > 1 and (($one + " " + $s[1]) | length) <= 220 then $one + " " + $s[1] else $one end)
   | if length > 220 then .[0:220] | sub("\\s+\\S*$"; "") else . end'
 
-with_timeout() { # <seconds> <stdin file> <command...> : run it, killed after that long
-  local secs="$1" input="$2" pid watcher rc
-  shift 2
-  "$@" < "$input" &
+with_timeout() { # <seconds> <stdin file> <stdout file> <command...> : run it, killed after that long
+  # Output goes to a file, not a pipe, so a child left holding it can't stall the caller.
+  local secs="$1" input="$2" output="$3" pid watcher rc
+  shift 3
+  "$@" < "$input" > "$output" &
   pid=$!
   ( sleep "$secs"; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
   watcher=$!
@@ -92,12 +93,12 @@ summarize() { # <hook json> : the phrase to speak for this reply
       if command -v claude >/dev/null 2>&1 && tmp="$(mktemp 2>/dev/null)"; then
         printf '%s' "$message" > "$tmp"
         # A failed call (signed out, timed out) prints its error, so only a clean exit counts.
-        text="$(with_timeout "${SPEAK_ALERT_SUMMARY_TIMEOUT:-15}" "$tmp" env -u CLAUDECODE claude -p \
+        with_timeout "${SPEAK_ALERT_SUMMARY_TIMEOUT:-15}" "$tmp" "$tmp.out" env -u CLAUDECODE claude -p \
           --model haiku --no-session-persistence --settings '{"disableAllHooks":true}' \
-          "Summarize the reply on stdin as one short spoken sentence of at most 25 words, for someone looking away from the screen. No code, paths, URLs or markdown. Reply with only that sentence." 2>/dev/null)" &&
-          text="$(printf '%s' "$text" | tr '\n' ' ' | jq -rR 'gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "") | .[0:220]')" ||
+          "Summarize the reply on stdin as one short spoken sentence of at most 25 words, for someone looking away from the screen. No code, paths, URLs or markdown. Reply with only that sentence." 2>/dev/null &&
+          text="$(tr '\n' ' ' < "$tmp.out" | jq -rR 'gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "") | .[0:220]')" ||
           text=""
-        rm -f "$tmp"
+        rm -f "$tmp" "$tmp.out"
       fi
       ;;
   esac

@@ -127,6 +127,16 @@ STUB
   [ $((SECONDS - start)) -lt 10 ]
 }
 
+@test "the Haiku timeout is not held up by a child that keeps stdout open" {
+  summaries_on
+  stub_claude 'sleep 30; echo late'
+  payload "Fixed it."
+  start=$SECONDS
+  run bash -c "PATH='$HOME/bin:$PATH' SPEAK_ALERT_SUMMARIZER=claude SPEAK_ALERT_SUMMARY_TIMEOUT=1 '$SCRIPT' summary < '$HOME/payload.json'"
+  [ "$output" = "dotfiles. Fixed it." ]
+  [ $((SECONDS - start)) -lt 10 ]
+}
+
 codex_payload() { # <originator> <source> <reply>
   printf '{"type":"session_meta","payload":{"originator":"%s","source":"%s"}}\n' "$1" "$2" > "$HOME/rollout.jsonl"
   jq -cn --arg m "$3" --arg t "$HOME/rollout.jsonl" '{cwd: "/x/dotfiles", transcript_path: $t, last_assistant_message: $m}' > "$HOME/payload.json"
