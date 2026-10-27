@@ -25,12 +25,12 @@ REPO="$BATS_TEST_DIRNAME/.."
   fi
 }
 
-@test "brewfile installs the ops tools only inside a Linux container" {
+@test "brewfile installs the ops tools only on Linux that is not an image-based host" {
   run brew bundle list --file="$REPO/Brewfile" --all
   [ "$status" -eq 0 ]
   local pkg
   for pkg in kubernetes-cli helm argocd siderolabs/tap/talosctl siderolabs/tap/omnictl hashicorp/tap/terraform ansible docker; do
-    if [ "$(uname -s)" = Linux ] && [ -e /run/.containerenv ]; then
+    if [ "$(uname -s)" = Linux ] && [ ! -e /run/ostree-booted ]; then
       grep -qxF "$pkg" <<<"$output" || { echo "missing $pkg"; false; }
     else
       ! grep -qxF "$pkg" <<<"$output" || { echo "unexpected $pkg"; false; }
@@ -79,8 +79,14 @@ brew_script() { # <stub-brew-body | none> [ostree-marker]
 }
 
 @test "the distrobox file builds ubuntu-dev on the shared home, without a GPU" {
-  local ini="$REPO/lib/distrobox/ubuntu-dev.ini"
-  grep -qx '\[ubuntu-dev\]' "$ini"
-  grep -qx 'nvidia=false' "$ini"
-  ! grep -qE '^home=' "$ini" || false
+  run python3 -I -c '
+import configparser, sys
+ini = configparser.ConfigParser(strict=True, interpolation=None)
+with open(sys.argv[1]) as f:
+    ini.read_file(f)
+box = ini["ubuntu-dev"]
+print(ini.sections(), box["nvidia"], "home" in box)
+' "$REPO/lib/distrobox/ubuntu-dev.ini"
+  [ "$status" -eq 0 ]
+  [ "$output" = "['ubuntu-dev'] false False" ]
 }

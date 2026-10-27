@@ -41,10 +41,11 @@ if OS.linux?
   brew "xclip"
 end
 
-# Ops tools, only inside a Linux container (the distrobox; podman writes /run/.containerenv): never
-# on an image-based host, and not on the Mac. docker is the CLI only; RUNBOOK section 9 has the
-# podman-socket option. terraform comes from HashiCorp's tap (not in homebrew-core: BUSL licence).
-if OS.linux? && File.exist?("/run/.containerenv")
+# Ops tools, on any Linux that is not an image-based host (/run/ostree-booted): the distrobox, or a
+# plain Linux dev machine. Never on the image host, and not on the Mac. docker is the CLI only;
+# RUNBOOK section 9 has the podman-socket option. terraform comes from HashiCorp's tap (not in
+# homebrew-core: BUSL licence).
+if OS.linux? && !File.exist?("/run/ostree-booted")
   tap "hashicorp/tap"
   tap "siderolabs/tap"
   brew "kubernetes-cli"
