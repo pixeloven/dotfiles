@@ -46,10 +46,11 @@ OPS_TOOLS=(kubernetes-cli helm argocd siderolabs/tap/talosctl siderolabs/tap/omn
 # its calls and the ops tools variable it sees. $3 is the container marker file (absent unless the
 # test creates it).
 brew_script() { # <stub-brew-body | none> [data-json] [container-marker]
-  local tmp="$BATS_TEST_TMPDIR"
+  local tmp="$BATS_TEST_TMPDIR" data='{}'
+  [ -z "${2:-}" ] || data="$2"
   mkdir -p "$tmp/bin"
-  chezmoi --source "$REPO" --config "$tmp/none.toml" execute-template --override-data "${2:-{\}}" \
-    < "$REPO/home/.chezmoiscripts/run_before_00-brew-bundle.sh.tmpl" > "$tmp/brew-bundle.sh"
+  chezmoi --source "$REPO" --config "$tmp/none.toml" execute-template --override-data "$data" \
+    < "$REPO/home/.chezmoiscripts/run_before_00-brew-bundle.sh.tmpl" > "$tmp/brew-bundle.sh" || return
   if [ "$1" != none ]; then
     printf '#!/bin/sh\necho "$*" >> "%s/calls"\necho "ops=$HOMEBREW_DOTFILES_OPS_TOOLS" >> "%s/env"\n%s\n' "$tmp" "$tmp" "$1" > "$tmp/bin/brew"
     chmod +x "$tmp/bin/brew"
