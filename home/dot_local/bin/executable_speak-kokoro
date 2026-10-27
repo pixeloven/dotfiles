@@ -1,0 +1,50 @@
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.11,<3.14"
+# dependencies = ["kokoro-onnx>=0.4,<1", "soundfile>=0.12"]
+# ///
+"""speak-kokoro: render text to a WAV file with the local Kokoro-82M voice model (kokoro-onnx, CPU).
+
+Usage: speak-kokoro [--voice af_heart] [--speed 1.0] [--lang en-us] [--model PATH] [--voices PATH]
+                    --out FILE.wav TEXT
+
+speak-alert.sh calls it for spoken alerts on Linux. The model files are downloaded once
+(RUNBOOK section 5) to ~/.local/share/kokoro: kokoro-v1.0.onnx and voices-v1.0.bin.
+uv fetches the Python packages on the first run and caches them. It never plays audio.
+"""
+
+import argparse
+import os
+import sys
+
+SHARE = os.path.expanduser("~/.local/share/kokoro")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="speak-kokoro", description="Render text to a WAV file with Kokoro.")
+    parser.add_argument("--voice", default="af_heart")
+    parser.add_argument("--speed", type=float, default=1.0)
+    parser.add_argument("--lang", default="en-us")
+    parser.add_argument("--model", default=os.path.join(SHARE, "kokoro-v1.0.onnx"))
+    parser.add_argument("--voices", default=os.path.join(SHARE, "voices-v1.0.bin"))
+    parser.add_argument("--out", required=True)
+    parser.add_argument("text")
+    args = parser.parse_args()
+
+    for path in (args.model, args.voices):
+        if not os.path.isfile(path):
+            print(f"speak-kokoro: missing {path} (see RUNBOOK section 5)", file=sys.stderr)
+            return 1
+
+    import soundfile
+    from kokoro_onnx import Kokoro
+
+    samples, rate = Kokoro(args.model, args.voices).create(
+        args.text, voice=args.voice, speed=args.speed, lang=args.lang
+    )
+    soundfile.write(args.out, samples, rate, format="WAV")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

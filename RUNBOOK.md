@@ -33,23 +33,63 @@ macOS only.
 
 ## 4. Dictation
 
-macOS only for now.
+There are two layers, on both OSes: Claude Code's own `/voice` for Claude Code prompts, and one global push-to-talk key for everything else (Codex, a shell, any herdr pane). Neither needs root, uinput or an input daemon.
 
-Option A, nothing to install:
-1. System Settings → Keyboard → Dictation: turn **on**, and set the shortcut to **Press 🌐 twice** (Fn twice).
+### 4a. Claude Code `/voice` (hold Space)
 
-Option B, better with technical words:
-1. Install Superwhisper (https://superwhisper.com) or Wispr Flow.
-2. Pick a local English model and set a push-to-talk key.
-3. Turn on "paste into the active app".
+`/voice` streams your speech to Anthropic for transcription. That uses no messages or tokens, but it needs a Claude.ai login, not an API key. Dotfiles never turns it on for you.
 
-**Done when:** speaking into a Claude Code prompt inside herdr types the text.
+1. *Both OSes.* In Claude Code, run `/voice hold`. Then hold **Space** while you speak and let go to stop. `/voice tap` toggles instead, and `/voice off` turns it off. The setting is stored in your untracked `~/.claude/settings.json`.
+2. *Optional.* To skip the short warmup of a held Space, bind a modifier combo in `~/.claude/keybindings.json`: `voice:pushToTalk` in the `Chat` context, for example `meta+k`.
+3. *macOS.* There's nothing to install. Allow microphone access for your terminal when macOS asks.
+4. *Linux distrobox (and a Linux host without ALSA tools).* Claude Code records through ALSA (`arecord`, or SoX `rec`). The box sees `/dev/snd`, but nothing routes ALSA to the desktop's PipeWire. Inside the box, run `sudo apt-get install -y alsa-utils pipewire-alsa`. This installs into the box only. Don't add `~/.asoundrc`, because the box shares your home with the host.
+   **Done when:** `arecord -l` lists a capture device, and `arecord -d 3 -f S16_LE -r 16000 /tmp/voice-check.wav` records three seconds into a file larger than 44 bytes.
+   If Claude Code ends up using SoX, also run `sudo apt-get install -y sox libsox-fmt-pulse`.
 
-## 5. Premium voice for spoken alerts
+**Done when:** holding Space in a Claude Code prompt and speaking types the text.
 
-macOS only. On Linux, alerts are silent for now; the voice approach is tracked in dotfiles issue #1.
+### 4b. Global push-to-talk
 
-macOS's free Premium voices are on-device and far more natural than the default. They can't be downloaded from a script. Once one is installed, the alert uses it automatically.
+*macOS.* VoiceInk (from the Brewfile) does on-device transcription with local Whisper or Parakeet models and custom words.
+1. Open VoiceInk, download a local model (Parakeet or Whisper large-v3-turbo), and allow Microphone and Accessibility access.
+2. Set its shortcut, for example a held Right Option, and turn on pasting into the active app.
+3. Superwhisper and Wispr Flow are paid alternatives. Apple Dictation (System Settings → Keyboard → Dictation, **Press 🌐 twice**) needs nothing installed.
+
+*Linux.* `dictate` (`~/.local/bin/dictate`) is a toggle. The first press starts recording. The second press stops it, transcribes locally with whisper.cpp (from the Brewfile), and types the text into herdr's focused pane: Claude Code, Codex or a shell. If herdr isn't running, or no pane has focus, the text goes to the clipboard with a notification.
+1. Download the speech model (about 550 MB) where you run tools. In a distrobox setup, that's inside the box:
+   ```sh
+   mkdir -p ~/.local/share/whisper
+   curl -fL -o ~/.local/share/whisper/ggml-large-v3-turbo-q5_0.bin \
+     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
+   ```
+   **Done when:** `whisper-cli --help` prints its usage, and running `dictate` twice in a herdr pane types what you said into that pane.
+2. Add the global key by hand, once, on the **host's** GNOME. Dotfiles never changes host GNOME settings. Pick a free key: Ctrl+Alt+T and Ctrl+Shift+Esc are often taken, so Ctrl+Alt+D is the suggestion. The first command overwrites your list of custom shortcuts, so if `gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings` already lists paths, keep them in the new list.
+   ```sh
+   p=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/dictate/
+   gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$p']"
+   s="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$p"
+   gsettings set "$s" name 'Dictate into herdr'
+   gsettings set "$s" binding '<Control><Alt>d'
+   # Linux distrobox: run it in the box. Linux host: use  sh -c '"$HOME/.local/bin/dictate"'
+   gsettings set "$s" command "sh -c 'distrobox enter ubuntu-dev -- \"\$HOME/.local/bin/dictate\"'"
+   ```
+   You can also add it in Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts, with the same command.
+   **Done when:** with a herdr pane focused, pressing Ctrl+Alt+D shows "Listening…", and after you speak, pressing it again types your words into that pane.
+3. *Optional.*
+   - `DICTATE_PROMPT` lists words to expect, such as repo and tool names.
+   - `DICTATE_MODEL` points at another ggml model.
+   - `dictate --cancel` throws a recording away.
+   - For the cloud engine, see CUSTOMIZE.md.
+
+   Variables for the global key go in its command, for example `distrobox enter ubuntu-dev -- env DICTATE_PROMPT='pixeloven, Bazzite' "$HOME/.local/bin/dictate"`.
+
+GNOME shortcuts fire on key press only, so this is a toggle, not hold-to-talk.
+
+## 5. Voice for spoken alerts
+
+### 5a. macOS: Premium voice
+
+macOS's free Premium voices run on-device and sound far more natural than the default. They can't be downloaded from a script. Once one is installed, the alert uses it automatically.
 
 1. Open **System Settings → Accessibility → Read & Speak**. In macOS 26 this panel replaced "Spoken Content"; on macOS 15 and earlier it's still called Spoken Content. Shortcut: type `System voice` in the Settings search box.
 2. Next to **System voice**, click the ⓘ (or the menu) → **Manage Voices…**
@@ -58,13 +98,32 @@ macOS's free Premium voices are on-device and far more natural than the default.
 5. Check: `say -v '?' | grep Premium` lists the voice.
 6. Listen: `say -v "Zoe (Premium)" -r 120 "All done. Ready for you."`.
 
-Until a Premium voice is installed, alerts use your macOS **System voice** (e.g. a Siri voice), which is already decent. If several Premium voices are installed, the alert uses the first one alphabetically. To pin one, set `SPEAK_ALERT_VOICE="Zoe (Premium)"`, or change the default in `speak-alert.sh` (see CUSTOMIZE.md).
+Until a Premium voice is installed, alerts use your macOS **System voice** (e.g. a Siri voice), which is already decent. If several Premium voices are installed, the alert uses the first one alphabetically. To pin one, set `SPEAK_ALERT_VOICE="Zoe (Premium)"`, or change the default in `speak-alert.sh` (see CUSTOMIZE.md). Kokoro (5b) is optional on macOS: set `SPEAK_ALERT_ENGINE=kokoro` and download its model.
 
-On and off:
+### 5b. Linux: Kokoro, a local voice
+
+On Linux, alerts use Kokoro-82M, an open voice model that runs on the CPU. It renders a WAV file, which `paplay` plays on the desktop's PipeWire, also from a distrobox. Until the model is downloaded, alerts stay silent and the log says `silent: no speech backend`.
+
+1. Download the model files (about 340 MB) where you run tools. In a distrobox setup, that's inside the box:
+   ```sh
+   mkdir -p ~/.local/share/kokoro
+   curl -fL -o ~/.local/share/kokoro/kokoro-v1.0.onnx \
+     https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+   curl -fL -o ~/.local/share/kokoro/voices-v1.0.bin \
+     https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+   ```
+   `kokoro-v1.0.int8.onnx` (about 90 MB) is a smaller alternative: point `SPEAK_KOKORO_MODEL` at it.
+2. Warm it up once. uv fetches the Python packages on the first run, which takes a minute: `speak-kokoro --out /tmp/kokoro-check.wav "All done. Ready for you."`.
+   **Done when:** `/tmp/kokoro-check.wav` exists, and `paplay /tmp/kokoro-check.wav` speaks the line.
+
+### 5c. Both OSes: on and off, summaries
+
 - Off: `touch ~/.config/speak-alert/muted`
 - On: `rm ~/.config/speak-alert/muted`
+- Spoken summaries, opt-in: `touch ~/.config/speak-alert/summaries`. At the end of a turn, you hear the project name and the first sentence or two of the reply instead of "All done. Ready for you.". Mute still silences everything. Fleet workers and headless runs stay silent. Undo with `rm ~/.config/speak-alert/summaries`. Codex runs the new hooks only after you approve them in `/hooks`.
+- `tail ~/.local/state/speak-alert/events.log` shows what each alert decided.
 
-**Done when:** a Claude Code reply ends and you hear "All done. Ready for you." in your chosen voice, or nothing while muted.
+**Done when:** a Claude Code reply ends and you hear "All done. Ready for you." (or the summary) in your chosen voice, or nothing while muted.
 
 ## 6. Optional tactical shader
 

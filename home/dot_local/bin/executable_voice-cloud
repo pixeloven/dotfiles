@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# voice-cloud: the opt-in cloud voice engine, for speak-alert (TTS) and dictate (STT). It talks to
+# any OpenAI-compatible speech server at VOICE_CLOUD_URL: a hosted API, or one you run yourself
+# (a Kokoro or Whisper server on this machine or your network). There is no default server.
+# Usage: voice-cloud tts [--voice V] [--speed S] <text> <out.wav>
+#        voice-cloud stt [--prompt P] <in.wav>     prints the transcript
+#        voice-cloud key-source                    where the key comes from (env, keychain,
+#                                                  secret-tool, op or none), never the key
+# Settings: VOICE_CLOUD_URL, the base URL with its version, e.g. http://localhost:8880/v1;
+# VOICE_CLOUD_TTS_MODEL (default tts-1) and VOICE_CLOUD_STT_MODEL (default whisper-1).
+# API key, optional (a self-hosted server may need none), first found wins: VOICE_CLOUD_KEY, the
+# macOS Keychain item dotfiles-voice, `secret-tool lookup service dotfiles-voice`, then
+# `op read "$VOICE_CLOUD_OP_REF"` when that is set. curl reads the key on stdin, never in argv.
+
+set -uo pipefail
+
+die() { echo "voice-cloud: $1" >&2; exit "${2:-1}"; }
+
+resolve_key() { # sets key and key_source
+  key="" key_source=none
+  if [ -n "${VOICE_CLOUD_KEY:-}" ]; then
+    key="$VOICE_CLOUD_KEY" key_source=env
+  elif command -v security >/dev/null 2>&1 &&
+    key="$(security find-generic-password -s dotfiles-voice -w 2>/dev/null)" && [ -n "$key" ]; then
+    key_source=keychain
+  elif command -v secret-tool >/dev/null 2>&1 &&
+    key="$(secret-tool lookup service dotfiles-voice 2>/dev/null)" && [ -n "$key" ]; then
+    key_source=secret-tool
+  elif [ -n "${VOICE_CLOUD_OP_REF:-}" ] && command -v op >/dev/null 2>&1 &&
+    key="$(op read "$VOICE_CLOUD_OP_REF" 2>/dev/null)" && [ -n "$key" ]; then
+    key_source=op
+  else
+    key="" key_source=none
+  fi
+}
+
+post() { # <endpoint> <curl args...> : POST to the server, with the key when there is one
+  local url="${VOICE_CLOUD_URL%/}/$1"
+  shift
+  if [ -n "$key" ]; then
+    key="${key//\\/\\\\}"
+    printf 'header = "Authorization: Bearer %s"\n' "${key//\"/\\\"}" |
+      curl -fsS --max-time 60 -K - "$@" "$url"
+  else
+    curl -fsS --max-time 60 "$@" "$url"
+  fi
+}
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  tts|stt) ;;
+  key-source) resolve_key; echo "$key_source"; exit 0 ;;
+  -h|--help) sed -n '2,13s/^# \{0,1\}//p' "$0"; exit 0 ;;
+  *) die "unknown command '$cmd' (try --help)" 2 ;;
+esac
+
+case "${VOICE_CLOUD_URL:-}" in
+  http://*|https://*) ;;
+  '') die "set VOICE_CLOUD_URL to your OpenAI-compatible server, e.g. http://localhost:8880/v1" 2 ;;
+  *) die "VOICE_CLOUD_URL must start with http:// or https://" 2 ;;
+esac
+
+voice=alloy speed=1 prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --voice) voice="${2:-}"; shift ;;
+    --speed) speed="${2:-}"; shift ;;
+    --prompt) prompt="${2:-}"; shift ;;
+    --) shift; break ;;
+    -*) die "unknown option $1" 2 ;;
+    *) break ;;
+  esac
+  shift
+done
+
+resolve_key
+if [ "$cmd" = tts ]; then
+  [ $# -eq 2 ] || die "usage: voice-cloud tts [--voice V] [--speed S] <text> <out.wav>" 2
+  case "$speed" in ''|*[!0-9.]*) die "--speed takes a number" 2 ;; esac
+  body="$(jq -cn --arg m "${VOICE_CLOUD_TTS_MODEL:-tts-1}" --arg i "$1" --arg v "$voice" --argjson s "$speed" \
+    '{model: $m, input: $i, voice: $v, response_format: "wav", speed: $s}')" || die "bad request" 2
+  post audio/speech -H 'Content-Type: application/json' --data-binary "$body" -o "$2"
+else
+  [ $# -eq 1 ] || die "usage: voice-cloud stt [--prompt P] <in.wav>" 2
+  [ -f "$1" ] || die "no such recording: $1"
+  args=(-F "file=@$1" --form-string "model=${VOICE_CLOUD_STT_MODEL:-whisper-1}" --form-string response_format=text)
+  [ -n "$prompt" ] && args+=(--form-string "prompt=$prompt")
+  text="$(post audio/transcriptions "${args[@]}")" || exit 1
+  printf '%s\n' "$text" | tr '\n' ' ' | sed -e 's/^ *//' -e 's/ *$//'
+  echo
+fi

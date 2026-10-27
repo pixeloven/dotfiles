@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# dictate: push-to-talk dictation into the focused herdr pane (Linux). Press once to start
+# recording, press again to stop: the speech is transcribed and typed into whichever herdr pane
+# has focus (Claude Code, Codex or a shell). Bind it to one global key (RUNBOOK section 4).
+# Usage: dictate [--cancel]
+# Records 16 kHz mono with parecord (PulseAudio or PipeWire), else pw-record.
+# Speech to text, DICTATE_ENGINE: whisper (default; local whisper.cpp `whisper-cli` with the
+# model at DICTATE_MODEL, default ~/.local/share/whisper/ggml-large-v3-turbo-q5_0.bin) or
+# openai-compatible (voice-cloud stt, at VOICE_CLOUD_URL). DICTATE_PROMPT lists words to expect.
+# Without herdr or a focused pane, the text goes to the clipboard and a notification says so.
+# Needs no root, uinput or input daemon.
+
+set -uo pipefail
+
+# A desktop shortcut runs this without your shell's PATH; add the usual tool folders after it.
+for d in "$HOME/.local/bin" /home/linuxbrew/.linuxbrew/bin /opt/homebrew/bin /usr/local/bin; do
+  [ -d "$d" ] && case ":$PATH:" in *":$d:"*) ;; *) PATH="$PATH:$d" ;; esac
+done
+
+state="${XDG_RUNTIME_DIR:-$HOME/.cache}/dictate"
+pidfile="$state/recorder.pid"
+wav="$state/take.wav"
+engine="${DICTATE_ENGINE:-whisper}"
+model="${DICTATE_MODEL:-$HOME/.local/share/whisper/ggml-large-v3-turbo-q5_0.bin}"
+prompt="${DICTATE_PROMPT:-Claude Code, Codex, herdr, chezmoi, distrobox, dotfiles, Homebrew, GitHub, git, PR, bats, jq, shellcheck, worktree, Kokoro, whisper.cpp.}"
+
+notify() { # <message>
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a dictate -t 3000 Dictation "$1" >/dev/null 2>&1
+  fi
+  echo "dictate: $1"
+}
+
+recording() { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; }
+
+stop_recorder() {
+  local pid
+  pid="$(cat "$pidfile" 2>/dev/null)"
+  # SIGTERM, not SIGINT: a background job of a script starts with SIGINT ignored.
+  kill -TERM "$pid" 2>/dev/null
+  for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+  rm -f "$pidfile"
+}
+
+engine_ready() {
+  case "$engine" in
+    whisper) command -v whisper-cli >/dev/null 2>&1 && [ -f "$model" ] ;;
+    openai-compatible) [ -x "$HOME/.local/bin/voice-cloud" ] && [ -n "${VOICE_CLOUD_URL:-}" ] ;;
+    *) false ;;
+  esac
+}
+
+transcribe() { # <wav> : the text, on one line
+  case "$engine" in
+    whisper) whisper-cli -m "$model" -f "$1" -l "${DICTATE_LANG:-en}" -nt -np --prompt "$prompt" 2>/dev/null ;;
+    openai-compatible) "$HOME/.local/bin/voice-cloud" stt --prompt "$prompt" "$1" 2>/dev/null ;;
+  esac | tr '\n' ' ' | sed -e 's/\[[^]]*\]//g' -e 's/  */ /g' -e 's/^ //' -e 's/ $//'
+}
+
+deliver() { # <text> : type it into the focused herdr pane, else put it on the clipboard
+  local pane
+  pane="$(herdr pane list 2>/dev/null | jq -r '[.result.panes[]? | select(.focused == true) | .pane_id] | first // empty' 2>/dev/null)"
+  if [ -n "$pane" ] && herdr pane send-text "$pane" "$1" >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v wl-copy >/dev/null 2>&1 && printf '%s' "$1" | wl-copy 2>/dev/null; then :
+  elif command -v xclip >/dev/null 2>&1 && printf '%s' "$1" | xclip -selection clipboard 2>/dev/null; then :
+  elif command -v pbcopy >/dev/null 2>&1 && printf '%s' "$1" | pbcopy 2>/dev/null; then :
+  else
+    notify "no herdr pane or clipboard for: $1"
+    return 1
+  fi
+  notify "On the clipboard (no focused herdr pane): $1"
+}
+
+case "${1:-}" in
+  '') ;;
+  --cancel)
+    recording && stop_recorder
+    rm -f "$pidfile" "$wav"
+    notify "Cancelled"
+    exit 0
+    ;;
+  -h|--help) sed -n '2,11s/^# \{0,1\}//p' "$0"; exit 0 ;;
+  *) echo "dictate: unknown option $1 (try --help)" >&2; exit 2 ;;
+esac
+
+if ! recording; then
+  rm -f "$pidfile"
+  if ! engine_ready; then
+    notify "speech to text ($engine) is not set up: see RUNBOOK section 4"
+    exit 1
+  fi
+  if command -v parecord >/dev/null 2>&1; then
+    rec=(parecord --channels=1 --rate=16000 --format=s16le --file-format=wav)
+  elif command -v pw-record >/dev/null 2>&1; then
+    rec=(pw-record --channels 1 --rate 16000)
+  else
+    notify "no recorder: install parecord (pulseaudio) or pw-record"
+    exit 1
+  fi
+  mkdir -p "$state" && chmod 700 "$state"
+  rm -f "$wav"
+  # Its own session, so it outlives this call (and the distrobox enter that ran it).
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "${rec[@]}" "$wav" >/dev/null 2>&1 < /dev/null &
+  else
+    nohup "${rec[@]}" "$wav" >/dev/null 2>&1 < /dev/null &
+  fi
+  echo $! > "$pidfile"
+  notify "Listening… press again to stop"
+  exit 0
+fi
+
+stop_recorder
+if [ ! -s "$wav" ]; then
+  notify "Heard nothing"
+  exit 0
+fi
+text="$(transcribe "$wav")"
+rm -f "$wav"
+if [ -z "$text" ]; then
+  notify "Heard nothing"
+  exit 0
+fi
+deliver "$text"

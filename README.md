@@ -9,7 +9,7 @@ Terminal setup as code for macOS and Linux: Ghostty, herdr, zsh with Starship, C
 | `~/.config/ghostty/config.ghostty` | `~/.claude/settings.json`: only the hooks in `lib/claude-hooks.fragment.json` |
 | `~/.config/herdr/config.toml` | `~/.gitconfig`: only the delta/merge keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh` |
 | `~/.config/bat/config`, glow's `glow.yml` (`~/Library/Preferences/glow/` on macOS, `~/.config/glow/` on Linux) | |
-| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
+| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/`, the voice helpers `~/.local/bin/speak-kokoro`, `voice-cloud` and (Linux) `dictate` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
 | `~/.config/zsh/`, `~/.config/starship.toml` | |
 | Linux with Ptyxis: `~/.local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` | Ptyxis GSettings: only the default profile's palette in `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl` |
 | | Claude Code, Codex and pi plugin registries (`~/.claude/plugins/`, `~/.codex/config.toml`, `~/.pi/agent/settings.json`): only the plugins in `lib/agent-plugins.txt`, installed when missing and never re-installed |

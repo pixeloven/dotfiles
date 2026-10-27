@@ -1,6 +1,8 @@
 # Apps
 if OS.mac?
   cask "ghostty"
+  # Global push-to-talk dictation, on-device (RUNBOOK section 4)
+  cask "voiceink"
 end
 cask "font-jetbrains-mono"
 cask "font-jetbrains-mono-nerd-font"
@@ -39,6 +41,13 @@ brew "gitleaks"
 if OS.linux?
   brew "wl-clipboard"
   brew "xclip"
+end
+
+# Linux only: voice. paplay/parecord reach the desktop's PipeWire (also from a distrobox) for spoken
+# alerts and `dictate`; whisper.cpp is dictate's local speech to text (RUNBOOK sections 4 and 5).
+if OS.linux?
+  brew "pulseaudio"
+  brew "whisper.cpp"
 end
 
 # Ops tools, only when chezmoi init's opsTools answer is yes (any OS); the brew-bundle script sets

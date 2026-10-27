@@ -9,6 +9,16 @@
             "command": "~/.claude/hooks/speak-alert.sh stop"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/speak-alert.sh summary",
+            "async": true
+          }
+        ]
       }
     ],
     "Notification": [
