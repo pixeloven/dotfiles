@@ -17,5 +17,11 @@ SRC="$REPO/home/dot_config/herdr/config.toml"
 }
 
 @test "herdr agents panel grouped by workspace" {
-  grep -q '^agent_panel_sort = "spaces"' "$SRC"
+  run python3 -I -c '
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    print(tomllib.load(f)["ui"]["agent_panel_sort"])
+' "$SRC"
+  [ "$status" -eq 0 ]
+  [ "$output" = "spaces" ]
 }
