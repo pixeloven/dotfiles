@@ -10,7 +10,7 @@ setup() {
   mkdir -p "$WORK"
 }
 
-teardown() { rm -rf "$HOME"; }
+teardown() { [ -z "${pid:-}" ] || kill "$pid" 2>/dev/null; rm -rf "$HOME"; }
 
 claude_session() { # <slug> <name> : copy the fixture into a project folder
   mkdir -p "$HOME/.claude/projects/$1"
@@ -67,24 +67,52 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   [ "$status" -eq 2 ]
 }
 
-@test "watch re-renders when a new reply arrives" {
-  mkdir -p "$HOME/bin" "$HOME/.claude/projects/p"
-  printf '#!/bin/sh\nsed "s/^/RENDER: /"\n' > "$HOME/bin/glow"
-  printf '#!/bin/sh\n' > "$HOME/bin/clear"
-  chmod +x "$HOME/bin/glow" "$HOME/bin/clear"
+reader_stubs() { # glow passes the card through, clear marks a new screen, less keeps what it paged
+  mkdir -p "$HOME/bin"
+  printf '#!/bin/sh\ncat\n' > "$HOME/bin/glow"
+  printf '#!/bin/sh\necho ---clear---\n' > "$HOME/bin/clear"
+  printf '#!/bin/sh\ncat "$2" > "$HOME/paged"\n' > "$HOME/bin/less"
+  chmod +x "$HOME/bin/glow" "$HOME/bin/clear" "$HOME/bin/less"
+}
+
+turn() { # <file> <time> <prompt> <reply> [stop_reason] : append a prompt and its reply
+  printf '%s\n' "{\"type\":\"user\",\"timestamp\":\"$2\",\"message\":{\"content\":\"$3\"}}" \
+    "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"$4\"}],\"stop_reason\":\"${5:-end_turn}\"}}" >> "$1"
+}
+
+start_reader() { # <args> : the reader in the background, keys from a FIFO on fd 7
+  reader_stubs
+  mkfifo "$HOME/keys"
+  PATH="$HOME/bin:$PATH" "$SCRIPT" --watch "$@" < "$HOME/keys" > "$HOME/out" 2>&1 3>&- &
+  pid=$!
+  exec 7> "$HOME/keys"
+  sleep 2
+}
+
+press() { printf '%b' "$1" >&7; sleep 1; }
+
+stop_reader() { exec 7>&-; kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; }
+
+screen() { # the last screen the reader drew
+  awk '/^---clear---$/ { s = ""; next } { s = s $0 "\n" } END { printf "%s", s }' "$HOME/out"
+}
+
+bar() { screen | tail -1; }
+
+@test "watch: a new finished reply only raises the unread count" {
+  reader_stubs
+  mkdir -p "$HOME/.claude/projects/p"
   T="$HOME/.claude/projects/p/s.jsonl"
   cp "$FIX/claude-transcript.jsonl" "$T"
-  PATH="$HOME/bin:$PATH" "$SCRIPT" --watch > "$HOME/out" 2>&1 &
+  PATH="$HOME/bin:$PATH" "$SCRIPT" --watch < /dev/null > "$HOME/out" 2>&1 3>&- &
   pid=$!
   sleep 1
-  touch -t 203001010000 "$T"
-  echo '{"type":"user","message":{"content":"third"}}' >> "$T"
-  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Fresh reply."}]}}' >> "$T"
-  touch -t 203001010001 "$T"
+  turn "$T" 2026-10-24T07:02:00.000Z third "Fresh reply."
   sleep 3
   kill "$pid"
-  grep -q 'RENDER: ## Result' "$HOME/out"
-  grep -q 'RENDER: Fresh reply.' "$HOME/out"
+  screen | grep -q '^## Result'
+  ! screen | grep -q 'Fresh reply.'
+  [[ "$(bar)" == " 2/3  ● 1 unread"* ]] || false
 }
 
 @test "watch rereads after a one-byte append, and not while the file is unchanged" {
@@ -248,4 +276,118 @@ STUB
 @test "rejects a session id with shell characters" {
   run "$SCRIPT" --raw --session 'x; rm -rf ~'
   [ "$status" -eq 2 ]
+}
+
+@test "reader keys step through replies and move the read marker" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/q.jsonl"
+  for i in 1 2 3; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
+  start_reader --session q
+  [[ "$(bar)" == " 3/3  ✓ caught up"* ]] || false
+  [ "$(cat "$HOME/.local/state/lastreply/q")" = "read_through=2026-10-24T07:03:00.000Z" ]
+  for i in 4 5 6; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
+  sleep 3
+  screen | grep -q '^Reply 3.$'
+  [[ "$(bar)" == " 3/6  ● 3 unread"* ]] || false
+  press n
+  screen | grep -q '^Reply 4.$'
+  [[ "$(bar)" == " 4/6  ● 3 unread"* ]] || false
+  press ' '
+  [[ "$(bar)" == " 5/6  ● 2 unread"* ]] || false
+  press p
+  [[ "$(bar)" == " 4/6  ● 2 unread"* ]] || false
+  press '\033[D'
+  [[ "$(bar)" == " 3/6  ● 2 unread"* ]] || false
+  press u
+  screen | grep -q '^Reply 5.$'
+  press '\033[C'
+  [[ "$(bar)" == " 6/6  ● 1 unread"* ]] || false
+  press p
+  press '\033[F'
+  [[ "$(bar)" == " 6/6  ✓ caught up"* ]] || false
+  [ "$(cat "$HOME/.local/state/lastreply/q")" = "read_through=2026-10-24T07:06:00.000Z" ]
+  press q
+  wait "$pid"
+  exec 7>&-
+}
+
+@test "reader reopens at the oldest unread reply" {
+  mkdir -p "$HOME/.claude/projects/p" "$HOME/.local/state/lastreply"
+  T="$HOME/.claude/projects/p/r.jsonl"
+  for i in 1 2 3 4; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
+  echo 'read_through=2026-10-24T07:02:00.000Z' > "$HOME/.local/state/lastreply/r"
+  start_reader --session r
+  stop_reader
+  screen | grep -q '^Reply 3.$'
+  [[ "$(bar)" == " 3/4  ● 2 unread"* ]] || false
+}
+
+@test "reader prunes read state untouched for 30 days" {
+  claude_session p s
+  mkdir -p "$HOME/xdg/lastreply"
+  echo 'read_through=x' > "$HOME/xdg/lastreply/old"
+  touch -t 202001010000 "$HOME/xdg/lastreply/old"
+  echo 'read_through=x' > "$HOME/xdg/lastreply/recent"
+  XDG_STATE_HOME="$HOME/xdg" start_reader --session s
+  stop_reader
+  [ ! -e "$HOME/xdg/lastreply/old" ]
+  [ -e "$HOME/xdg/lastreply/recent" ]
+  [ -e "$HOME/xdg/lastreply/s" ]
+}
+
+@test "reader: a Claude reply counts only once the turn has ended" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/w.jsonl"
+  turn "$T" 2026-10-24T07:01:00.000Z "ask 1" "Reply 1."
+  turn "$T" 2026-10-24T07:02:00.000Z "ask 2" "Working on it." tool_use
+  start_reader --session w
+  [[ "$(bar)" == " 1/1  ✓ caught up · ✎ writing"* ]] || false
+  ! screen | grep -q 'Working on it.'
+  echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}],"stop_reason":"end_turn"}}' >> "$T"
+  sleep 3
+  stop_reader
+  [[ "$(bar)" == " 1/2  ● 1 unread"* ]] || false
+  screen | grep -q '^Reply 1.$'
+}
+
+@test "reader: a Codex reply counts only after task_complete" {
+  codex_rollout c1 /nowhere
+  start_reader --codex --session c1
+  [[ "$(bar)" == " 0/0  ✓ caught up · ✎ writing"* ]] || false
+  grep -q 'No finished reply yet.' "$HOME/out"
+  echo '{"type":"event_msg","payload":{"type":"task_complete"}}' >> "$HOME/.codex/sessions/2026/10/24/rollout-2026-10-24-c1.jsonl"
+  sleep 3
+  [[ "$(bar)" == " 0/1  ● 1 unread"* ]] || false
+  press n
+  stop_reader
+  screen | grep -q 'Final from c1.'
+}
+
+@test "wakes and compactions are labelled instead of (no text)" {
+  mkdir -p "$HOME/.claude/projects/p"
+  printf '%s\n' \
+    '{"type":"user","message":{"content":"<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>\n<system-reminder>wake</system-reminder>"}}' \
+    '{"type":"assistant","message":{"content":[{"type":"text","text":"Handled."}],"stop_reason":"end_turn"}}' > "$HOME/.claude/projects/p/k.jsonl"
+  run "$SCRIPT" --raw --session k
+  [[ "$output" == "**Wake** · "*"> ⚑ Stop hook feedback"* ]] || false
+  printf '%s\n' \
+    '{"type":"user","isCompactSummary":true,"message":{"content":"This session is being continued. <summary>long</summary>"}}' \
+    '{"type":"assistant","message":{"content":[{"type":"text","text":"Continuing."}],"stop_reason":"end_turn"}}' >> "$HOME/.claude/projects/p/k.jsonl"
+  run "$SCRIPT" --raw --session k
+  [[ "$output" == *"> (context compacted)"* ]] || false
+  [[ "$output" != *"being continued"* ]] || false
+}
+
+@test "reader shows a tall card from its top and Enter pages all of it" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/l.jsonl"
+  turn "$T" 2026-10-24T07:01:00.000Z "long one" "$(seq -f 'line %g' 1 100 | awk '{printf "%s\\n", $0}')"
+  start_reader --session l
+  screen | grep -q '^> long one$'
+  ! screen | grep -q '^line 100$'
+  [[ "$(bar)" == *"▼ "*" more lines, Enter"* ]] || false
+  [ "$(screen | wc -l)" -eq 40 ]
+  press '\n'
+  stop_reader
+  grep -q '^line 100$' "$HOME/paged"
 }
