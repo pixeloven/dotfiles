@@ -44,7 +44,7 @@ if [[ $_dotfiles_install_target == distrobox && -e ${DOTFILES_CONTAINER_MARKER:-
 fi
 unset _dotfiles_install_target
 
-# 1Password service account: OP_SERVICE_ACCOUNT_TOKEN and the opEnv variables, only when the token
+# 1Password service account: OP_SERVICE_ACCOUNT_TOKEN and LITELLM_API_KEY, only when the token
 # file ~/.config/harmony/op-sa-token exists (op-env.zsh beside this file; RUNBOOK section 11).
 [[ -r ${${(%):-%x}:A:h}/op-env.zsh ]] && source "${${(%):-%x}:A:h}/op-env.zsh"
 

@@ -310,16 +310,10 @@ If programs in the container complain about an unknown terminal (`TERM=xterm-gho
 For a machine whose shells should reach 1Password without the desktop app, as on a server or in a distrobox. Without the token file nothing changes: no variables, no messages, no `op` calls. This is the case on the Mac and for anyone else using this repo. `op` is the Brewfile's `1password-cli`; where `op` is missing, only the token is exported.
 
 1. Place the token by hand. It never goes in git or in chezmoi: `mkdir -p ~/.config/harmony && install -m 600 /dev/null ~/.config/harmony/op-sa-token`, then paste the service-account token into that file with an editor. Don't use `echo` or another command line that would land in your history. If the file already exists, run `chmod 600 ~/.config/harmony/op-sa-token`. The shell warns on every start while the mode is anything else, and still loads the token.
-2. Optional: choose which variables to read from 1Password. Add them in your untracked `~/.config/chezmoi/chezmoi.toml`. Names must be shell variable names and values must be `op://` references:
-   ```toml
-   [data.opEnv]
-   LITELLM_API_KEY = "op://Harmony/LiteLLM/workstation_key"
-   ```
-   Then run `chezmoi apply`. Without this table, the shell never runs `op read`. A variable that is already set, for example in a nested shell, is not read again. A failed read leaves that variable unset, and a read taking more than 3 seconds is stopped, so the prompt never hangs.
-3. Open a new tab, or run `exec zsh`.
+2. Open a new tab, or run `exec zsh`. The shell exports `OP_SERVICE_ACCOUNT_TOKEN`, then, where `op` is installed, `LITELLM_API_KEY` from `op read op://Harmony/LiteLLM/workstation_key`. If `LITELLM_API_KEY` is already set, for example in a nested shell, it is not read again. A failed read leaves it unset, and a read taking more than 3 seconds is stopped, so the prompt never hangs.
 
-**Verify without printing secrets:** `stat -c %a ~/.config/harmony/op-sa-token 2>/dev/null || stat -f %Lp ~/.config/harmony/op-sa-token` prints `600`. `[ -n "$OP_SERVICE_ACCOUNT_TOKEN" ] && echo token set` and `op whoami` show the service account. For each opEnv variable, check that it is set without printing it, for example `[ -n "$LITELLM_API_KEY" ] && echo LITELLM_API_KEY set`. `bats ~/Development/dotfiles/tests/op-env.bats` uses a fake `op` and a throwaway token.
+**Verify without printing secrets:** `stat -c %a ~/.config/harmony/op-sa-token 2>/dev/null || stat -f %Lp ~/.config/harmony/op-sa-token` prints `600`. `[ -n "$OP_SERVICE_ACCOUNT_TOKEN" ] && echo token set` and `op whoami` show the service account. Check the key without printing it: `[ -n "$LITELLM_API_KEY" ] && echo LITELLM_API_KEY set`. `bats ~/Development/dotfiles/tests/op-env.bats` uses a fake `op` and a throwaway token.
 
-**Turn it off:** delete `~/.config/harmony/op-sa-token`, or the `[data.opEnv]` table followed by `chezmoi apply`, and open a new tab.
+**Turn it off:** delete `~/.config/harmony/op-sa-token` and open a new tab.
 
-**Done when:** a new tab starts with no warning, and the checks above print `600`, `token set` and the set line for each opEnv variable.
+**Done when:** a new tab starts with no warning, and the checks above print `600`, `token set` and `LITELLM_API_KEY set`.
