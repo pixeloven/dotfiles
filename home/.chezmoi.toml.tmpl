@@ -3,7 +3,7 @@
 {{- if eq .chezmoi.os "linux" -}}
 {{-   $terminal = promptChoiceOnce . "terminal" "Terminal app on this Linux machine" (list "ptyxis" "ghostty" "other") "ptyxis" -}}
 {{-   $suggested := "host" -}}
-{{-   if stat "/run/ostree-booted" -}}{{ $suggested = "distrobox" }}{{- end -}}
+{{-   if or (stat "/run/ostree-booted") (stat "/run/host/run/ostree-booted") -}}{{ $suggested = "distrobox" }}{{- end -}}
 {{-   $installTarget = promptChoiceOnce . "installTarget" "Install tools on this host, or only inside a distrobox" (list "host" "distrobox") $suggested -}}
 {{- end -}}
 {{- $opsTools := promptBoolOnce . "opsTools" "Install the ops tools (kubectl, helm, argocd, talosctl, omnictl, terraform, ansible, docker CLI)" false -}}

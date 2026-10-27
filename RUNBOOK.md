@@ -105,9 +105,9 @@ For a Mac set up before the zsh config existed. Linux machines never had nvm; se
 On Linux, `chezmoi init` asks once where tools install (`installTarget`). Each step below says which of the two setups it applies to; macOS uses section 1 instead.
 
 - **Linux host** (`host`, the default): everything installs on the main OS, as on a Linux server or any machine where you want the host's own Homebrew, an image-based one included. Do 9a steps 2–9 on the machine itself. 9b–9d don't apply, and no-mistakes keeps its managed service.
-- **Linux distrobox** (`distrobox`, suggested on an image-based host such as Bazzite): tools install only inside an Ubuntu distrobox named `ubuntu-dev`. Do all of section 9: for a new machine 9a then 9b; for an existing box 9b, and 9d for what already reached the host; for a rebuild 9c, then 9d if you haven't yet.
+- **Linux distrobox** (`distrobox`, suggested on an image-based host such as Bazzite, and in a box on one): tools install only inside an Ubuntu distrobox named `ubuntu-dev`. Do all of section 9: for a new machine 9a then 9b; for an existing box 9b, and 9d for what already reached the host; for a rebuild 9c, then 9d if you haven't yet.
 
-On both OSes `chezmoi init` also asks whether to install the ops tools (`opsTools`, default no): kubectl, helm, argocd, talosctl, omnictl, terraform (HashiCorp's tap), ansible and the docker CLI. Each answer is asked once and kept in `~/.config/chezmoi/chezmoi.toml`; to change one, delete its line there and run `chezmoi init` again. A machine set up before these questions keeps the defaults until then.
+On both OSes `chezmoi init` also asks whether to install the ops tools (`opsTools`, default no): kubectl, helm, argocd, talosctl, omnictl, terraform (HashiCorp's tap), ansible and the docker CLI. Each answer is asked once and kept in `~/.config/chezmoi/chezmoi.toml`; to change one, delete its line there and run `chezmoi init` again. `chezmoi apply` never asks, so a machine set up before these questions keeps the defaults until you run `chezmoi init --source ~/Development/dotfiles pixeloven` once (in a box, from inside it); 9b step 1 does this for an existing box.
 
 With `distrobox`: the box shares the host's `$HOME` (distrobox mounts it even with `--home`), so `~/.zshrc`, `~/.gitconfig`, `~/.oh-my-zsh`, `~/.local/bin`, fnm's Node, `~/Development`, `~/.no-mistakes`, chezmoi's config and the agents' sign-ins are the same files on both sides and survive a rebuild. Each side has its own Homebrew at `/home/linuxbrew/.linuxbrew`; the box's lives in the container and goes with it. Tools go in the box only: don't install anything with the host's `brew`, and use `distrobox-host-exec` only for the Ptyxis palette and read-only checks. On the host, chezmoi's Brewfile step skips itself (outside a container). The validation pipeline (no-mistakes) runs inside the box too (9b). Run every distrobox step inside the box unless it says host.
 
@@ -145,17 +145,19 @@ With `distrobox`: the box shares the host's `$HOME` (distrobox mounts it even wi
 
 *Linux distrobox only.* One time per machine, with or without a rebuild. The box's `systemctl --user` is the host's (distrobox shares `/run/user/$UID`), so `no-mistakes daemon start` from the box installed its daemon as a host systemd unit. Its pipelines then ran on the host with the host's tools, and their test steps ran the Brewfile into the host's Homebrew. With `installTarget = "distrobox"`, `dotfiles.zsh` inside the box sets `NM_TEST_START_DAEMON=1`, which makes no-mistakes start a detached daemon instead of a service, and `NM_HOME=$HOME/.no-mistakes`, so the gate remotes and run history stay where they are. The daemon serves every lane: only firstmate or you do this, with nothing running.
 
-1. In a new zsh in the box (after `chezmoi apply`), check the variables.
+1. On a box set up before `chezmoi init` asked where tools install, record the answer, since `chezmoi apply` never asks: in the box, `chezmoi init --source ~/Development/dotfiles pixeloven`, answer `distrobox` (and the ops tools question, if it asks), then `chezmoi apply`. A box built with 9a has it already.
+   **Done when:** in the box, `chezmoi execute-template '{{ .installTarget }}'` prints `distrobox`.
+2. In a new zsh in the box (after `chezmoi apply`), check the variables.
    **Done when:** `echo $NM_TEST_START_DAEMON $NM_HOME` prints `1` and your `~/.no-mistakes` path.
-2. Check that nothing is running: `no-mistakes daemon status`, `no-mistakes axi status`, and `no-mistakes runs` in each gated repo.
+3. Check that nothing is running: `no-mistakes daemon status`, `no-mistakes axi status`, and `no-mistakes runs` in each gated repo.
    **Done when:** no run is pending or running.
-3. Retire the host unit. `no-mistakes daemon stop` alone isn't enough: the unit restarts itself and is enabled for the next login. From the box:
+4. Retire the host unit. `no-mistakes daemon stop` alone isn't enough: the unit restarts itself and is enabled for the next login. From the box:
    ```sh
    distrobox-host-exec systemctl --user list-unit-files 'no-mistakes-daemon-*'
    distrobox-host-exec sh -c 'for f in "$HOME"/.config/systemd/user/no-mistakes-daemon-*.service; do [ -e "$f" ] || continue; systemctl --user disable --now "${f##*/}" && rm "$f"; done; systemctl --user daemon-reload'
    ```
    **Done when:** the first command lists no unit files and `ls ~/.config/systemd/user | grep no-mistakes` prints nothing.
-4. Start the daemon in the box: `no-mistakes daemon start`.
+5. Start the daemon in the box: `no-mistakes daemon start`.
    **Done when:** `no-mistakes daemon status` says it is running and `cat /proc/"$(jq -r .pid "$NM_HOME/daemon.pid")"/cgroup` does **not** show `user@1000.service/app.slice` (the host's user services; your uid may differ from 1000).
 
 The detached daemon lives as long as the box. After a reboot or `distrobox stop`, the next `no-mistakes` command starts it again, in the box. Run `no-mistakes` only from the box's zsh, where the two variables are set (it needs `installTarget = "distrobox"`); from a shell without them it would install the host unit again.
@@ -168,7 +170,7 @@ The detached daemon lives as long as the box. After a reboot or `distrobox stop`
 
 1. If an agent session supervises work from inside the box (firstmate in herdr), ask it to stop dispatching and let every lane finish or be torn down.
    **Done when:** `treehouse status` in each project repo shows nothing leased and `no-mistakes axi status` shows no active run.
-2. Stop the daemon. Once 9b is done it runs in the box: `no-mistakes daemon stop`. If 9b isn't done yet, do its steps 2–3 now, so no host unit is left behind.
+2. Stop the daemon. Once 9b is done it runs in the box: `no-mistakes daemon stop`. If 9b isn't done yet, do its steps 3–4 now, so no host unit is left behind.
    **Done when:** `no-mistakes daemon status` says it is not running.
 3. End the supervising session (`/exit` in its Claude Code), quit herdr (its server goes with the box), and close every shell in the box.
    **Done when:** in a host terminal, `pgrep -lx 'claude|herdr'` prints nothing (the box shares the host's process list).
@@ -176,7 +178,7 @@ The detached daemon lives as long as the box. After a reboot or `distrobox stop`
    **Done when:** `distrobox list` shows `ubuntu-dev` freshly created and `ls ~/Development` still lists your repos.
 5. In the new box, do 9a steps 2–3 (zsh, then Homebrew and `chezmoi init --apply`). Everything else in 9a is in the shared home already: check each remaining step's **Done when** and skip it when it passes.
    **Done when:** 9a's final check passes.
-6. Start the daemon (9b step 4, including its cgroup check), start herdr, and run `cd ~/Development/operator && claude` in a herdr pane. Its start-up reconciles from the state on disk.
+6. Start the daemon (9b step 5, including its cgroup check), start herdr, and run `cd ~/Development/operator && claude` in a herdr pane. Its start-up reconciles from the state on disk.
    **Done when:** the session reconciles and a test dispatch's pipeline run passes.
 
 ### 9d. Clean the host

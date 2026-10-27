@@ -109,7 +109,7 @@ Library/Preferences/glow/glow.yml"
   run init_config linux --promptChoice "Install tools on this host, or only inside a distrobox=distrobox"
   [ "$status" -eq 0 ]
   [[ "$output" == *'installTarget = "distrobox"'* ]] || false
-  [ -e /run/ostree-booted ] && skip "an image-based host suggests distrobox"
+  { [ -e /run/ostree-booted ] || [ -e /run/host/run/ostree-booted ]; } && skip "an image-based host suggests distrobox"
   run init_config linux
   [ "$status" -eq 0 ]
   [[ "$output" == *'installTarget = "host"'* ]] || false
