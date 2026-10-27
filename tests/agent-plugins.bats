@@ -16,6 +16,7 @@ setup() {
   ln -s "$(command -v jq)" "$TMP/bin/jq"; ln -s "$(command -v git)" "$TMP/bin/git"
   ln -s "$(command -v chezmoi)" "$TMP/bin/chezmoi"
   export PATH="$TMP/stub:$TMP/bin:/usr/bin:/bin"
+  export AGENT_PLUGINS_MARKETPLACE_URL="$TMP/none" # offline unless a test serves a catalogue
   export GIT_CONFIG_GLOBAL=/dev/null GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com
   catalogue "$CLAUDE_CONFIG_DIR/plugins/marketplaces/pixeloven/.claude-plugin" a
   echo '[]' > "$CLAUDE_CONFIG_DIR/claude-list.json"
@@ -172,6 +173,20 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
     calls | grep -qxF "pi install git:github.com/pixeloven/$p@$(sha a)"
   done
   [ "$(jq -r '.packages[0]' "$PI_CODING_AGENT_DIR/settings.json")" = "git:github.com/pixeloven/crew@$(sha a)" ]
+}
+
+@test "pi pins to the fetched catalogue over a stale local copy, and to the local copy when offline" {
+  catalogue "$TMP/market/.claude-plugin" b
+  git -C "$TMP/market" init -q && git -C "$TMP/market" add -A && git -C "$TMP/market" commit -q -m x
+  AGENT_PLUGINS_MARKETPLACE_URL="$TMP/market" run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  for p in $NAMES; do calls | grep -qxF "pi install git:github.com/pixeloven/$p@$(sha b)"; done
+  [ -z "$(installs | grep "^pi " | grep -v "@$(sha b)$")" ]
+  echo '{"packages":[]}' > "$PI_CODING_AGENT_DIR/settings.json"; rm "$TMP/calls"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"could not fetch"*"using this machine's local catalogue copy"* ]] || false
+  for p in $NAMES; do calls | grep -qxF "pi install git:github.com/pixeloven/$p@$(sha a)"; done
 }
 
 @test "pi fetches the catalogue when no tool has a copy" {

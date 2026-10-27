@@ -12,7 +12,7 @@
 #           published in the marketplace; the operator's crew check (on demand) and `update` detect that.
 # Exit 0, or 1 when an install or update failed (check always exits 0).
 # CLAUDE_CONFIG_DIR, CODEX_HOME and PI_CODING_AGENT_DIR move each tool's home, as the tools themselves do;
-# AGENT_PLUGINS_MARKETPLACE_URL moves the catalogue that `update` and a first pi install fetch (tests use it).
+# AGENT_PLUGINS_MARKETPLACE_URL moves the catalogue that `update` and a pi install fetch (tests use it).
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,19 +39,30 @@ run() { # run a tool command quietly, reporting it and any failure
   "$@" </dev/null >/dev/null || { say "failed: $*"; FAILED=1; }
 }
 
-catalogue() { # [fetch] : set CATALOGUE to a local copy of the marketplace catalogue
-  local f
-  [ -n "$CATALOGUE" ] && return 0
-  if [ "${1:-}" != fetch ]; then
-    for f in "$CLAUDE_DIR/plugins/marketplaces/$MARKET/.claude-plugin/marketplace.json" \
-             "$CODEX_DIR/.tmp/marketplaces/$MARKET/.claude-plugin/marketplace.json"; do
-      [ -f "$f" ] && { CATALOGUE="$f"; return 0; }
-    done
-    [ "$MODE" = check ] && return 1
-  fi
+fetch() { # set CATALOGUE to a fresh clone of the marketplace catalogue
   TMPD="$(mktemp -d)"
-  git clone --quiet --depth 1 "$URL" "$TMPD/m" 2>/dev/null || { say "could not fetch $URL"; FAILED=1; return 1; }
+  git clone --quiet --depth 1 "$URL" "$TMPD/m" 2>/dev/null || { say "could not fetch $URL"; return 1; }
   CATALOGUE="$TMPD/m/.claude-plugin/marketplace.json"
+}
+
+local_copy() { # set CATALOGUE to the copy Claude Code or Codex keeps on this machine, which may be behind
+  local f
+  for f in "$CLAUDE_DIR/plugins/marketplaces/$MARKET/.claude-plugin/marketplace.json" \
+           "$CODEX_DIR/.tmp/marketplaces/$MARKET/.claude-plugin/marketplace.json"; do
+    [ -f "$f" ] && { CATALOGUE="$f"; return 0; }
+  done
+  return 1
+}
+
+catalogue() { # set CATALOGUE once: check stays offline on the local copy; ensure and update fetch the
+  # current catalogue, and ensure falls back to the local copy when the fetch fails (offline)
+  [ -n "$CATALOGUE" ] && return 0
+  case "$MODE" in
+    check) local_copy ;;
+    update) fetch || { FAILED=1; return 1; } ;;
+    ensure) fetch || { local_copy && say "using this machine's local catalogue copy, which may be behind"; } ||
+      { FAILED=1; return 1; } ;;
+  esac
 }
 
 pinned() { # <name> : the catalogue's commit SHA for name, or nothing
@@ -170,7 +181,7 @@ pi_ensure() {
 
 pi_update() { # re-pinning replaces the entry in place and keeps any `pi config` filters on it
   local p entry sha
-  catalogue fetch || return 0
+  catalogue || return 0
   for p in $(names); do
     entry="$(pi_entry "$p")" || continue
     sha="$(pinned "$p")"
