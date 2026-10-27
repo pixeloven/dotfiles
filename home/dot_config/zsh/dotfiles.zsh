@@ -30,6 +30,16 @@ if [[ -n ${HOMEBREW_PREFIX:-} && $HOMEBREW_PREFIX != /usr/local ]]; then
   unset _dotfiles_front
 fi
 
+# no-mistakes inside a Linux container (the distrobox): run its daemon in the box, not on the host.
+# The box's `systemctl --user` is the host's (distrobox shares /run/user/$UID), so the managed
+# service would install a host unit, and the daemon would run the pipeline with the host's tools.
+# NM_TEST_START_DAEMON=1 is no-mistakes' escape hatch that skips the service manager and starts a
+# detached daemon; there is no supported switch yet. NM_HOME keeps the existing state root, so the
+# gate remotes and run history carry over. DOTFILES_CONTAINER_MARKER is a test seam.
+if [[ $OSTYPE == linux* && -e ${DOTFILES_CONTAINER_MARKER:-/run/.containerenv} ]]; then
+  export NM_TEST_START_DAEMON=1 NM_HOME=$HOME/.no-mistakes
+fi
+
 [[ -o interactive ]] || return 0
 
 _dotfiles_brew="${HOMEBREW_PREFIX:-/opt/homebrew}"

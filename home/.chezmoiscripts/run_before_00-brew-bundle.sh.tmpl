@@ -1,7 +1,10 @@
 #!/bin/sh
-# Runs on every apply but installs only when something in the Brewfile is missing. On a distrobox the
-# host and the container share $HOME (and chezmoi's script state) but each has its own Homebrew.
+# Runs on every apply but installs only when something in the Brewfile is missing. On an
+# image-based host (Bazzite/Silverblue, marked by /run/ostree-booted) it installs nothing: tools
+# belong in the distrobox, whose Homebrew is its own, and a chezmoi run on the host (by hand or by
+# an agent) would otherwise fill the host's Homebrew. DOTFILES_OSTREE_MARKER is a test seam.
 set -eu
+[ -e "${DOTFILES_OSTREE_MARKER:-/run/ostree-booted}" ] && { echo "dotfiles: image-based host; install tools in the distrobox, skipping the Brewfile" >&2; exit 0; }
 command -v brew >/dev/null 2>&1 || { echo "dotfiles: brew not found; skipping the Brewfile" >&2; exit 0; }
 f="{{ .chezmoi.workingTree }}/Brewfile"
 brew bundle check --no-upgrade --file="$f" >/dev/null 2>&1 || brew bundle --no-upgrade --file="$f"

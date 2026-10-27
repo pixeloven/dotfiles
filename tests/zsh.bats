@@ -107,6 +107,30 @@ lines() { printf '%s\n' "$@"; }
   [ "$found" = /usr/local ] || [ "${lines[1]}" = "$found/bin" ]
 }
 
+# The no-mistakes variables dotfiles.zsh leaves set. $1 is the container marker file.
+nm_env() {
+  local zsh; zsh="$(command -v zsh)"
+  env -u NM_HOME -u NM_TEST_START_DAEMON HOME="$TMP/home" HOMEBREW_PREFIX="$TMP/no-brew" \
+    DOTFILES_OSTREE_MARKER="$TMP/no-ostree" DOTFILES_CONTAINER_MARKER="$1" PATH=/usr/bin:/bin \
+    "$zsh" -f -c 'source ~/.config/zsh/dotfiles.zsh; print -r -- "start=${NM_TEST_START_DAEMON-unset} home=${NM_HOME-unset}"'
+}
+
+@test "inside a Linux container the no-mistakes daemon runs detached in the box" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  [ "$(uname -s)" = Linux ] || skip "Linux only"
+  touch "$TMP/containerenv"
+  run nm_env "$TMP/containerenv"
+  [ "$status" -eq 0 ]
+  [ "$output" = "start=1 home=$TMP/home/.no-mistakes" ]
+}
+
+@test "outside a container no-mistakes keeps its managed service" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  run nm_env "$TMP/no-containerenv"
+  [ "$status" -eq 0 ]
+  [ "$output" = "start=unset home=unset" ]
+}
+
 # Starship prints each config warning once per cache dir, so every check gets a fresh one.
 starship_warnings() { STARSHIP_CACHE="$(mktemp -d "$TMP/cache.XXXXXX")" STARSHIP_CONFIG="$1" starship prompt 2>&1 >/dev/null; }
 

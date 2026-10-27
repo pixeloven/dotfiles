@@ -40,3 +40,19 @@ if OS.linux?
   brew "wl-clipboard"
   brew "xclip"
 end
+
+# Ops tools, only inside a Linux container (the distrobox; podman writes /run/.containerenv): never
+# on an image-based host, and not on the Mac. docker is the CLI only; RUNBOOK section 9 has the
+# podman-socket option. terraform comes from HashiCorp's tap (not in homebrew-core: BUSL licence).
+if OS.linux? && File.exist?("/run/.containerenv")
+  tap "hashicorp/tap"
+  tap "siderolabs/tap"
+  brew "kubernetes-cli"
+  brew "helm"
+  brew "argocd"
+  brew "siderolabs/tap/talosctl"
+  brew "siderolabs/tap/omnictl"
+  brew "hashicorp/tap/terraform"
+  brew "ansible"
+  brew "docker"
+end
