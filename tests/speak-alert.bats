@@ -193,6 +193,7 @@ sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 
 
 @test "engine: Linux uses Kokoro when its model is installed" {
   os_is Linux
+  players
   kokoro_installed
   run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN=engine '$SCRIPT' stop"
   [ "$output" = "kokoro" ]
@@ -218,6 +219,7 @@ sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 
 
 @test "engine: openai-compatible needs VOICE_CLOUD_URL" {
   os_is Linux
+  players
   mkdir -p "$HOME/.local/bin"
   ln -s "$REPO/home/dot_local/bin/executable_voice-cloud" "$HOME/.local/bin/voice-cloud"
   run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_ENGINE=openai-compatible SPEAK_ALERT_DRY_RUN=engine '$SCRIPT' stop"
@@ -228,6 +230,7 @@ sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 
 
 @test "kokoro voice defaults to af_heart and follows SPEAK_ALERT_VOICE" {
   os_is Linux
+  players
   kokoro_installed
   run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN=voice '$SCRIPT' stop"
   [ "$output" = "af_heart" ]
@@ -237,6 +240,7 @@ sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 
 
 @test "cache key is the sha256 of engine, model, voice, rate, lead-in and text" {
   os_is Linux
+  players
   kokoro_installed
   model="$HOME/.local/share/kokoro/kokoro-v1.0.onnx"
   want="$HOME/.cache/speak-alert/$(printf '%s' "kokoro|$model|af_heart|120|800|All done. Ready for you." | sha).wav"
