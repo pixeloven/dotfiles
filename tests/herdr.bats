@@ -15,3 +15,13 @@ SRC="$REPO/home/dot_config/herdr/config.toml"
   grep -q '^auto_switch = false' "$SRC"
   ! grep -q 'latte' "$SRC"
 }
+
+@test "herdr agents panel grouped by workspace" {
+  run python3 -I -c '
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    print(tomllib.load(f)["ui"]["agent_panel_sort"])
+' "$SRC"
+  [ "$status" -eq 0 ]
+  [ "$output" = "spaces" ]
+}
