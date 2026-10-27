@@ -4,7 +4,7 @@ Steps that scripts can't do, or that the OS asks you to approve yourself. Each o
 
 ## 1. New Mac bootstrap
 
-1. Install Homebrew and chezmoi, then run `chezmoi init --apply` (see README). This installs everything in the Brewfile.
+1. Install Homebrew and chezmoi, then run `chezmoi init --apply` (see README). It asks once whether to install the ops tools (kubectl, helm, argocd, talosctl, omnictl, terraform, ansible, docker CLI; default no), then installs everything in the Brewfile natively.
 2. Install herdr from https://herdr.dev. It installs itself into `~/.local/bin` and updates with `herdr update`.
 3. Run `herdr integration install claude` (and `herdr integration install pi` if you use Pi).
 4. In the repo, enable the secret guard: `git -C ~/Development/dotfiles config core.hooksPath .githooks`.
@@ -100,33 +100,32 @@ For a Mac set up before the zsh config existed. Linux machines never had nvm; se
 
 **Done when:** a new Ghostty tab shows the Starship prompt with icons, grey suggestions appear as you type, Ctrl+R, the Tab menu, `z` and `ls` work, `which node` is under fnm, every tool above prints its version, and `drift` reports no `~/.zshrc` finding.
 
-## 9. New Linux (distrobox) bootstrap
+## 9. New Linux bootstrap (on the host, or in a distrobox)
 
-For an Ubuntu distrobox named `ubuntu-dev` on an image-based host such as Bazzite. The box shares the host's `$HOME` (distrobox mounts it even with `--home`), so `~/.zshrc`, `~/.gitconfig`, `~/.oh-my-zsh`, `~/.local/bin`, fnm's Node, `~/Development`, `~/.no-mistakes` and the agents' sign-ins are the same files on both sides and survive a rebuild. Each side has its own Homebrew at `/home/linuxbrew/.linuxbrew`; the box's lives in the container and goes with it.
+On Linux, `chezmoi init` asks once where tools install (`installTarget`). Each step below says which of the two setups it applies to; macOS uses section 1 instead.
 
-Tools go in the box only. Don't install anything with the host's `brew`, and use `distrobox-host-exec` only for the Ptyxis palette and read-only checks. On the host, chezmoi's Brewfile step skips itself (`/run/ostree-booted`). The validation pipeline (no-mistakes) runs inside the box too (9b). Run every step inside the box unless it says host.
+- **Linux host** (`host`, the default): everything installs on the main OS, as on a Linux server or any machine where you want the host's own Homebrew, an image-based one included. Do 9a steps 2–9 on the machine itself. 9b–9d don't apply, and no-mistakes keeps its managed service.
+- **Linux distrobox** (`distrobox`, suggested on an image-based host such as Bazzite): tools install only inside an Ubuntu distrobox named `ubuntu-dev`. Do all of section 9: for a new machine 9a then 9b; for an existing box 9b, and 9d for what already reached the host; for a rebuild 9c, then 9d if you haven't yet.
 
-Which steps apply depends on the setup. On macOS, use section 1, not this one. On plain Linux without a container (not an image-based host), follow 9a steps 2–9 on the machine itself; skip 9a step 1 and 9b–9d, which are for the distrobox only, and keep no-mistakes' managed service. In a distrobox, follow all of section 9:
+On both OSes `chezmoi init` also asks whether to install the ops tools (`opsTools`, default no): kubectl, helm, argocd, talosctl, omnictl, terraform (HashiCorp's tap), ansible and the docker CLI. Each answer is asked once and kept in `~/.config/chezmoi/chezmoi.toml`; to change one, delete its line there and run `chezmoi init` again. A machine set up before these questions keeps the defaults until then.
 
-- New machine: 9a, then 9b.
-- Existing box: 9b moves the pipeline in; 9d cleans what already reached the host.
-- Rebuild: 9c, then 9d if you haven't yet.
+With `distrobox`: the box shares the host's `$HOME` (distrobox mounts it even with `--home`), so `~/.zshrc`, `~/.gitconfig`, `~/.oh-my-zsh`, `~/.local/bin`, fnm's Node, `~/Development`, `~/.no-mistakes`, chezmoi's config and the agents' sign-ins are the same files on both sides and survive a rebuild. Each side has its own Homebrew at `/home/linuxbrew/.linuxbrew`; the box's lives in the container and goes with it. Tools go in the box only: don't install anything with the host's `brew`, and use `distrobox-host-exec` only for the Ptyxis palette and read-only checks. On the host, chezmoi's Brewfile step skips itself (outside a container). The validation pipeline (no-mistakes) runs inside the box too (9b). Run every distrobox step inside the box unless it says host.
 
-### 9a. Build the box
+### 9a. Build the machine or the box
 
-1. On the host, create it from the tracked file: `distrobox assemble create --file ~/Development/dotfiles/lib/distrobox/ubuntu-dev.ini` (Ubuntu 24.04 with zsh and Homebrew's build tools, the shared home, no GPU). Then `distrobox enter ubuntu-dev`.
+1. *Linux distrobox.* On the host, create the box from the tracked file: `distrobox assemble create --file ~/Development/dotfiles/lib/distrobox/ubuntu-dev.ini` (Ubuntu 24.04 with zsh and Homebrew's build tools, the shared home, no GPU). Then `distrobox enter ubuntu-dev`.
    **Done when:** inside the box, `echo $CONTAINER_ID` prints `ubuntu-dev`, `echo $HOME` prints your host home, and `/run/.containerenv` exists.
-2. zsh as the box's login shell: `sudo chsh -s /usr/bin/zsh "$USER"`. This edits only the box's `/etc/passwd`; the host keeps its shell.
-   **Done when:** after `exit` and `distrobox enter ubuntu-dev` again, `ps -p $$ -o comm=` prints `zsh` and `which node` is not `/usr/bin/node` (Homebrew sits ahead of the system dirs inside the box; on the host it stays last).
-3. Homebrew and chezmoi: the Homebrew installer from the README, then `eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"` for this shell only (don't add it to `~/.bashrc`, which the host reads too; `dotfiles.zsh` finds brew itself), `brew install chezmoi` and `chezmoi init --apply --source ~/Development/dotfiles pixeloven`. On any Linux that is not an image-based host (in the box, or on plain Linux) the Brewfile adds the ops tools: kubectl, helm, argocd, talosctl, omnictl, terraform (HashiCorp's tap), ansible and the docker CLI. They never go on the image host or the Mac.
-   **Done when:** `brew bundle check --file ~/Development/dotfiles/Brewfile` says the dependencies are satisfied, `kubectl version --client` and `terraform version` print versions, and, in a box, `distrobox-host-exec /home/linuxbrew/.linuxbrew/bin/brew leaves` (the host's Homebrew) gained nothing.
-4. oh-my-zsh, keeping the `~/.zshrc` chezmoi wrote: `sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`. Skip it on a rebuild: it lives in the shared home.
+2. *Both Linux setups.* zsh as the login shell: `sudo chsh -s /usr/bin/zsh "$USER"`. In a box this edits only the box's `/etc/passwd` and the host keeps its shell; on a Linux host, install zsh with the system package manager first.
+   **Done when:** in a new login (in a box: after `exit` and `distrobox enter ubuntu-dev` again), `ps -p $$ -o comm=` prints `zsh` and `which node` is not `/usr/bin/node` (Homebrew sits ahead of the system dirs, except on an image-based host, where it stays last).
+3. *Both Linux setups.* Homebrew and chezmoi: the Homebrew installer from the README, then `eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"` for this shell only (don't add it to `~/.bashrc`, which the host reads too; `dotfiles.zsh` finds brew itself), `brew install chezmoi` and `chezmoi init --apply --source ~/Development/dotfiles pixeloven`. Answer `host` or `distrobox` to match your setup (in a box, `distrobox`), and say yes to the ops tools if you want them.
+   **Done when:** `brew bundle check --file ~/Development/dotfiles/Brewfile` says the dependencies are satisfied; with the ops tools, `kubectl version --client` and `terraform version` print versions; and, in a box, `distrobox-host-exec /home/linuxbrew/.linuxbrew/bin/brew leaves` (the host's Homebrew) gained nothing.
+4. *Both Linux setups.* oh-my-zsh, keeping the `~/.zshrc` chezmoi wrote: `sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`. On a box rebuild, skip it: it lives in the shared home.
    **Done when:** `~/.oh-my-zsh/oh-my-zsh.sh` exists and a new zsh shows the Starship prompt with grey suggestions as you type.
-5. Node through fnm: `fnm install 22 && fnm default 22` (the Mac's major), open a new shell, and `npm install -g` the global tools (`chrome-devtools-axi`, `gh-axi`, `quota-axi`, `tasks-axi`). Install Claude Code, Codex and herdr with their own installers (they land in `~/.local/bin`), run `herdr integration install claude`, then `chezmoi apply` again so they get crew and its packs. On a rebuild all of this is already in the shared home.
+5. *Both Linux setups.* Node through fnm: `fnm install 22 && fnm default 22` (the Mac's major), open a new shell, and `npm install -g` the global tools (`chrome-devtools-axi`, `gh-axi`, `quota-axi`, `tasks-axi`). Install Claude Code, Codex and herdr with their own installers (they land in `~/.local/bin`), run `herdr integration install claude`, then `chezmoi apply` again so they get crew and its packs. On a box rebuild all of this is already in the shared home.
    **Done when:** in a new shell `which node` is under fnm, `gh-axi --version` and `herdr --version` print versions, and `~/Development/dotfiles/lib/agent-plugins.sh check` prints nothing.
-6. Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`.
+6. *Both Linux setups.* Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`.
    **Done when:** `git config user.name` and `git config user.email` print your values.
-7. Optional: if you want a separate identity for PixelOven repos, set it by hand. Write `~/.gitconfig-pixeloven` containing `[user]` and `email = <your GitHub noreply address>`, then add to `~/.gitconfig`:
+7. *Both Linux setups, optional.* If you want a separate identity for PixelOven repos, set it by hand. Write `~/.gitconfig-pixeloven` containing `[user]` and `email = <your GitHub noreply address>`, then add to `~/.gitconfig`:
    ```ini
    [includeIf "hasconfig:remote.*.url:https://github.com/pixeloven/**"]
        path = ~/.gitconfig-pixeloven
@@ -135,16 +134,16 @@ Which steps apply depends on the setup. On macOS, use section 1, not this one. O
    ```
    It needs git 2.36 or later, and it also covers the no-mistakes gate repos under `~/.no-mistakes/repos`, whose remotes are github.com/pixeloven URLs. Merges made on the GitHub website use the account's commit email instead; if you want those private too, Settings → Emails → "Keep my email addresses private" makes them use the noreply address.
    **Done when** (if you did this step): `git -C ~/Development/dotfiles config user.email` prints the noreply address and a non-PixelOven repo still prints the global one.
-8. The repo's secret guard (`git -C ~/Development/dotfiles config core.hooksPath .githooks`) and section 3, if this `$HOME` hasn't had them yet.
+8. *Both Linux setups.* The repo's secret guard (`git -C ~/Development/dotfiles config core.hooksPath .githooks`) and section 3, if this `$HOME` hasn't had them yet.
    **Done when:** `git -C ~/Development/dotfiles config core.hooksPath` prints `.githooks`, `fc-list | grep -q 'JetBrainsMono Nerd Font'` succeeds, and text you select in a herdr pane pastes into a host app with `ctrl+v` (herdr copies through the Brewfile's `wl-copy`/`xclip` when the terminal ignores OSC 52, as Ptyxis does).
-9. Optional, docker: the Brewfile installs only the CLI; there is no Docker engine in the box. To run containers, point it at the host's podman by adding `export DOCKER_HOST=unix:///run/user/$UID/podman/podman.sock` to your own lines in `~/.zshrc` (outside the dotfiles block). Those containers then run on the host, a deliberate crossing, which is why dotfiles doesn't set it.
+9. *Both Linux setups, optional, with the ops tools.* The Brewfile installs only the docker CLI, not an engine; point it at one. On a Linux host, use an engine running there. In a box there is none: point it at the host's podman by adding `export DOCKER_HOST=unix:///run/user/$UID/podman/podman.sock` to your own lines in `~/.zshrc` (outside the dotfiles block). Those containers then run on the host, a deliberate crossing, which is why dotfiles doesn't set it.
    **Done when** (if you did this step): `docker ps` prints a header and no error.
 
-**Done when:** every check above passes and `bats ~/Development/dotfiles/tests/` passes inside the box.
+**Done when:** every check above that applies passes and `bats ~/Development/dotfiles/tests/` passes (in a box, inside it).
 
 ### 9b. Move the validation daemon into the box
 
-One time per machine, with or without a rebuild. The box's `systemctl --user` is the host's (distrobox shares `/run/user/$UID`), so `no-mistakes daemon start` from the box installed its daemon as a host systemd unit. Its pipelines then ran on the host with the host's tools, and their test steps ran the Brewfile into the host's Homebrew. Inside a container, `dotfiles.zsh` now sets `NM_TEST_START_DAEMON=1`, which makes no-mistakes start a detached daemon instead of a service, and `NM_HOME=$HOME/.no-mistakes`, so the gate remotes and run history stay where they are. The daemon serves every lane: only firstmate or you do this, with nothing running.
+*Linux distrobox only.* One time per machine, with or without a rebuild. The box's `systemctl --user` is the host's (distrobox shares `/run/user/$UID`), so `no-mistakes daemon start` from the box installed its daemon as a host systemd unit. Its pipelines then ran on the host with the host's tools, and their test steps ran the Brewfile into the host's Homebrew. With `installTarget = "distrobox"`, `dotfiles.zsh` inside the box sets `NM_TEST_START_DAEMON=1`, which makes no-mistakes start a detached daemon instead of a service, and `NM_HOME=$HOME/.no-mistakes`, so the gate remotes and run history stay where they are. The daemon serves every lane: only firstmate or you do this, with nothing running.
 
 1. In a new zsh in the box (after `chezmoi apply`), check the variables.
    **Done when:** `echo $NM_TEST_START_DAEMON $NM_HOME` prints `1` and your `~/.no-mistakes` path.
@@ -159,13 +158,13 @@ One time per machine, with or without a rebuild. The box's `systemctl --user` is
 4. Start the daemon in the box: `no-mistakes daemon start`.
    **Done when:** `no-mistakes daemon status` says it is running and `cat /proc/"$(jq -r .pid "$NM_HOME/daemon.pid")"/cgroup` does **not** show `user@1000.service/app.slice` (the host's user services; your uid may differ from 1000).
 
-The detached daemon lives as long as the box. After a reboot or `distrobox stop`, the next `no-mistakes` command starts it again, in the box. Run `no-mistakes` only from the box's zsh, where the two variables are set; from a shell without them it would install the host unit again.
+The detached daemon lives as long as the box. After a reboot or `distrobox stop`, the next `no-mistakes` command starts it again, in the box. Run `no-mistakes` only from the box's zsh, where the two variables are set (it needs `installTarget = "distrobox"`); from a shell without them it would install the host unit again.
 
 **Roll back:** `no-mistakes daemon stop`, then `env -u NM_TEST_START_DAEMON no-mistakes daemon start` reinstalls the host unit.
 
 ### 9c. Destroy and rebuild the box
 
-Destroying the box removes only the container: its apt packages, its Homebrew (with the ops tools), and whatever runs in it, such as herdr and the daemon. Everything in the shared home stays, including `~/Development` (the repos, and the operator home with its state), `~/.no-mistakes`, `~/.treehouse` and every sign-in. Destroying it also doesn't undo anything it wrote to the host; that is 9d.
+*Linux distrobox only.* Destroying the box removes only the container: its apt packages, its Homebrew (with the ops tools), and whatever runs in it, such as herdr and the daemon. Everything in the shared home stays, including `~/Development` (the repos, and the operator home with its state), `~/.no-mistakes`, `~/.treehouse` and every sign-in. Destroying it also doesn't undo anything it wrote to the host; that is 9d.
 
 1. If an agent session supervises work from inside the box (firstmate in herdr), ask it to stop dispatching and let every lane finish or be torn down.
    **Done when:** `treehouse status` in each project repo shows nothing leased and `no-mistakes axi status` shows no active run.
@@ -182,7 +181,7 @@ Destroying the box removes only the container: its apt packages, its Homebrew (w
 
 ### 9d. Clean the host
 
-The daemon's pipeline runs on the host ran the Brewfile into the host's Homebrew (2026-10-25), and agent sessions then added `gh`, `git-delta` and `node` there, plus a few files in `~/.local/bin`, so the host daemon could push and lint. Remove them by hand, in a host terminal, each only at the point its step names. Skip a step for anything you use on the host. Credentials and user data are never deleted here.
+*Linux distrobox only.* With `host` the host's Homebrew is meant to have these tools, so skip this. The daemon's pipeline runs on the host ran the Brewfile into the host's Homebrew (2026-10-25), and agent sessions then added `gh`, `git-delta` and `node` there, plus a few files in `~/.local/bin`, so the host daemon could push and lint. Remove them by hand, in a host terminal, each only at the point its step names. Skip a step for anything you use on the host. Credentials and user data are never deleted here.
 
 1. Homebrew formulae the pipeline installed. Safe once 9b is done, so the pipeline no longer runs on the host:
    `brew uninstall awscli bat bats-core chezmoi eza fd ffmpeg fnm fzf-tab fzf gitleaks glow shellcheck starship tmux uv wl-clipboard xclip zoxide zsh-autosuggestions zsh-syntax-highlighting`, and `brew uninstall --cask 1password-cli` unless you use `op` on the host.

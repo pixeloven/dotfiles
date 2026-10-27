@@ -26,16 +26,16 @@ chezmoi init --apply --source ~/Development/dotfiles pixeloven
 
 Then follow [RUNBOOK.md](RUNBOOK.md) for the few steps that macOS won't let a script do.
 
-## Set up Linux (distrobox)
+## Set up Linux (on the host, or in a distrobox)
 
-Tested on an Ubuntu 24.04 distrobox on Bazzite. On the host, create the box from the tracked file (it shares your `$HOME`), then enter it:
+Tools install either on the Linux machine itself (a server, or any host where you want its own Homebrew) or only inside a distrobox (tested with Ubuntu 24.04 on Bazzite); `chezmoi init` asks which. For a distrobox, first create the box on the host from the tracked file (it shares your `$HOME`), then enter it:
 
 ```sh
 distrobox assemble create --file ~/Development/dotfiles/lib/distrobox/ubuntu-dev.ini
 distrobox enter ubuntu-dev
 ```
 
-Inside the container:
+Then, on the Linux host or inside the box (on a host, use its own package manager for the first line):
 
 ```sh
 sudo apt-get update && sudo apt-get install -y build-essential procps curl file git zsh
@@ -46,9 +46,9 @@ chezmoi init --apply --source ~/Development/dotfiles pixeloven
 sudo chsh -s /usr/bin/zsh "$USER"
 ```
 
-`chezmoi init` asks once which terminal you use (Ptyxis by default); macOS asks nothing. With Ptyxis, `chezmoi apply` sets its Catppuccin Mocha palette and leaves the font alone (from a distrobox, on the host through `distrobox-host-exec`); with Ghostty, see RUNBOOK section 10. The Brewfile's `if OS.mac?` / `if OS.linux?` blocks pick the per-OS packages. Inside the container, zsh puts Homebrew ahead of the system dirs so its Node and git win over apt's; on an image-based host (`/run/ostree-booted`) Homebrew stays last. Node comes from fnm on both OSes.
+`chezmoi init` asks a few questions once. On Linux: which terminal you use (Ptyxis by default) and where tools install (`host` by default, `distrobox` suggested on an image-based host; with `distrobox`, nothing installs outside a container). On both OSes: whether to install the ops tools (kubectl, helm, argocd, talosctl, omnictl, terraform, ansible and the docker CLI; default no). With Ptyxis, `chezmoi apply` sets its Catppuccin Mocha palette and leaves the font alone (from a distrobox, on the host through `distrobox-host-exec`); with Ghostty, see RUNBOOK section 10. The Brewfile's `if OS.mac?` / `if OS.linux?` blocks pick the per-OS packages. On Linux, zsh puts Homebrew ahead of the system dirs so its Node and git win over apt's; on an image-based host (`/run/ostree-booted`) Homebrew stays last. Node comes from fnm on both OSes.
 
-Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the global npm tools, your git name and email (dotfiles never sets them), the clipboard check, and moving the validation pipeline into the box. Install tools in the box only, never in the host's Homebrew; on an image-based host the Brewfile step skips itself.
+Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the global npm tools, your git name and email (dotfiles never sets them), the clipboard check, and, with a distrobox, moving the validation pipeline into the box. Each step says whether it applies to a Linux host, a distrobox, or both.
 
 ## Day to day
 

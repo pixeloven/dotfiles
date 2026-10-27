@@ -41,11 +41,11 @@ if OS.linux?
   brew "xclip"
 end
 
-# Ops tools, on any Linux that is not an image-based host (/run/ostree-booted): the distrobox, or a
-# plain Linux dev machine. Never on the image host, and not on the Mac. docker is the CLI only;
-# RUNBOOK section 9 has the podman-socket option. terraform comes from HashiCorp's tap (not in
+# Ops tools, only when chezmoi init's opsTools answer is yes (any OS); the brew-bundle script sets
+# HOMEBREW_DOTFILES_OPS_TOOLS from it. docker is the CLI only; RUNBOOK section 9a has the
+# podman-socket option for a distrobox. terraform comes from HashiCorp's tap (not in
 # homebrew-core: BUSL licence).
-if OS.linux? && !File.exist?("/run/ostree-booted")
+if ENV["HOMEBREW_DOTFILES_OPS_TOOLS"] == "1"
   tap "hashicorp/tap"
   tap "siderolabs/tap"
   brew "kubernetes-cli"

@@ -155,7 +155,15 @@ agent_plugins() { # crew and its packs for Claude Code, Codex and pi, unless age
 }
 
 packages() {
-  local listed pkg
+  local data listed pkg ops=
+  # The same chezmoi init answers the brew-bundle script follows: with installTarget = distrobox
+  # the host installs nothing, and opsTools turns on the Brewfile's ops tools block.
+  data="$("${CZ[@]}" data --format json 2>/dev/null)"
+  if [ "$(jq -r '.installTarget // empty' <<<"$data" 2>/dev/null)" = distrobox ]; then
+    [ -e "${DOTFILES_CONTAINER_MARKER:-/run/.containerenv}" ] || return 0
+  fi
+  [ "$(jq -r '.opsTools // empty' <<<"$data" 2>/dev/null)" = true ] && ops=1
+  export HOMEBREW_DOTFILES_OPS_TOOLS="$ops"
   listed="$(brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
   { brew leaves --installed-on-request 2>/dev/null; brew list --cask 2>/dev/null; } | sort -u |
     while IFS= read -r pkg; do
@@ -168,7 +176,7 @@ packages() {
   brew bundle check --verbose --no-upgrade --file="$REPO/Brewfile" 2>&1 |
     sed -nE 's/^→ (Formula|Cask) (.+) needs to be installed.*/\2/p' |
     while IFS= read -r pkg; do
-      emit pkg-missing "$pkg" "brew bundle --file=$REPO/Brewfile"
+      emit pkg-missing "$pkg" "${ops:+HOMEBREW_DOTFILES_OPS_TOOLS=1 }brew bundle --file=$REPO/Brewfile"
     done
 }
 

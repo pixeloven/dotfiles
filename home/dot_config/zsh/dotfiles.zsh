@@ -30,15 +30,19 @@ if [[ -n ${HOMEBREW_PREFIX:-} && $HOMEBREW_PREFIX != /usr/local ]]; then
   unset _dotfiles_front
 fi
 
-# no-mistakes inside a Linux container (the distrobox): run its daemon in the box, not on the host.
-# The box's `systemctl --user` is the host's (distrobox shares /run/user/$UID), so the managed
-# service would install a host unit, and the daemon would run the pipeline with the host's tools.
-# NM_TEST_START_DAEMON=1 is no-mistakes' escape hatch that skips the service manager and starts a
-# detached daemon; there is no supported switch yet. NM_HOME keeps the existing state root, so the
-# gate remotes and run history carry over. DOTFILES_CONTAINER_MARKER is a test seam.
-if [[ $OSTYPE == linux* && -e ${DOTFILES_CONTAINER_MARKER:-/run/.containerenv} ]]; then
+# no-mistakes when tools install in a distrobox (installTarget = "distrobox", from chezmoi init, in
+# dotfiles-target.zsh beside this file) and this shell is in the box: run its daemon in the box, not
+# on the host. The box's `systemctl --user` is the host's (distrobox shares /run/user/$UID), so the
+# managed service would install a host unit, and the daemon would run the pipeline with the host's
+# tools. NM_TEST_START_DAEMON=1 is no-mistakes' escape hatch that skips the service manager and
+# starts a detached daemon; there is no supported switch yet. NM_HOME keeps the existing state root,
+# so the gate remotes and run history carry over. DOTFILES_CONTAINER_MARKER is a test seam.
+_dotfiles_install_target=host
+[[ -r ${${(%):-%x}:A:h}/dotfiles-target.zsh ]] && source "${${(%):-%x}:A:h}/dotfiles-target.zsh"
+if [[ $_dotfiles_install_target == distrobox && -e ${DOTFILES_CONTAINER_MARKER:-/run/.containerenv} ]]; then
   export NM_TEST_START_DAEMON=1 NM_HOME=$HOME/.no-mistakes
 fi
+unset _dotfiles_install_target
 
 [[ -o interactive ]] || return 0
 
