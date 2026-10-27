@@ -49,6 +49,7 @@ init_config() { # <os> [chezmoi flags] : render .chezmoi.toml.tmpl as `chezmoi i
 .config/zsh/op-env.zsh
 .local/bin/lastreply
 .local/bin/speak-kokoro
+.local/bin/toolsets
 .local/bin/voice
 .local/bin/voice-cloud
 Library/Preferences/glow/glow.yml"
@@ -92,22 +93,73 @@ Library/Preferences/glow/glow.yml"
   [ "$(sed "s#$TMP/darwin#H#" "$mac")" = "$(sed "s#$TMP/linux#H#" "$linux")" ]
 }
 
-@test "macOS init asks only about the ops tools, and picks Ghostty and the host" {
+TOOLSETS_PROMPT="Ops tool sets to install (lib/toolsets.txt; none by default)"
+
+@test "macOS init asks only about the tool sets, and picks Ghostty and the host" {
   run init_config darwin --promptChoice "Terminal app on this Linux machine=other" \
     --promptChoice "Install tools on this host, or only inside a distrobox=distrobox"
   [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "ghostty"'* ]] || false
   [[ "$output" == *'installTarget = "host"'* ]] || false
-  [[ "$output" == *'opsTools = false'* ]] || false
+  [[ "$output" == *$'\ntoolsets = []\n'* ]] || false
+  [[ "$output" != *"opsTools ="* ]] || false
 }
 
-@test "init records the ops tools answer on both OSes, defaulting to no" {
+@test "init records the tool sets answer on both OSes, defaulting to none" {
   local os
   for os in darwin linux; do
-    run init_config "$os" --promptBool "Install the ops tools (kubectl, helm, argocd, talosctl, omnictl, terraform, ansible, docker CLI)=true"
+    run init_config "$os" --promptMultichoice "$TOOLSETS_PROMPT=kubernetes/terraform"
     [ "$status" -eq 0 ]
-    [[ "$output" == *'opsTools = true'* ]] || { echo "$os: $output"; false; }
+    [[ "$output" == *'toolsets = ["kubernetes", "terraform"]'* ]] || { echo "$os: $output"; false; }
   done
+}
+
+@test "the init choices are the sets in lib/toolsets.txt" {
+  local want
+  want="$(sed 's/#.*//' "$REPO/lib/toolsets.txt" | awk 'NF { print $1 }' | paste -sd / -)"
+  run init_config darwin --promptMultichoice "$TOOLSETS_PROMPT=$want"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'toolsets = ["kubernetes", "talos", "terraform", "ansible", "containers"]'* ]] || false
+}
+
+re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template over an existing config, as a re-init does
+  local os="$1"
+  printf '[data]\n%s\n' "$2" > "$TMP/old.toml"
+  shift 2
+  chezmoi --source "$REPO" --config "$TMP/old.toml" execute-template --init --no-tty \
+    --override-data "{\"chezmoi\":{\"os\":\"$os\"}}" "$@" < "$REPO/home/.chezmoi.toml.tmpl"
+}
+
+@test "re-init turns the old opsTools answer into tool sets without asking: yes is all, no is none" {
+  local os
+  for os in darwin linux; do
+    # A tool sets answer here would show up as kubernetes alone; the legacy seed must win.
+    run re_init "$os" $'terminal = "ptyxis"\ninstallTarget = "host"\nopsTools = true' \
+      --promptMultichoice "$TOOLSETS_PROMPT=kubernetes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'toolsets = ["kubernetes", "talos", "terraform", "ansible", "containers"]'* ]] || { echo "$os: $output"; false; }
+    [[ "$output" != *"opsTools ="* ]] || false
+    run re_init "$os" $'terminal = "ptyxis"\ninstallTarget = "host"\nopsTools = false' \
+      --promptMultichoice "$TOOLSETS_PROMPT=kubernetes"
+    [[ "$output" == *$'\ntoolsets = []\n'* ]] || { echo "$os: $output"; false; }
+  done
+}
+
+@test "re-init keeps the tool sets already chosen" {
+  run re_init darwin 'toolsets = ["talos"]'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'toolsets = ["talos"]'* ]] || false
+}
+
+@test "re-init keeps the keys set by hand" {
+  run re_init darwin $'agentPlugins = false\noperatorPersona = "operator"\noperatorHome = "~/Development/operator"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\nagentPlugins = false'* ]] || false
+  [[ "$output" == *$'\noperatorPersona = "operator"'* ]] || false
+  [[ "$output" == *$'\noperatorHome = "~/Development/operator"'* ]] || false
+  run init_config darwin
+  [[ "$output" != *agentPlugins* ]] || false
+  [[ "$output" != *operator* ]] || false
 }
 
 @test "Linux init records where tools install" {

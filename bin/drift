@@ -155,16 +155,17 @@ agent_plugins() { # crew and its packs for Claude Code, Codex and pi, unless age
 }
 
 packages() {
-  local data listed pkg ops=
+  local data listed pkg sets
   # The same chezmoi init answers the brew-bundle script follows: with installTarget = distrobox
-  # the host installs nothing, and opsTools turns on the Brewfile's ops tools block.
+  # the host installs nothing, and toolsets (or, before re-init, opsTools = true for all) turns on
+  # sets from lib/toolsets.txt. A tool from any set counts as listed, so one installed by hand or
+  # left by a set turned off is never pkg-extra; only the sets that are on can be pkg-missing.
   data="$("${CZ[@]}" data --format json 2>/dev/null)"
   if [ "$(jq -r '.installTarget // empty' <<<"$data" 2>/dev/null)" = distrobox ]; then
     [ -e "${DOTFILES_CONTAINER_MARKER:-/run/.containerenv}" ] || return 0
   fi
-  [ "$(jq -r '.opsTools // empty' <<<"$data" 2>/dev/null)" = true ] && ops=1
-  export HOMEBREW_DOTFILES_OPS_TOOLS="$ops"
-  listed="$(brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
+  sets="$(jq -r 'if has("toolsets") then [.toolsets[]? | tostring] | join(",") elif .opsTools == true then "all" else "" end' <<<"$data" 2>/dev/null)"
+  listed="$(HOMEBREW_DOTFILES_TOOLSETS=all brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
   { brew leaves --installed-on-request 2>/dev/null; brew list --cask 2>/dev/null; } | sort -u |
     while IFS= read -r pkg; do
       [ -z "$pkg" ] && continue
@@ -173,10 +174,10 @@ packages() {
       emit pkg-extra "$pkg" "add to Brewfile, or skip (lib/drift-ignore.txt)"
     done
   # Homebrew prints the "needs to be installed" lines on stderr.
-  brew bundle check --verbose --no-upgrade --file="$REPO/Brewfile" 2>&1 |
+  HOMEBREW_DOTFILES_TOOLSETS="$sets" brew bundle check --verbose --no-upgrade --file="$REPO/Brewfile" 2>&1 |
     sed -nE 's/^→ (Formula|Cask) (.+) needs to be installed.*/\2/p' |
     while IFS= read -r pkg; do
-      emit pkg-missing "$pkg" "${ops:+HOMEBREW_DOTFILES_OPS_TOOLS=1 }brew bundle --file=$REPO/Brewfile"
+      emit pkg-missing "$pkg" "${sets:+HOMEBREW_DOTFILES_TOOLSETS=$sets }brew bundle --file=$REPO/Brewfile"
     done
 }
 

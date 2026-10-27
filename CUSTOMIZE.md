@@ -124,9 +124,21 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 - **Try it:** `chezmoi apply` (it re-runs whenever the key or home changes).
 - **Keep it:** the key lives only in your local chezmoi config. If the theme is later switched another way, `/codify` reports `config/po-theme` as an owned-key change; set `operatorPersona` to match, or run the `lib/operator-persona.sh <name> <home>` command it suggests to switch back (`chezmoi apply` alone does not re-run it until the key or home changes). To stop managing it, remove the key.
 
+## Optional tool sets (off by default)
+
+- **Where it lives:** `lib/toolsets.txt` names each set and its Homebrew formulae: `kubernetes` (kubernetes-cli, helm, argocd), `talos` (talosctl, omnictl from Sidero Labs' tap), `terraform` (HashiCorp's tap), `ansible` and `containers` (the docker CLI only). The sets that are on are the chezmoi data key `toolsets`, a list in your untracked `~/.config/chezmoi/chezmoi.toml`. `chezmoi init` asks for it once as checkboxes. The Brewfile reads the table, and `home/dot_local/bin/executable_toolsets` is the command.
+- **Common changes:**
+  - See what's on and installed: `toolsets` (or `toolsets status`); `toolsets list` shows each set's formulae.
+  - Turn sets on: `toolsets on kubernetes talos`. It changes only the `toolsets` line, then runs `chezmoi apply --include scripts`, which installs them (on a distrobox host it skips, as `chezmoi apply` does).
+  - Turn sets off: `toolsets off kubernetes`. Their tools stay installed. `toolsets off kubernetes --uninstall` also runs `brew uninstall` on them and untaps the set's tap when nothing from it is left; `brew autoremove` then clears dependencies nothing needs.
+  - Add or change a set: edit `lib/toolsets.txt` (`owner/tap/name` brings its tap), then `toolsets on <set>`. A new set starts off everywhere.
+  - A machine from before tool sets has `opsTools` instead: `true` counts as every set and `false` as none, until `chezmoi init` replaces it with `toolsets` without asking.
+- **Try it:** `toolsets`.
+- **Keep it:** the answer lives only in your local chezmoi config. `/codify` never reports a tool from any set as `pkg-extra`, and reports `pkg-missing` only for sets that are on.
+
 ## Packages
 
-- **Where they live:** `Brewfile`
+- **Where they live:** `Brewfile`; the optional ops tools are in `lib/toolsets.txt` (Optional tool sets, above)
 - **Add:** `brew install <name>` (or `--cask`), then `/codify` and keep it. Or add the line to the Brewfile and run `chezmoi apply`.
 - **Don't track:** choose "skip" in `/codify`, which adds the name to `lib/drift-ignore.txt`.
 - **Remove:** delete the line, then `brew uninstall <name>`.

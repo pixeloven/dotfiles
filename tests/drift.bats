@@ -23,11 +23,14 @@ case "$*" in
   "leaves --installed-on-request") printf '%s\n' bat $STUB_EXTRA_FORMULA ;;
   "list --cask") echo ghostty ;;
   "bundle list --all --file="*) printf 'bat\nghostty\n'
-    # The Brewfile's ops tools block, read through the variable the real Brewfile checks.
-    [ "$HOMEBREW_DOTFILES_OPS_TOOLS" = 1 ] && echo kubernetes-cli
+    # The Brewfile's kubernetes set, read through the variable the real Brewfile checks.
+    case ",$HOMEBREW_DOTFILES_TOOLSETS," in *,all,*|*,kubernetes,*) echo kubernetes-cli ;; esac
     exit 0 ;;
   "bundle check --verbose --no-upgrade --file="*)
-    # Like Homebrew 7, the missing-package lines go to stderr.
+    # Like Homebrew 7, the missing-package lines go to stderr. kubernetes-cli is never installed.
+    case ",$HOMEBREW_DOTFILES_TOOLSETS," in
+      *,all,*|*,kubernetes,*) echo "→ Formula kubernetes-cli needs to be installed." >&2; exit 1 ;;
+    esac
     [ -n "$STUB_MISSING" ] && { echo "→ Formula $STUB_MISSING needs to be installed." >&2; exit 1; }
     echo "The Brewfile's dependencies are satisfied." ;;
 esac
@@ -112,13 +115,31 @@ teardown() { rm -rf "$TMP"; }
   [ "$output" = "dotfiles: 1 changes not codified - run /codify" ]
 }
 
-@test "ops tools count as listed only when opsTools is true" {
+@test "a tool from a tool set that is off is never pkg-extra" {
   export STUB_EXTRA_FORMULA=kubernetes-cli
   run "$R/bin/drift"
-  [[ "$output" == *$'pkg-extra\tkubernetes-cli'* ]] || false
-  printf '[data]\nopsTools = true\n' > "$TMP/chezmoi.toml"
+  [ -z "$output" ]
+  printf '[data]\ntoolsets = ["terraform"]\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [ -z "$output" ]
+}
+
+@test "a tool set's missing tools are pkg-missing only while the set is on" {
+  printf '[data]\ntoolsets = ["kubernetes"]\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" == *$'pkg-missing\tkubernetes-cli\tHOMEBREW_DOTFILES_TOOLSETS=kubernetes brew bundle'* ]] || false
+  printf '[data]\ntoolsets = []\n' > "$TMP/chezmoi.toml"
   run "$R/bin/drift"
   [[ "$output" != *kubernetes-cli* ]] || false
+}
+
+@test "before re-init, opsTools = true still turns on every tool set" {
+  printf '[data]\nopsTools = true\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" == *$'pkg-missing\tkubernetes-cli\tHOMEBREW_DOTFILES_TOOLSETS=all brew bundle'* ]] || false
+  printf '[data]\nopsTools = false\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [ -z "$output" ]
 }
 
 @test "installTarget distrobox checks no packages outside a container" {

@@ -17,7 +17,7 @@ jobs:
         run: |
           shellcheck lib/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh
           for t in home/.chezmoiscripts/*.tmpl; do
-            chezmoi --source "$PWD" execute-template --override-data '{"chezmoi":{"os":"linux"},"terminal":"ptyxis","container":true,"installTarget":"distrobox","opsTools":true}' \
+            chezmoi --source "$PWD" execute-template --override-data '{"chezmoi":{"os":"linux"},"terminal":"ptyxis","container":true,"installTarget":"distrobox","toolsets":["kubernetes","terraform"]}' \
               < "$t" > "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
             # opt-in scripts (e.g. operatorPersona) render empty without their data key
             [ -s "${RUNNER_TEMP}/$(basename "$t" .tmpl)" ] || continue
