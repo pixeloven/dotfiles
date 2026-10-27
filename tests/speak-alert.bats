@@ -304,3 +304,20 @@ sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 
   [ "$(wc -l < "$HOME/kokoro-calls")" -eq 1 ]
   grep -q 'stop silent: muted$' "$HOME/.local/state/speak-alert/events.log"
 }
+
+@test "a mute pressed while kokoro renders stops the real background playback" {
+  os_is Linux
+  kokoro_installed
+  players
+  mkdir -p "$HOME/.config/speak-alert"
+  echo "touch '$HOME/.config/speak-alert/muted'" >> "$HOME/.local/bin/speak-kokoro"
+  log="$HOME/.local/state/speak-alert/events.log"
+  run bash -c "echo '{}' | PATH='$HOME/bin:$PATH' SPEAK_ALERT_DRY_RUN= '$SCRIPT' stop"
+  [ "$status" -eq 0 ]
+  for _ in $(seq 50); do
+    { grep -q 'stop silent: muted$' "$log" || [ -e "$HOME/played" ]; } && break
+    sleep 0.1
+  done
+  [ "$(tail -1 "$log" | sed 's/^.* stop //')" = "silent: muted" ]
+  [ ! -e "$HOME/played" ]
+}
