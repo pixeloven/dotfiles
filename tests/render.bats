@@ -46,6 +46,7 @@ init_config() { # <os> [chezmoi flags] : render .chezmoi.toml.tmpl as `chezmoi i
 .config/zsh/catppuccin-zsh-syntax-highlighting.LICENSE
 .config/zsh/catppuccin_mocha-zsh-syntax-highlighting.zsh
 .config/zsh/dotfiles.zsh
+.config/zsh/op-env.zsh
 .local/bin/lastreply
 .local/bin/speak-kokoro
 .local/bin/voice

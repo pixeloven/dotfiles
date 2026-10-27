@@ -304,3 +304,16 @@ When Ghostty runs on the host (AppImage or COPR) and your tools live in the cont
 If programs in the container complain about an unknown terminal (`TERM=xterm-ghostty`; Ghostty's terminfo lives at a host path), copy the entry into the shared `~/.terminfo` by running `infocmp -x xterm-ghostty | tic -x -` on the host. herdr panes reset `TERM` to `xterm-256color`, so only the herdr client itself sees it. Not verified yet.
 
 **Done when:** Ghostty opens from the app menu with the Catppuccin Mocha theme, a new tab lands in the container (`echo $CONTAINER_ID` prints the box), and `bats ~/Development/dotfiles/tests/ghostty.bats` passes.
+
+## 11. 1Password service account for the shell (optional)
+
+For a machine whose shells should reach 1Password without the desktop app, as on a server or in a distrobox. Without the token file nothing changes: no variables, no messages, no `op` calls. This is the case on the Mac and for anyone else using this repo. `op` is the Brewfile's `1password-cli`; where `op` is missing, only the token is exported.
+
+1. Place the token by hand. It never goes in git or in chezmoi: `mkdir -p ~/.config/harmony && install -m 600 /dev/null ~/.config/harmony/op-sa-token`, then paste the service-account token into that file with an editor. Don't use `echo` or another command line that would land in your history. If the file already exists, run `chmod 600 ~/.config/harmony/op-sa-token`. The shell warns on every start while the mode is anything else, and still loads the token.
+2. Open a new tab, or run `exec zsh`. The shell exports `OP_SERVICE_ACCOUNT_TOKEN`, then, where `op` is installed, `LITELLM_API_KEY` from `op read op://Harmony/LiteLLM/workstation_key`. If `LITELLM_API_KEY` is already set, for example in a nested shell, it is not read again. A failed read leaves it unset, and a read taking more than 3 seconds is stopped, so the prompt never hangs.
+
+**Verify without printing secrets:** `stat -c %a ~/.config/harmony/op-sa-token 2>/dev/null || stat -f %Lp ~/.config/harmony/op-sa-token` prints `600`. `[ -n "$OP_SERVICE_ACCOUNT_TOKEN" ] && echo token set` and `op whoami` show the service account. Check the key without printing it: `[ -n "$LITELLM_API_KEY" ] && echo LITELLM_API_KEY set`. `bats ~/Development/dotfiles/tests/op-env.bats` uses a fake `op` and a throwaway token.
+
+**Turn it off:** delete `~/.config/harmony/op-sa-token` and open a new tab.
+
+**Done when:** a new tab starts with no warning, and the checks above print `600`, `token set` and `LITELLM_API_KEY set`.
