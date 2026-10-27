@@ -153,3 +153,16 @@ teardown() {
   run "$SCRIPT" --bogus
   [ "$status" -eq 2 ]
 }
+
+@test "a recorder that exits at once says so and leaves no recording" {
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" > "%s/rec-args"\nexit 1\n' "$HOME" > "$HOME/bin/parecord"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [ -e "$HOME/rec-args" ]
+  [ ! -e "$XDG_RUNTIME_DIR/dictate/recorder.pid" ]
+  grep -q 'could not start recording' "$HOME/notes"
+  ! grep -q 'Listening' "$HOME/notes"
+  run "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [ ! -e "$HOME/stt-args" ]
+}

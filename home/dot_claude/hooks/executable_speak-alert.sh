@@ -127,8 +127,6 @@ pick_player() { # sets player (a WAV player), or fails
   if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
     command -v afplay >/dev/null 2>&1 && player=(afplay)
   elif command -v paplay >/dev/null 2>&1; then player=(paplay)
-  elif command -v pw-play >/dev/null 2>&1; then player=(pw-play)
-  elif command -v host-spawn >/dev/null 2>&1; then player=(host-spawn pw-play)  # a container without audio tools
   fi
   [ ${#player[@]} -gt 0 ]
 }

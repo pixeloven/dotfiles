@@ -3,7 +3,7 @@
 # recording, press again to stop: the speech is transcribed and typed into whichever herdr pane
 # has focus (Claude Code, Codex or a shell). Bind it to one global key (RUNBOOK section 4).
 # Usage: dictate [--cancel]
-# Records 16 kHz mono with parecord (PulseAudio or PipeWire), else pw-record.
+# Records 16 kHz mono with parecord (PulseAudio or PipeWire).
 # Speech to text, DICTATE_ENGINE: whisper (default; local whisper.cpp `whisper-cli` with the
 # model at DICTATE_MODEL, default ~/.local/share/whisper/ggml-large-v3-turbo-q5_0.bin) or
 # openai-compatible (voice-cloud stt, at VOICE_CLOUD_URL). DICTATE_PROMPT lists words to expect.
@@ -65,7 +65,6 @@ deliver() { # <text> : type it into the focused herdr pane, else put it on the c
   fi
   if command -v wl-copy >/dev/null 2>&1 && printf '%s' "$1" | wl-copy 2>/dev/null; then :
   elif command -v xclip >/dev/null 2>&1 && printf '%s' "$1" | xclip -selection clipboard 2>/dev/null; then :
-  elif command -v pbcopy >/dev/null 2>&1 && printf '%s' "$1" | pbcopy 2>/dev/null; then :
   else
     notify "no herdr pane or clipboard for: $1"
     return 1
@@ -91,14 +90,11 @@ if ! recording; then
     notify "speech to text ($engine) is not set up: see RUNBOOK section 4"
     exit 1
   fi
-  if command -v parecord >/dev/null 2>&1; then
-    rec=(parecord --channels=1 --rate=16000 --format=s16le --file-format=wav)
-  elif command -v pw-record >/dev/null 2>&1; then
-    rec=(pw-record --channels 1 --rate 16000)
-  else
-    notify "no recorder: install parecord (pulseaudio) or pw-record"
+  if ! command -v parecord >/dev/null 2>&1; then
+    notify "no recorder: install parecord (pulseaudio)"
     exit 1
   fi
+  rec=(parecord --channels=1 --rate=16000 --format=s16le --file-format=wav)
   mkdir -p "$state" && chmod 700 "$state"
   rm -f "$wav"
   # Its own session, so it outlives this call (and the distrobox enter that ran it).
@@ -108,6 +104,12 @@ if ! recording; then
     nohup "${rec[@]}" "$wav" >/dev/null 2>&1 < /dev/null &
   fi
   echo $! > "$pidfile"
+  sleep 0.2
+  if ! recording; then
+    rm -f "$pidfile" "$wav"
+    notify "could not start recording: is PulseAudio or PipeWire reachable?"
+    exit 1
+  fi
   notify "Listening… press again to stop"
   exit 0
 fi
