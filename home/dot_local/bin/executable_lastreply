@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # lastreply: render the newest Claude Code (or Codex) reply with glow, for a herdr split
-# beside the chat. Reads the session transcripts only; never writes anything.
+# beside the chat. Reads the session transcripts; --watch also keeps a read marker per session.
 # Usage: lastreply [--open] [--watch] [--codex] [--raw] [--session ID]
 #   --codex       read ~/.codex/sessions instead of ~/.claude/projects
-#   --watch       re-render whenever the transcript changes (Ctrl+C to stop)
+#   --watch       read the session's finished replies one at a time; a new one only raises
+#                 the unread count, the view moves on a key: Space/n/→ next (marks read),
+#                 p/← previous, u oldest unread, G/End latest (marks all read),
+#                 Enter page the card in less, q quit
 #   --raw         print the markdown without glow
 #   --session ID  follow that session ($CLAUDE_CODE_SESSION_ID or Codex's $CODEX_THREAD_ID)
 #   --open        split the current herdr pane and run --watch there for this session;
@@ -12,6 +15,7 @@
 # session for the current folder, else the newest anywhere.
 # A reply is all the text the assistant wrote since your last prompt, across tool calls
 # (for Codex, only its final answer, not its progress notes).
+# Read state: ${XDG_STATE_HOME:-~/.local/state}/lastreply/<transcript name>, pruned after 30 days.
 
 set -uo pipefail
 
@@ -23,7 +27,7 @@ while [ $# -gt 0 ]; do
     --raw) raw=1 ;;
     --open) open=1 ;;
     --session) session="${2:-}"; shift ;;
-    -h|--help) sed -n '2,15s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19s/^# \{0,1\}//p' "$0"; exit 0 ;;
     *) echo "lastreply: unknown option $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -107,8 +111,9 @@ transcript() {
   printf '%s' "$file"
 }
 
-# Split the transcript into turns at each real prompt and keep the last one with reply text.
-# The pane shows it as a review card: your prompt (shortened) and the time, then the reply.
+# Split the transcript into turns at each real prompt. A turn is finished once the agent ended
+# it (Claude stop_reason end_turn/stop_sequence, Codex task_complete) or a later prompt began.
+# The pane shows a turn as a review card: your prompt (shortened) and the time, then the reply.
 # shellcheck disable=SC2016  # jq programs, not shell expansions
 COMMON_JQ='
   def prompt_text:
@@ -120,63 +125,61 @@ COMMON_JQ='
       | gsub("<[^>]+>"; "") | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; "")
       | if length > 240 then .[0:240] + "…" else . end
     end;
+  def opener: # a wake from a background task or hook shows its summary, not "(no text)"
+    if test("<task-notification>") then
+      {kind: "wake", prompt: ("⚑ " + ([capture("<summary>(?<s>[^<]*)</summary>").s][0] // "notification"))}
+    else {kind: "you", prompt: prompt_text} end;
+  def turn($time): . + {time: $time, texts: [], done: false};
   def clock: if . then (sub("\\.[0-9]+"; "") | fromdateiso8601 | localtime | strftime("%I:%M %p") | sub("^0"; "")) else "" end;
+  def turns: # the turns with reply text; a later prompt also finishes a turn
+    (length - 1) as $end
+    | [to_entries[] | .value + {done: (.value.done or .key < $end)} | select(.texts | length > 0)];
   def card:
-    map(select(.texts | length > 0)) | last
-    | if . == null then "" else
-        "**You** · " + (.time | clock) + "\n\n"
-        + (if .prompt == "" then "> (no text)" else "> " + .prompt end)
-        + "\n\n---\n\n" + (.texts | join("\n\n"))
-      end;'
+    (if .kind == "wake" then "**Wake**" elif .kind == "compact" then "**Session**" else "**You**" end)
+    + " · " + (.time | clock) + "\n\n"
+    + (if .prompt == "" then "> (no text)" else "> " + .prompt end)
+    + "\n\n---\n\n" + (.texts | join("\n\n"));
+  def last_card: turns | last | if . == null then "" else card end;
+  def queue: turns | {turns: map(select(.done)), writing: ((last // {done: true}) | .done | not)};'
 # shellcheck disable=SC2016
 CLAUDE_JQ="$COMMON_JQ"'
   [ .[] | select(.isSidechain != true and .isMeta != true and (.type == "user" or .type == "assistant")) ]
-  | reduce .[] as $e ([{prompt: "", time: null, texts: []}];
+  | reduce .[] as $e ([{kind: "you", prompt: ""} | turn(null)];
       ($e.message.content) as $c
       | if $e.type == "user" then
-          if ($c | type) == "string" then
-            . + [{prompt: ($c | prompt_text), time: $e.timestamp, texts: []}]
+          if $e.isCompactSummary == true then
+            . + [{kind: "compact", prompt: "(context compacted)"} | turn($e.timestamp)]
+          elif ($c | type) == "string" then
+            . + [$c | opener | turn($e.timestamp)]
           elif ([$c[]?.type] | index("tool_result") | not) then
-            . + [{prompt: ([$c[]? | select(.type == "text") | .text] | join(" ") | prompt_text), time: $e.timestamp, texts: []}]
+            . + [[$c[]? | select(.type == "text") | .text] | join(" ") | opener | turn($e.timestamp)]
           else . end
         else
           .[-1].texts += [ if ($c | type) == "array" then $c[] | select(.type == "text") | .text else $c end ]
-        end)
-  | card'
+          | .[-1].done = (($e.message.stop_reason // "") | . == "end_turn" or . == "stop_sequence")
+        end)'
 # shellcheck disable=SC2016
 CODEX_JQ="$COMMON_JQ"'
-  [ .[] | select(.type == "response_item" and .payload.type == "message") | .payload + {time: .timestamp} ]
-  | reduce .[] as $m ([{prompt: "", time: null, texts: []}];
+  [ .[] | if .type == "response_item" and .payload.type == "message" then .payload + {time: .timestamp}
+          elif .type == "event_msg" and .payload.type == "task_complete" then {role: "done"}
+          else empty end ]
+  | reduce .[] as $m ([{kind: "you", prompt: ""} | turn(null)];
       if $m.role == "user" then
-        ([$m.content[]? | .text // empty] | join(" ") | prompt_text) as $p
-        | if $p == "" then . else . + [{prompt: $p, time: $m.time, texts: []}] end
+        ([$m.content[]? | .text // empty] | join(" ") | opener) as $p
+        | if $p.prompt == "" then . else . + [$p | turn($m.time)] end
       elif $m.role == "assistant" and (($m.phase // "final_answer") == "final_answer") then
         .[-1].texts += [ $m.content[]? | select(.type == "output_text") | .text ]
-      else . end)
-  | card'
+      elif $m.role == "done" then .[-1].done = true
+      else . end)'
 
-card() { # the review card markdown; skips a half-written last line instead of failing
-  if [ "$agent" = codex ]; then
-    jq -R 'fromjson? // empty' "$1" | jq -rs "$CODEX_JQ"
-  else
-    jq -R 'fromjson? // empty' "$1" | jq -rs "$CLAUDE_JQ"
-  fi
+parse() { # <file> <jq filter> : the transcript's turns through that filter; skips a half-written
+  local prog="$CLAUDE_JQ"  # last line instead of failing
+  [ "$agent" = codex ] && prog="$CODEX_JQ"
+  jq -R 'fromjson? // empty' "$1" | jq -rs "$prog | $2"
 }
 
-render() { # <file> [markdown]
-  local file="$1" text="${2-}" style="$HOME/.config/glow/catppuccin-mocha.json"
-  [ -f "$style" ] || style=dark
-  [ $# -ge 2 ] || text="$(card "$file")"
-  if [ -n "$raw" ]; then
-    printf '%s\n' "$text"
-  elif [ -n "$watch" ]; then
-    # Pipe the output so glow can never open its pager (the config turns it on), which
-    # would stall the loop on the first reply. An explicit style keeps the colours.
-    printf '%s\n' "$text" | glow -s "$style" -w "$(tput cols 2>/dev/null || echo 100)" - | cat
-  else
-    printf '%s\n' "$text" | glow -s "$style" -
-  fi
-}
+style="$HOME/.config/glow/catppuccin-mocha.json"
+[ -f "$style" ] || style=dark
 
 file="$(transcript)"
 if [ -z "$file" ]; then
@@ -185,9 +188,105 @@ if [ -z "$file" ]; then
 fi
 
 if [ -z "$watch" ]; then
-  render "$file"
+  text="$(parse "$file" last_card)"
+  if [ -n "$raw" ]; then
+    printf '%s\n' "$text"
+  else
+    printf '%s\n' "$text" | glow -s "$style" -
+  fi
   exit 0
 fi
+
+# The reader. The transcript is the queue: each read caches its finished turns as JSON, and
+# keys index into that cache. The read marker is the start time of the newest reply read.
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/lastreply"
+find "$state_dir" -type f -mtime +30 -delete 2>/dev/null
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 0' INT TERM HUP
+trap 'dirty=1' WINCH
+cache="$tmp/turns.json"
+
+load_state() { # the read marker for $file; a first open starts at the latest finished reply
+  state="$state_dir/$(basename "$file" .jsonl)"
+  marker="" fresh=1 placed="" cur=-1 read_i=-1 n=0 times=()
+  if [ -f "$state" ]; then
+    marker="$(sed -n 's/^read_through=//p' "$state" | head -1)"
+    fresh=""
+  fi
+}
+
+save_state() { # written atomically, so a crash never leaves half a file
+  mkdir -p "$state_dir" && printf 'read_through=%s\n' "$marker" > "$state.$$" && mv -f "$state.$$" "$state"
+}
+
+mark_read() { # <index> : everything up to that reply is read
+  [ "$1" -gt "$read_i" ] || return 0
+  read_i=$1
+  marker="${times[$1]}"
+  save_state
+}
+
+load_queue() { # re-read the transcript; keeps the old cache if this read came back empty
+  local t i
+  parse "$file" queue > "$tmp/new" 2>/dev/null && [ -s "$tmp/new" ] || return 1
+  mv -f "$tmp/new" "$cache"
+  writing="$(jq -r '.writing' "$cache")"
+  times=()
+  while IFS= read -r t; do times+=("$t"); done < <(jq -r '.turns[] | .time // "-"' "$cache")
+  n=${#times[@]}
+  if [ -n "$fresh" ]; then
+    fresh=""
+    [ "$n" -gt 0 ] && marker="${times[n - 1]}"
+    save_state
+  fi
+  read_i=-1
+  if [ -n "$marker" ]; then
+    i=0
+    while [ "$i" -lt "$n" ]; do
+      t="${times[i]}"
+      [[ "$t" < "$marker" || "$t" == "$marker" ]] && read_i=$i
+      i=$((i + 1))
+    done
+  fi
+  # The first read opens at the oldest unread reply (the latest, on a first open);
+  # after that only a key moves the view.
+  [ -n "$placed" ] || placed=1 cur=$((read_i + 1))
+  [ "$cur" -lt "$n" ] || cur=$((n - 1))
+  return 0
+}
+
+draw() { # the card from its top, cut to the pane, then a status bar on the last line
+  local rows=40 cols=100 body total pad unread line hint size
+  # stty reads the pane size from stdin; tput with stderr redirected falls back to 24x80.
+  if [ -t 0 ] && size="$(stty size 2>/dev/null)" && [ -n "$size" ]; then
+    rows="${size% *}" cols="${size#* }"
+  fi
+  body=$((rows - 1))
+  if [ "$cur" -lt 0 ]; then
+    if [ "$n" -gt 0 ]; then echo "Press Space for the next reply."; else echo "No finished reply yet."; fi > "$tmp/card"
+  elif [ -n "$raw" ]; then
+    jq -r --argjson i "$cur" "$COMMON_JQ"' .turns[$i] | card' "$cache" > "$tmp/card"
+  else
+    # Pipe the output so glow can never open its pager (the config turns it on), which
+    # would stall the reader. An explicit style keeps the colours.
+    jq -r --argjson i "$cur" "$COMMON_JQ"' .turns[$i] | card' "$cache" |
+      glow -s "$style" -w "$cols" - | cat > "$tmp/card"
+  fi
+  total=$(($(wc -l < "$tmp/card")))
+  clear
+  head -n "$body" "$tmp/card"
+  pad=$total
+  while [ "$pad" -lt "$body" ]; do echo; pad=$((pad + 1)); done
+  unread=$((n - 1 - read_i))
+  line=" $((cur + 1))/$n"
+  if [ "$unread" -gt 0 ]; then line="$line  ● $unread unread"; else line="$line  ✓ caught up"; fi
+  [ "$total" -gt "$body" ] && line="$line · ▼ $((total - body)) more lines, Enter"
+  [ "$writing" = true ] && line="$line · ✎ writing"
+  hint="   [space] next  [p] prev  [u] unread  [G] latest  [enter] page  [q] quit"
+  [ $((${#line} + ${#hint})) -le "$cols" ] && line="$line$hint"
+  if [ -t 1 ]; then printf '\033[7m%s\033[0m' "$line"; else printf '%s\n' "$line"; fi
+}
 
 # Size and sub-second mtime, so two writes within one second still count as a change.
 # GNU stat's -f means file-system status, so pick the format by which stat this is.
@@ -197,19 +296,64 @@ else
   stat_fmt=(-f '%Fm %z')
 fi
 
-last="" shown=""
+# Poll the transcript every 2 s while waiting for a key. Once stdin has no more keys to give
+# (closed, or not a terminal), keep polling with sleep so new replies still count.
+opened="" last="" shown="" keys="" dirty=1 writing=false
+{ [ -t 0 ] || [ -p /dev/stdin ]; } && keys=1
 while :; do
   file="$(transcript)"
+  if [ "$file" != "$opened" ]; then
+    opened="$file" last=""
+    load_state
+  fi
   stamp="$file $(stat "${stat_fmt[@]}" "$file" 2>/dev/null)"
   if [ "$stamp" != "$last" ]; then
     last="$stamp"
-    text="$(card "$file")"
-    # Keep the current card if this read came back empty (mid-write, or nothing new yet).
-    if [ -n "$text" ] && [ "$text" != "$shown" ]; then
-      shown="$text"
-      clear
-      render "$file" "$text"
-    fi
+    load_queue && [ "$n $read_i $writing" != "$shown" ] && dirty=1
   fi
-  sleep 2
+  if [ -n "$dirty" ]; then
+    draw
+    dirty="" shown="$n $read_i $writing"
+  fi
+  if [ -z "$keys" ]; then
+    sleep 2
+    continue
+  fi
+  key="" action="" waited=$SECONDS
+  if ! IFS= read -rsn1 -t 2 key; then
+    # bash 3.2 returns 1 for a timeout and for end of input alike; only a timeout took 2 s.
+    [ $((SECONDS - waited)) -ge 2 ] || keys=""
+    continue
+  fi
+  case "$key" in
+    " "|n) action=next ;;
+    p) action=prev ;;
+    u) action=unread ;;
+    G) action=latest ;;
+    "") action=page ;;
+    q) exit 0 ;;
+    $'\e') # arrow and End keys: ESC [ C, ESC O C, ESC [ F, ESC [ 4 ~ ...
+      seq=""
+      IFS= read -rsn2 -t 1 seq
+      case "$seq" in "[1"|"[4"|"[8") IFS= read -rsn1 -t 1 _ ;; esac
+      case "$seq" in
+        "[C"|OC) action=next ;;
+        "[D"|OD) action=prev ;;
+        "[F"|OF|"[4"|"[8") action=latest ;;
+      esac ;;
+  esac
+  case "$action" in
+    next)
+      [ "$cur" -ge 0 ] && mark_read "$cur"
+      [ "$cur" -lt $((n - 1)) ] && cur=$((cur + 1)) ;;
+    prev) [ "$cur" -gt 0 ] && cur=$((cur - 1)) ;;
+    unread) [ "$read_i" -lt $((n - 1)) ] && cur=$((read_i + 1)) ;;
+    latest)
+      if [ "$n" -gt 0 ]; then
+        cur=$((n - 1))
+        mark_read "$cur"
+      fi ;;
+    page) [ "$cur" -ge 0 ] && less -R "$tmp/card" ;;
+  esac
+  [ -n "$action" ] && dirty=1
 done
