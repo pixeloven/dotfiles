@@ -8,6 +8,10 @@ onboarding = false
 name = "catppuccin"
 auto_switch = false
 
+[ui]
+# Group the agents panel by workspace
+agent_panel_sort = "spaces"
+
 [ui.toast]
 delivery = "herdr"
 

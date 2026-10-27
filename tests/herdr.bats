@@ -15,3 +15,7 @@ SRC="$REPO/home/dot_config/herdr/config.toml"
   grep -q '^auto_switch = false' "$SRC"
   ! grep -q 'latte' "$SRC"
 }
+
+@test "herdr agents panel grouped by workspace" {
+  grep -q '^agent_panel_sort = "spaces"' "$SRC"
+}
