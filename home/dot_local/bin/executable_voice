@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# voice: mute, unmute or check spoken alerts and summaries (Claude Code and Codex alike).
+# Usage: voice mute | unmute | toggle | status
+#   toggle   flips mute and shows a desktop notification: bind it to a key in any desktop
+#            (RUNBOOK section 4c). It needs only a shell, so it also runs on the host of a distrobox.
+#   status   the alert engine and whether it is ready, whether summaries are on, whether voice
+#            is muted, and where the cloud key comes from (never the key itself)
+# Mute is the file ~/.config/speak-alert/muted, which speak-alert.sh checks before every alert.
+
+set -uo pipefail
+
+dir="$HOME/.config/speak-alert"
+muted_file="$dir/muted"
+
+notify() { # <message> : a desktop notification where one is available, and the same line on stdout
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a voice -t 2000 Voice "$1" >/dev/null 2>&1
+  elif command -v osascript >/dev/null 2>&1; then
+    osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "Voice"' -e 'end run' "$1" >/dev/null 2>&1
+  fi
+  echo "voice: $1"
+}
+
+mute() { mkdir -p "$dir" && touch "$muted_file"; }
+unmute() { rm -f "$muted_file"; }
+
+case "${1:-}" in
+  mute) mute && echo "voice: muted" ;;
+  unmute) unmute && echo "voice: unmuted" ;;
+  toggle)
+    if [ -e "$muted_file" ]; then unmute && notify unmuted; else mute && notify muted; fi
+    ;;
+  status)
+    read -r engine ready <<<"$("$HOME/.claude/hooks/speak-alert.sh" engine 2>/dev/null)"
+    case "${ready:-}" in
+      ready) state=ready ;;
+      no-player) state="no audio player: install paplay (pulseaudio)" ;;
+      not-set-up) state="not set up: see RUNBOOK section 5" ;;
+      *) state="unknown: is ~/.claude/hooks/speak-alert.sh installed?" ;;
+    esac
+    echo "engine: ${engine:-?} ($state)"
+    echo "summaries: $([ -e "$dir/summaries" ] && echo on || echo off)"
+    echo "muted: $([ -e "$muted_file" ] && echo yes || echo no)"
+    echo "cloud key: $("$HOME/.local/bin/voice-cloud" key-source 2>/dev/null || echo none)"
+    ;;
+  -h|--help) sed -n '2,8s/^# \{0,1\}//p' "$0" ;;
+  *) echo "voice: unknown command '${1:-}' (try --help)" >&2; exit 2 ;;
+esac

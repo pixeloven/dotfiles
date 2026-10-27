@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code and Codex hook: speak a short line when an agent stops or needs attention.
 # Usage: speak-alert.sh <stop|notify|summary|codex-stop|codex-permission|codex-summary>   (hook JSON on stdin)
+#        speak-alert.sh engine   prints the engine and whether it is ready (for `voice status`)
 # stop and codex-stop say a calm done line; notify speaks Claude's own reason (the payload's
 # "message") for permission, idle and elicitation prompts only; codex-permission names the tool
 # Codex wants to use.
@@ -29,10 +30,6 @@ note() { # <decision> : log one line, keeping the log short
 }
 
 mode="${1:-}"
-[ -n "${FM_TASK_ID:-}" ] && { note "silent: fleet worker"; exit 0; }
-case "${CLAUDE_CODE_ENTRYPOINT:-cli}" in cli) ;; *) note "silent: headless claude"; exit 0 ;; esac
-[ -e "$HOME/.config/speak-alert/muted" ] && { note "silent: muted"; exit 0; }
-
 done_line="All done. Ready for you."
 summaries_on() { [ -e "$HOME/.config/speak-alert/summaries" ]; }
 
@@ -210,6 +207,21 @@ speak() { # <phrase> : say it with the chosen engine (or the dry run's stand-in)
     [ -n "$keep" ] || rm -f "$wav"
   ) > /dev/null 2>&1 < /dev/null &
 }
+
+# engine: report which engine alerts use here and whether it can speak, for `voice status`.
+# It speaks nothing and logs nothing, so it answers even when muted.
+if [ "$mode" = engine ]; then
+  if pick_engine; then
+    if [ "$engine" = say ] || pick_player; then echo "$engine ready"; else echo "$engine no-player"; fi
+  else
+    echo "$engine not-set-up"
+  fi
+  exit 0
+fi
+
+[ -n "${FM_TASK_ID:-}" ] && { note "silent: fleet worker"; exit 0; }
+case "${CLAUDE_CODE_ENTRYPOINT:-cli}" in cli) ;; *) note "silent: headless claude"; exit 0 ;; esac
+[ -e "$HOME/.config/speak-alert/muted" ] && { note "silent: muted"; exit 0; }
 
 case "$mode" in
   stop)

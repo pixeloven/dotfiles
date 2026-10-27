@@ -48,6 +48,7 @@ init_config() { # <os> [chezmoi flags] : render .chezmoi.toml.tmpl as `chezmoi i
 .config/zsh/dotfiles.zsh
 .local/bin/lastreply
 .local/bin/speak-kokoro
+.local/bin/voice
 .local/bin/voice-cloud
 Library/Preferences/glow/glow.yml"
   [ "$(grep -v 'config file template has changed' <<<"$output")" = "$expected" ]

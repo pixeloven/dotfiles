@@ -33,7 +33,7 @@ macOS only.
 
 ## 4. Dictation
 
-There are two layers, on both OSes: Claude Code's own `/voice` for Claude Code prompts, and one global push-to-talk key for everything else (Codex, a shell, any herdr pane). Neither needs root, uinput or an input daemon.
+There are two layers, on both OSes: Claude Code's own `/voice` for Claude Code prompts, and one global push-to-talk key for everything else (Codex, a shell, any herdr pane). Neither needs root, uinput or an input daemon, and neither is tied to one desktop.
 
 ### 4a. Claude Code `/voice` (hold Space)
 
@@ -63,27 +63,46 @@ There are two layers, on both OSes: Claude Code's own `/voice` for Claude Code p
      https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
    ```
    **Done when:** `whisper-cli --help` prints its usage, and running `dictate` twice in a herdr pane types what you said into that pane.
-2. Add the global key by hand, once, on the **host's** GNOME. Dotfiles never changes host GNOME settings. Pick a free key: Ctrl+Alt+T and Ctrl+Shift+Esc are often taken, so Ctrl+Alt+D is the suggestion. The first command overwrites your list of custom shortcuts, so if `gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings` already lists paths, keep them in the new list.
-   ```sh
-   p=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/dictate/
-   gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$p']"
-   s="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$p"
-   gsettings set "$s" name 'Dictate into herdr'
-   gsettings set "$s" binding '<Control><Alt>d'
-   # Linux distrobox: run it in the box. Linux host: use  sh -c '"$HOME/.local/bin/dictate"'
-   gsettings set "$s" command "sh -c 'distrobox enter ubuntu-dev -- \"\$HOME/.local/bin/dictate\"'"
-   ```
-   You can also add it in Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts, with the same command.
-   **Done when:** with a herdr pane focused, pressing Ctrl+Alt+D shows "Listening…", and after you speak, pressing it again types your words into that pane.
+2. Bind `dictate` to one key in your desktop: see section 4c. It works the same on any desktop.
+   **Done when:** with a herdr pane focused, pressing the key shows "Listening…", and after you speak, pressing it again types your words into that pane.
 3. *Optional.*
    - `DICTATE_PROMPT` lists words to expect, such as repo and tool names.
    - `DICTATE_MODEL` points at another ggml model.
    - `dictate --cancel` throws a recording away.
    - For the cloud engine, see CUSTOMIZE.md.
 
-   Variables for the global key go in its command, for example `distrobox enter ubuntu-dev -- env DICTATE_PROMPT='pixeloven, Bazzite' "$HOME/.local/bin/dictate"`.
+### 4c. Bind the keys (any desktop)
 
-GNOME shortcuts fire on key press only, so this is a toggle, not hold-to-talk.
+`dictate` (Linux) and `voice toggle` (mute on or off, both OSes) are plain commands. Bind each one to a key wherever your desktop lets you run a command on a key. Nothing here needs GNOME, and dotfiles never changes desktop settings for you. Pick keys that are free; Ctrl+Alt+D (dictate) and Ctrl+Alt+M (mute) are the suggestion.
+
+The command to bind:
+
+| Trigger | Linux distrobox | Linux host | macOS |
+|---|---|---|---|
+| Dictate | `sh -c 'distrobox enter ubuntu-dev -- "$HOME/.local/bin/dictate"'` | `sh -c '"$HOME/.local/bin/dictate"'` | VoiceInk's own key (4b) |
+| Mute toggle | `sh -c '"$HOME/.local/bin/voice" toggle'` | `sh -c '"$HOME/.local/bin/voice" toggle'` | `~/.local/bin/voice toggle` |
+
+The mute toggle needs only a shell, so it runs on a distrobox's host directly: the box shares your home and its mute file. Settings for `dictate`, such as `DICTATE_PROMPT`, go in its command, for example `sh -c 'distrobox enter ubuntu-dev -- env DICTATE_PROMPT="pixeloven, Bazzite" "$HOME/.local/bin/dictate"'`.
+
+Where to bind it:
+- **GNOME:** Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts → **+**, with a name, the command and the key. Optional, from a terminal on the host when `echo "$XDG_CURRENT_DESKTOP"` says GNOME, the same thing for dictate. Its first command replaces your list of custom shortcuts, so if `gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings` already lists paths, keep them in the new list:
+  ```sh
+  p=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/dictate/
+  gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$p']"
+  s="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$p"
+  gsettings set "$s" name 'Dictate into herdr'
+  gsettings set "$s" binding '<Control><Alt>d'
+  gsettings set "$s" command "sh -c 'distrobox enter ubuntu-dev -- \"\$HOME/.local/bin/dictate\"'"
+  ```
+- **KDE Plasma:** System Settings → Keyboard → Shortcuts → **Add New** → **Command or Script**, paste the command, then set the key.
+- **Sway or i3:** in the config, `bindsym Ctrl+Mod1+d exec sh -c '"$HOME/.local/bin/dictate"'`, then reload.
+- **Hyprland:** `bind = CTRL ALT, D, exec, sh -c '"$HOME/.local/bin/dictate"'`.
+- **Other desktops** (Xfce, Cinnamon, MATE and others): the keyboard settings' application or custom shortcuts take the same command.
+- **macOS:** in the Shortcuts app, make a shortcut with a **Run Shell Script** action containing `~/.local/bin/voice toggle`. In its details, choose **Add Keyboard Shortcut**.
+
+Desktop shortcuts fire on key press only, so both are toggles, not hold-to-talk.
+
+**Done when:** each key works from any app: the mute key shows "Voice muted" and then "Voice unmuted", and `voice status` agrees.
 
 ## 5. Voice for spoken alerts
 
@@ -118,8 +137,8 @@ On Linux, alerts use Kokoro-82M, an open voice model that runs on the CPU. It re
 
 ### 5c. Both OSes: on and off, summaries
 
-- Off: `touch ~/.config/speak-alert/muted`
-- On: `rm ~/.config/speak-alert/muted`
+- Mute: `voice mute`, and `voice unmute` to hear alerts again. `voice toggle` flips it and shows a notification, so it suits a key (section 4c). Mute covers alerts and summaries for Claude Code and Codex. It is the file `~/.config/speak-alert/muted`, so `touch` and `rm` on that file work too.
+- `voice status` shows the engine and whether it's ready, whether summaries are on, whether voice is muted, and where a cloud key would come from (never the key).
 - Spoken summaries, opt-in: `touch ~/.config/speak-alert/summaries`. At the end of a turn, you hear the project name and the first sentence or two of the reply instead of "All done. Ready for you.". Mute still silences everything. Fleet workers and headless runs stay silent. Undo with `rm ~/.config/speak-alert/summaries`. Codex runs the new hooks only after you approve them in `/hooks`.
 - `tail ~/.local/state/speak-alert/events.log` shows what each alert decided.
 
