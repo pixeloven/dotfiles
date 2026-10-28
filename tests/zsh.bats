@@ -149,6 +149,59 @@ nm_env() {
   done
 }
 
+# SHELL as dotfiles.zsh leaves it. $1 is the starting SHELL, $2 the login shell a fake getent
+# reports for this user ("none": no getent on PATH, as on macOS). PATH holds only the fake getent,
+# so the real one never answers.
+shell_after() {
+  local zsh; zsh="$(command -v zsh)"
+  mkdir -p "$TMP/bin"
+  rm -f "$TMP/bin/getent"
+  if [ "$2" != none ]; then
+    printf '#!/bin/sh\n[ "$1 $2" = "passwd %s" ] && echo "%s:x:1000:1000::%s:%s"\n' \
+      "$(id -un)" "$(id -un)" "$TMP/home" "$2" > "$TMP/bin/getent"
+    chmod +x "$TMP/bin/getent"
+  fi
+  HOME="$TMP/home" HOMEBREW_PREFIX="$TMP/no-brew" DOTFILES_OSTREE_MARKER="$TMP/no-ostree" \
+    DOTFILES_CONTAINER_MARKER="$TMP/no-containerenv" SHELL="$1" PATH="$TMP/bin" \
+    "$zsh" -f -c 'source ~/.config/zsh/dotfiles.zsh; print -r -- "shell=$SHELL"'
+}
+
+# A distrobox bakes in SHELL=<basename of the host's shell>, and zsh on Ubuntu never runs the
+# /etc/profile.d hook that corrects it; herdr starts each pane from $SHELL, so panes got bash.
+@test "a bare SHELL name (distrobox's SHELL=bash) becomes the login shell's absolute path" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local zsh; zsh="$(command -v zsh)"
+  run shell_after bash "$zsh"
+  [ "$status" -eq 0 ]
+  [ "$output" = "shell=$zsh" ]
+}
+
+@test "an empty or missing SHELL also becomes the login shell" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local zsh; zsh="$(command -v zsh)"
+  run shell_after "" "$zsh"
+  [ "$output" = "shell=$zsh" ]
+  run shell_after /nonexistent/zsh "$zsh"
+  [ "$output" = "shell=$zsh" ]
+}
+
+@test "an absolute SHELL that runs is left alone (macOS, plain hosts, a deliberate choice)" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  run shell_after /bin/sh "$(command -v zsh)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "shell=/bin/sh" ]
+}
+
+@test "SHELL stays as it was when the login shell can't be looked up or isn't a usable path" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  local login
+  for login in none zsh /nonexistent/zsh; do
+    run shell_after bash "$login"
+    [ "$status" -eq 0 ]
+    [ "$output" = "shell=bash" ] || { echo "$login: $output"; false; }
+  done
+}
+
 # Starship prints each config warning once per cache dir, so every check gets a fresh one.
 starship_warnings() { STARSHIP_CACHE="$(mktemp -d "$TMP/cache.XXXXXX")" STARSHIP_CONFIG="$1" starship prompt 2>&1 >/dev/null; }
 
