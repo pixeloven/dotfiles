@@ -1,0 +1,4 @@
+# The Impeccable design skill (impeccable.style, github.com/pbakaus/impeccable) version kept installed
+# for Claude Code, Codex and pi: one semver line, the release's skill-v<version> and the matching npm CLI.
+# Applied by lib/impeccable.sh; bump it to update (see CUSTOMIZE.md). agentPlugins = false opts out too.
+4.8.0

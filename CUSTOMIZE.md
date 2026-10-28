@@ -99,6 +99,16 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 - **Try it:** `chezmoi apply`, then `~/Development/dotfiles/lib/agent-plugins.sh check`; it prints nothing when every tool is at the pins.
 - **Keep it:** commit the repo change. `/codify` reports `plugin-missing` (run `chezmoi apply`) and `plugin-behind` (the installed commit differs from this machine's local catalogue copy; run `lib/agent-plugins.sh update`). The check stays offline, so it doesn't see a re-pin newly published in the marketplace: the operator's crew check finds that on demand, and `lib/agent-plugins.sh update` fetches the catalogue and applies it.
 
+## Impeccable design skill
+
+- **Where it lives:** `lib/impeccable.txt` holds the version of [Impeccable](https://impeccable.style) kept installed for Claude Code (`~/.claude/skills/impeccable/`), Codex (`~/.agents/skills/impeccable/`) and pi (`~/.pi/agent/skills/impeccable/`). `lib/impeccable.sh` does the work; `home/.chezmoiscripts/run_after_62-impeccable.sh.tmpl` runs its `ensure` on every `chezmoi apply`.
+- **What it does:** for each tool that is installed, where the skill is missing or older than the pin, it runs Impeccable's own installer (`npx impeccable@<version> install --user`) on that release's bundle (`skill-v<version>` on GitHub), from `~` so no project is touched. Claude Code also gets Impeccable's design hook in `~/.claude/settings.json`; Codex and pi get the skill only. A copy it did not install (one you installed by hand) is first backed up to `~/.local/state/dotfiles/impeccable/backup/`. A copy newer than the pin is left alone. pi reads `~/.agents/skills/` too, so with Codex installed it warns about the name collision and keeps its own copy.
+- **Common changes:**
+  - New version: `~/Development/dotfiles/lib/impeccable.sh latest` shows the pin and the latest release. Set `lib/impeccable.txt` to it, then `chezmoi apply`.
+  - Opt a machine out: `agentPlugins = false`, as for agent plugins. Nothing is installed or reported then; an installed skill stays.
+- **Try it:** `chezmoi apply`, then `~/Development/dotfiles/lib/impeccable.sh check`; it prints nothing when every tool is at the pin.
+- **Keep it:** commit the repo change. `/codify` reports `skill-missing` and `skill-behind` (run `chezmoi apply`) and `skill-ahead` (updated by hand past the pin; set `lib/impeccable.txt` to that version).
+
 ## bat, delta, glow
 
 - **Where they live:** `home/dot_config/bat/config`, `home/.chezmoitemplates/glow.yml` (installed to `~/Library/Preferences/glow/glow.yml` on macOS and `~/.config/glow/glow.yml` on Linux), the glow style `home/dot_config/glow/catppuccin-mocha.json`, and the git keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh`

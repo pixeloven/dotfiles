@@ -306,3 +306,17 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   run "$R/bin/drift"
   [[ "$output" != *plugin-* ]] || false
 }
+
+@test "impeccable: a missing skill is skill-missing, unless agentPlugins = false" {
+  cp "$REAL_REPO/lib/impeccable.sh" "$REAL_REPO/lib/impeccable.txt" "$R/lib/"
+  for t in claude codex pi; do printf '#!/bin/sh\n' > "$TMP/stub/$t"; chmod +x "$TMP/stub/$t"; done
+  mkdir -p "$HOME/.claude/skills/impeccable"
+  printf -- '---\nname: impeccable\nversion: 0.0.1\n---\n' > "$HOME/.claude/skills/impeccable/SKILL.md"
+  run "$R/bin/drift"
+  [[ "$output" == *$'skill-behind\tclaude impeccable@'* ]] || false
+  [[ "$output" == *$'skill-missing\tcodex impeccable@'*$'\tchezmoi apply'* ]] || false
+  [[ "$output" == *$'skill-missing\tpi impeccable@'* ]] || false
+  printf '[data]\nagentPlugins = false\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" != *skill-* ]] || false
+}

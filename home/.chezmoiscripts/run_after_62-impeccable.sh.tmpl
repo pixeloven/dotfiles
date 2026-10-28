@@ -1,0 +1,9 @@
+{{- if ne (toString (get . "agentPlugins")) "false" -}}
+#!/bin/sh
+# Keep the Impeccable design skill at the version in lib/impeccable.txt for Claude Code, Codex and pi.
+# Runs on every apply, so a tool installed after the first apply gets it at the next one; it installs
+# only where the skill is missing or older than the pin, backing up a copy it did not install first.
+# Opt a machine out with agentPlugins = false in ~/.config/chezmoi/chezmoi.toml.
+set -eu
+exec "{{ .chezmoi.workingTree }}/lib/impeccable.sh" ensure
+{{ end -}}
