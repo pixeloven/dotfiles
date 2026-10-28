@@ -3,6 +3,16 @@
 # ~/.zshrc stays private. Load order matters: oh-my-zsh (runs compinit) → fzf-tab → fzf →
 # zoxide → autosuggestions → syntax highlighting → starship. Each tool is skipped when absent.
 
+# SHELL: the login shell's absolute path. distrobox bakes SHELL=<basename of the host's shell> into
+# the box (SHELL=bash on a bash host) and corrects it only in /etc/profile.d, which zsh never reads
+# on Ubuntu. herdr, like anything else that starts "$SHELL", then opened bash. Only a SHELL that
+# isn't a runnable absolute path is replaced, from getent; macOS and plain hosts keep theirs.
+if [[ $SHELL != /* || ! -x $SHELL ]] && (( $+commands[getent] )); then
+  _dotfiles_shell=${$(getent passwd $USERNAME 2>/dev/null)##*:}
+  [[ $_dotfiles_shell == /* && -x $_dotfiles_shell ]] && export SHELL=$_dotfiles_shell
+  unset _dotfiles_shell
+fi
+
 # Homebrew: find it (Apple Silicon, Intel, Linux) and put it ahead of the system dirs, so its
 # node/git/etc. win over the distro's; ~/.local/bin stays ahead of it. Image-based hosts
 # (Bazzite/Silverblue, marked by /run/ostree-booted) keep brew last on purpose. On macOS
