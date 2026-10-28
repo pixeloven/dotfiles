@@ -8,11 +8,11 @@ Steps that scripts can't do, or that the OS asks you to approve yourself. Each o
 2. Install herdr from https://herdr.dev. It installs itself into `~/.local/bin` and updates with `herdr update`.
 3. Run `herdr integration install claude` (and `herdr integration install pi` if you use Pi).
 4. In the repo, enable the secret guard: `git -C ~/Development/dotfiles config core.hooksPath .githooks`.
-5. Shell: install oh-my-zsh keeping the `~/.zshrc` chezmoi wrote (`sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`), then Node through fnm: `fnm install 22 && fnm default 22`, and in a new tab reinstall the global npm tools listed in step 8. Without oh-my-zsh, `dotfiles.zsh` still loads with plain completion. After installing Claude Code and the npm tools (Codex, pi), run `chezmoi apply` again so they get crew and its packs.
+5. Shell: install oh-my-zsh keeping the `~/.zshrc` chezmoi wrote (`sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`), then Node through fnm: `fnm install 22 && fnm default 22`, and in a new tab reinstall the global npm tools listed in step 8. Without oh-my-zsh, `dotfiles.zsh` still loads with plain completion. After installing Claude Code and the npm tools (Codex, pi), run `chezmoi apply` again so they get crew and its packs and the Impeccable skill.
 6. Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`. Optionally, add a separate PixelOven identity as in section 9a step 7.
 7. Do steps 2–4 of this runbook.
 
-**Done when:** `bats ~/Development/dotfiles/tests/` passes and `~/Development/dotfiles/lib/agent-plugins.sh check` prints nothing.
+**Done when:** `bats ~/Development/dotfiles/tests/` passes and `~/Development/dotfiles/lib/agent-plugins.sh check` and `~/Development/dotfiles/lib/impeccable.sh check` print nothing.
 
 ## 2. macOS permissions for Ghostty
 
@@ -200,7 +200,7 @@ With `distrobox`: the box shares the host's `$HOME` (distrobox mounts it even wi
 4. *Both Linux setups.* oh-my-zsh, keeping the `~/.zshrc` chezmoi wrote: `sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc`. On a box rebuild, skip it: it lives in the shared home.
    **Done when:** `~/.oh-my-zsh/oh-my-zsh.sh` exists and a new zsh shows the Starship prompt with grey suggestions as you type.
 5. *Both Linux setups.* Node through fnm: `fnm install 22 && fnm default 22` (the Mac's major), open a new shell, and `npm install -g` the global tools (`chrome-devtools-axi`, `gh-axi`, `quota-axi`, `tasks-axi`). Install Claude Code, Codex and herdr with their own installers (they land in `~/.local/bin`), run `herdr integration install claude`, then `chezmoi apply` again so they get crew and its packs. On a box rebuild all of this is already in the shared home.
-   **Done when:** in a new shell `which node` is under fnm, `gh-axi --version` and `herdr --version` print versions, and `~/Development/dotfiles/lib/agent-plugins.sh check` prints nothing.
+   **Done when:** in a new shell `which node` is under fnm, `gh-axi --version` and `herdr --version` print versions, and `~/Development/dotfiles/lib/agent-plugins.sh check` and `~/Development/dotfiles/lib/impeccable.sh check` print nothing.
 6. *Both Linux setups.* Git identity, by hand, because dotfiles never sets it: `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`.
    **Done when:** `git config user.name` and `git config user.email` print your values.
 7. *Both Linux setups, optional.* If you want a separate identity for PixelOven repos, set it by hand. Write `~/.gitconfig-pixeloven` containing `[user]` and `email = <your GitHub noreply address>`, then add to `~/.gitconfig`:

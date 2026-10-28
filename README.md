@@ -15,6 +15,7 @@ Terminal setup as code for macOS and Linux: Ghostty, herdr, zsh with Starship, C
 | `~/.config/zsh/`, `~/.config/starship.toml` | |
 | Linux with Ptyxis: `~/.local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` | Ptyxis GSettings: only the default profile's palette in `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl` |
 | | Claude Code, Codex and pi plugin registries (`~/.claude/plugins/`, `~/.codex/config.toml`, `~/.pi/agent/settings.json`): only the plugins in `lib/agent-plugins.txt`, installed when missing and never re-installed |
+| | The Impeccable design skill (`~/.claude/skills/impeccable/`, `~/.agents/skills/impeccable/`, `~/.pi/agent/skills/impeccable/`): kept at the version in `lib/impeccable.txt` by its own installer |
 
 Files that can hold secrets (`lib/denylist.txt`) are blocked by a pre-commit hook and by CI.
 
