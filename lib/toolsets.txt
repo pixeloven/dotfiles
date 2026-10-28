@@ -1,0 +1,8 @@
+# Optional ops tool sets, off unless chezmoi init's toolsets answer (or `toolsets on <set>`) turns
+# them on. One set per line: its name, then its Homebrew formulae; owner/tap/name implies the tap.
+# Read by the Brewfile, home/.chezmoi.toml.tmpl (the init choices), the toolsets command and the tests.
+kubernetes   kubernetes-cli helm argocd
+talos        siderolabs/tap/talosctl siderolabs/tap/omnictl
+terraform    hashicorp/tap/terraform
+ansible      ansible
+containers   docker

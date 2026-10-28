@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# toolsets: show, turn on or turn off the optional ops tool sets (lib/toolsets.txt).
+# Usage: toolsets [status] | list | on <set>... | off <set>... [--uninstall]
+#   status   each set: on or off, and whether its formulae are installed (the default)
+#   list     each set and its formulae
+#   on       adds the sets to toolsets in ~/.config/chezmoi/chezmoi.toml, then chezmoi apply
+#            --include scripts installs them (on a distrobox host, it skips, as apply does)
+#   off      removes the sets; their tools stay installed. --uninstall also runs brew uninstall
+#            on them and untaps a set's tap when nothing from it is left
+# Only the toolsets line changes; every other key and comment stays. It never runs chezmoi init.
+# TOOLSETS_REPO is a test seam for the dotfiles repo (default: chezmoi's working tree).
+
+set -uo pipefail
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}/chezmoi/chezmoi.toml"
+repo="${TOOLSETS_REPO:-$(dirname "$(chezmoi source-path 2>/dev/null || echo .)")}"
+table="$repo/lib/toolsets.txt"
+[ -f "$table" ] || { echo "toolsets: $table not found; is the dotfiles repo where chezmoi expects it?" >&2; exit 1; }
+
+sets() { sed 's/#.*//' "$table" | awk 'NF { print $1 }'; }
+formulae() { sed 's/#.*//' "$table" | awk -v s="$1" '$1 == s { $1 = ""; print substr($0, 2) }'; }
+known() { sets | grep -qxF "$1"; }
+
+current() { # the sets the brew-bundle script follows, one per line; unknown names included
+  local raw
+  raw="$("$repo/lib/toml-set.sh" --get "$config" data toolsets)"
+  if [ -n "$raw" ]; then
+    case "$raw" in
+      \[*\]) tr -d '[]" ' <<<"$raw" | tr ',' '\n' | sed '/^$/d' ;;
+      *) echo "toolsets: toolsets in $config spans several lines; edit it by hand" >&2; return 1 ;;
+    esac
+  elif [ "$("$repo/lib/toml-set.sh" --get "$config" data opsTools)" = true ]; then
+    sets # a machine that hasn't re-run chezmoi init: opsTools = true means every set
+  fi
+}
+
+write() { # sets on stdin, one per line : the new toolsets line, in lib/toolsets.txt order, unknown names kept last
+  local s value="" all
+  all="$(sed '/^$/d')"
+  for s in $(sets) $(grep -vxF "$(sets)" <<<"$all" | awk 'NF && !seen[$0]++'); do
+    grep -qxF "$s" <<<"$all" || continue
+    value="$value${value:+, }\"$s\""
+  done
+  "$repo/lib/toml-set.sh" "$config" data toolsets "[$value]"
+}
+
+summary() { local l; l="$(current | paste -sd ' ' -)"; echo "toolsets: on: ${l:-none}"; }
+
+installed() { brew list --formula --full-name 2>/dev/null; }
+
+state() { # <set> <installed list> : installed, not installed, or which are missing
+  local f have=() miss=()
+  for f in $(formulae "$1"); do
+    if grep -qxF "$f" <<<"$2"; then have+=("$f"); else miss+=("$f"); fi
+  done
+  if [ "${#miss[@]}" -eq 0 ]; then echo installed
+  elif [ "${#have[@]}" -eq 0 ]; then echo "not installed"
+  else echo "partly installed (missing ${miss[*]})"
+  fi
+}
+
+check_names() {
+  local s
+  [ "$#" -gt 0 ] || { echo "toolsets: name at least one set: $(sets | tr '\n' ' ')" >&2; exit 2; }
+  for s in "$@"; do
+    known "$s" || { echo "toolsets: unknown set '$s' (try toolsets list)" >&2; exit 2; }
+  done
+}
+
+need_config() {
+  [ -f "$config" ] || { echo "toolsets: no $config; run chezmoi init first" >&2; exit 1; }
+}
+
+status() {
+  local on have s st note
+  on="$(current)" || exit 1
+  if command -v brew >/dev/null 2>&1; then have="$(installed)"; else have=""; echo "toolsets: brew not found; nothing shows as installed" >&2; fi
+  for s in $(sets); do
+    st="$(state "$s" "$have")" note=""
+    if grep -qxF "$s" <<<"$on"; then
+      [ "$st" = installed ] || note=" (chezmoi apply installs it)"
+      printf '%-11s on   %s: %s%s\n' "$s" "$(formulae "$s")" "$st" "$note"
+    else
+      [ "$st" = "not installed" ] || note=" (set is off; \`toolsets on $s\` to manage it, or \`toolsets off $s --uninstall\`)"
+      printf '%-11s off  %s: %s%s\n' "$s" "$(formulae "$s")" "$st" "$note"
+    fi
+  done
+}
+
+on() {
+  local on
+  check_names "$@"
+  need_config
+  on="$(current)" || exit 1
+  printf '%s\n' "$on" "$@" | write || exit 1
+  summary
+  chezmoi apply --include scripts
+}
+
+uninstall() { # <set> : brew uninstall its installed formulae, then untap taps nothing uses now
+  local f tap have gone=() taps=()
+  have="$(installed)"
+  for f in $(formulae "$1"); do
+    grep -qxF "$f" <<<"$have" && gone+=("$f")
+    [[ "$f" == */*/* ]] && taps+=("${f%/*}")
+  done
+  if [ "${#gone[@]}" -gt 0 ]; then
+    echo "toolsets: brew uninstall ${gone[*]}"
+    brew uninstall "${gone[@]}" || return 1
+  else
+    echo "toolsets: nothing from $1 is installed"
+  fi
+  have="$(installed)"
+  for tap in $(printf '%s\n' ${taps[@]+"${taps[@]}"} | sort -u); do
+    grep -q "^$tap/" <<<"$have" && continue
+    brew tap 2>/dev/null | grep -qxF "$tap" || continue
+    echo "toolsets: brew untap $tap"
+    brew untap "$tap"
+  done
+}
+
+off() {
+  local on uninstall="" s names=()
+  for s in "$@"; do
+    if [ "$s" = --uninstall ]; then uninstall=1; else names+=("$s"); fi
+  done
+  check_names ${names[@]+"${names[@]}"}
+  need_config
+  on="$(current)" || exit 1
+  { grep -vxF "$(printf '%s\n' "${names[@]}")" <<<"$on" || true; } | write || exit 1
+  summary
+  if [ -z "$uninstall" ]; then
+    echo "toolsets: their tools stay installed; \`toolsets off ${names[*]} --uninstall\` removes them"
+    return 0
+  fi
+  command -v brew >/dev/null 2>&1 || { echo "toolsets: brew not found; nothing uninstalled" >&2; exit 1; }
+  for s in "${names[@]}"; do uninstall "$s" || exit 1; done
+  echo "toolsets: \`brew autoremove\` removes dependencies nothing needs now"
+}
+
+cmd="${1:-status}"
+[ "$#" -gt 0 ] && shift
+case "$cmd" in
+  status) status ;;
+  list) for s in $(sets); do printf '%-11s %s\n' "$s" "$(formulae "$s")"; done ;;
+  on) on "$@" ;;
+  off) off "$@" ;;
+  -h|--help) sed -n '2,12s/^# \{0,1\}//p' "$0" ;;
+  *) echo "toolsets: unknown command '$cmd' (try --help)" >&2; exit 2 ;;
+esac

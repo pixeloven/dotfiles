@@ -50,19 +50,15 @@ if OS.linux?
   brew "whisper.cpp"
 end
 
-# Ops tools, only when chezmoi init's opsTools answer is yes (any OS); the brew-bundle script sets
-# HOMEBREW_DOTFILES_OPS_TOOLS from it. docker is the CLI only; RUNBOOK section 9a has the
-# podman-socket option for a distrobox. terraform comes from HashiCorp's tap (not in
-# homebrew-core: BUSL licence).
-if ENV["HOMEBREW_DOTFILES_OPS_TOOLS"] == "1"
-  tap "hashicorp/tap"
-  tap "siderolabs/tap"
-  brew "kubernetes-cli"
-  brew "helm"
-  brew "argocd"
-  brew "siderolabs/tap/talosctl"
-  brew "siderolabs/tap/omnictl"
-  brew "hashicorp/tap/terraform"
-  brew "ansible"
-  brew "docker"
-end
+# Ops tool sets from lib/toolsets.txt, only the ones chezmoi init's toolsets answer turns on (any
+# OS); the brew-bundle script passes them as HOMEBREW_DOTFILES_TOOLSETS=kubernetes,terraform, and
+# `all` lists every set (bin/drift uses it). Unknown names are ignored. docker is the CLI only;
+# RUNBOOK section 9a has the podman-socket option for a distrobox. terraform comes from HashiCorp's
+# tap (not in homebrew-core: BUSL licence).
+wanted = ENV.fetch("HOMEBREW_DOTFILES_TOOLSETS", "").split(",")
+picked = File.readlines(File.join(__dir__, "lib/toolsets.txt")).filter_map do |line|
+  set, *formulae = line.sub(/#.*/, "").split
+  formulae if set && (wanted.include?("all") || wanted.include?(set))
+end.flatten
+picked.filter_map { |f| f.split("/")[0, 2].join("/") if f.count("/") == 2 }.uniq.each { |t| tap t }
+picked.each { |f| brew f }
