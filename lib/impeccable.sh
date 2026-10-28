@@ -12,8 +12,8 @@
 #
 # Installs run Impeccable's own installer, `npx impeccable@<pin> install --user`, from $HOME so it never
 # writes into a project. That installer always fetches the newest bundle, so it is handed the pinned
-# release's bundle through IMPECCABLE_BUNDLE_PATH instead. Claude Code gets the skill's design hook
-# (in ~/.claude/settings.json); Codex and pi get none (--no-hooks).
+# release's bundle through IMPECCABLE_BUNDLE_PATH instead. No tool gets Impeccable's design hooks
+# (--no-hooks), so nothing is written to ~/.claude/settings.json.
 # Skill dirs, as the installer places them: ~/.claude/skills, ~/.agents/skills (Codex), ~/.pi/agent/skills.
 # IMPECCABLE_RELEASE_URL moves the release downloads and IMPECCABLE_REGISTRY_URL the npm registry (tests).
 set -uo pipefail
@@ -66,7 +66,7 @@ install() { # <args...> : run the pinned installer on the pinned bundle from $HO
 }
 
 ensure() {
-  local tool got want=() rest=()
+  local tool got want=()
   for tool in claude codex pi; do
     have "$tool" || { say "$tool not found; skipping"; continue; }
     got="$(installed "$tool")"
@@ -79,10 +79,7 @@ ensure() {
   TMPD="$(mktemp -d)"
   curl -fsSL -o "$TMPD/universal.zip" "$RELEASES/skill-v$PIN/universal.zip" ||
     { say "could not fetch $RELEASES/skill-v$PIN/universal.zip"; FAILED=1; return 0; }
-  for tool in "${want[@]}"; do
-    if [ "$tool" = claude ]; then install --providers=claude; else rest+=("$tool"); fi
-  done
-  [ ${#rest[@]} -eq 0 ] || install --no-hooks --providers="$(IFS=,; echo "${rest[*]}")"
+  install --no-hooks --providers="$(IFS=,; echo "${want[*]}")"
   mkdir -p "$STATE"
   for tool in "${want[@]}"; do
     if [ "$(installed "$tool")" = "$PIN" ]; then echo "$PIN" > "$STATE/$tool"

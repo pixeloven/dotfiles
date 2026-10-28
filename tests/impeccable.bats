@@ -54,12 +54,11 @@ has() { # <tool> <version> [extra file] : a copy installed some other way, like 
   [[ "$PIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || false
 }
 
-@test "ensure installs the pin for every tool through Impeccable's installer, from HOME, hooks for Claude only" {
+@test "ensure installs the pin for every tool through Impeccable's installer, from HOME, with no hooks" {
   run "$LIB" ensure
   [ "$status" -eq 0 ]
-  [ "$(calls | wc -l | tr -d ' ')" -eq 2 ]
-  calls | grep -q "^npx --yes impeccable@$PIN install -y --user --providers=claude | cwd=$HOME bundle=/"
-  calls | grep -q "^npx --yes impeccable@$PIN install -y --user --no-hooks --providers=codex,pi | cwd=$HOME bundle=/"
+  [ "$(calls | wc -l | tr -d ' ')" -eq 1 ]
+  calls | grep -q "^npx --yes impeccable@$PIN install -y --user --no-hooks --providers=claude,codex,pi | cwd=$HOME bundle=/"
   bundle="$(calls | head -n 1 | sed 's/.* bundle=//')"
   [ "$(basename "$bundle")" = universal.zip ] && [ ! -e "$bundle" ] # the downloaded copy, cleaned up after
   for t in claude codex pi; do [ "$(cat "$HOME/.local/state/dotfiles/impeccable/$t")" = "$PIN" ]; done
@@ -79,7 +78,7 @@ has() { # <tool> <version> [extra file] : a copy installed some other way, like 
   [[ "$output" == *"codex not found; skipping"* ]] || false
   [[ "$output" == *"pi not found; skipping"* ]] || false
   [ "$(calls | wc -l | tr -d ' ')" -eq 1 ]
-  calls | grep -q -- "--providers=claude |"
+  calls | grep -q -- "--no-hooks --providers=claude |"
   [ ! -e "$HOME/.agents/skills/impeccable" ]
   run "$LIB" check
   [ -z "$output" ]
@@ -97,7 +96,7 @@ has() { # <tool> <version> [extra file] : a copy installed some other way, like 
   [[ "$output" == *"backed up $HOME/.claude/skills/impeccable (4.0.4) to $b"* ]] || false
   grep -qxF "version: $PIN" "$HOME/.claude/skills/impeccable/SKILL.md"
   grep -qxF "version: $PIN" "$HOME/.pi/agent/skills/impeccable/SKILL.md"
-  calls | grep -q -- "--no-hooks --providers=codex,pi |"
+  calls | grep -q -- "--no-hooks --providers=claude,codex,pi |"
 }
 
 @test "a copy this script installed is replaced on a pin bump without a backup" {
@@ -111,7 +110,7 @@ has() { # <tool> <version> [extra file] : a copy installed some other way, like 
   run "$R/lib/impeccable.sh" ensure
   [ "$status" -eq 0 ]
   [ ! -e "$HOME/.local/state/dotfiles/impeccable/backup" ]
-  calls | grep -q "^npx --yes impeccable@99.0.0 install -y --user --providers=claude |"
+  calls | grep -q "^npx --yes impeccable@99.0.0 install -y --user --no-hooks --providers=claude,codex,pi |"
   [ "$(cat "$HOME/.local/state/dotfiles/impeccable/pi")" = 99.0.0 ]
 }
 
@@ -120,7 +119,7 @@ has() { # <tool> <version> [extra file] : a copy installed some other way, like 
   run "$LIB" ensure
   [ "$status" -eq 0 ]
   grep -qxF "version: 99.1.0" "$HOME/.claude/skills/impeccable/SKILL.md"
-  [ -z "$(calls | grep -- '--providers=claude |')" ]
+  calls | grep -q -- "--no-hooks --providers=codex,pi |"
   run "$LIB" check
   [ "$output" = $'skill-ahead\tclaude impeccable@'"$PIN"$'\tset lib/impeccable.txt to 99.1.0' ]
 }
