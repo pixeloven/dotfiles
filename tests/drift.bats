@@ -307,24 +307,6 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   [[ "$output" != *plugin-* ]] || false
 }
 
-@test "agent plugins: a removed Claude plugin that comes back is plugin-unwanted, unless agentPlugins = false" {
-  cp "$REAL_REPO/lib/agent-plugins.sh" "$REAL_REPO/lib/agent-plugins.txt" "$REAL_REPO/lib/claude-plugins-removed.txt" "$R/lib/"
-  unset CLAUDE_CONFIG_DIR CODEX_HOME PI_CODING_AGENT_DIR
-  printf '#!/bin/sh\necho %s\n' "'[{\"id\":\"superpowers@claude-plugins-official\",\"scope\":\"user\",\"enabled\":true}]'" > "$TMP/stub/claude"
-  chmod +x "$TMP/stub/claude"
-  run "$R/bin/drift"
-  [[ "$output" == *$'plugin-unwanted\tclaude superpowers@claude-plugins-official\tchezmoi apply'* ]] || false
-  printf '#!/bin/sh\necho "[]"\n' > "$TMP/stub/claude"
-  run "$R/bin/drift"
-  [[ "$output" != *plugin-unwanted* ]] || false
-  jq '.enabledPlugins = {"superpowers@claude-plugins-official": true}' "$HOME/.claude/settings.json" > "$TMP/s" && mv "$TMP/s" "$HOME/.claude/settings.json"
-  run "$R/bin/drift"
-  [[ "$output" == *$'plugin-unwanted\tclaude superpowers@claude-plugins-official\tchezmoi apply'* ]] || false
-  printf '[data]\nagentPlugins = false\n' > "$TMP/chezmoi.toml"
-  run "$R/bin/drift"
-  [[ "$output" != *plugin-* ]] || false
-}
-
 @test "impeccable: a missing skill is skill-missing, unless agentPlugins = false" {
   cp "$REAL_REPO/lib/impeccable.sh" "$REAL_REPO/lib/impeccable.txt" "$R/lib/"
   for t in claude codex pi; do printf '#!/bin/sh\n' > "$TMP/stub/$t"; chmod +x "$TMP/stub/$t"; done

@@ -1,9 +1,0 @@
-# Claude Code plugins kept off this machine, one <name>@<marketplace> per line. On apply,
-# lib/agent-plugins.sh uninstalls each one at user scope if it is installed and drops its key from
-# enabledPlugins in ~/.claude/settings.json (other keys stay). /codify reports one that comes back
-# as plugin-unwanted. Opt a machine out of all plugin management with agentPlugins = false.
-#
-# superpowers: its SessionStart hook put ~850 tokens of "invoke a skill before ANY response" into
-# nearly every Firstmate session, which almost never used it, and its workflows conflict with the
-# worker rules. Its marketplace (claude-plugins-official) auto-updates, so it is removed here.
-superpowers@claude-plugins-official
