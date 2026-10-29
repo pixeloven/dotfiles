@@ -86,35 +86,37 @@ listed() { # <list> <name> : print name's enabled flag from "<name> <enabled>" l
 }
 
 # --- Claude Code -----------------------------------------------------------------------------
-claude_list() { # "<name> <enabled>" for each pixeloven plugin installed at user scope
-  claude plugin list --json 2>/dev/null |
-    jq -r --arg m "@$MARKET" '.[]? | select(.scope == "user" and (.id | endswith($m))) | "\(.id | rtrimstr($m)) \(.enabled)"'
+claude_json() { claude plugin list --json 2>/dev/null; }
+
+claude_list() { # <json> : "<name> <enabled>" for each pixeloven plugin installed at user scope
+  jq -r --arg m "@$MARKET" '.[]? | select(.scope == "user" and (.id | endswith($m))) | "\(.id | rtrimstr($m)) \(.enabled)"' <<<"$1"
 }
 
 claude_ensure() { # a marketplace added just now is current; an existing one is refreshed before the first install
-  local list p fresh=""
+  local json list p fresh=""
   claude plugin marketplace list --json 2>/dev/null | jq -e --arg m "$MARKET" 'any(.[]?; .name == $m)' >/dev/null ||
     { run claude plugin marketplace add "$SOURCE" --json; fresh=1; }
-  list="$(claude_list)"
+  json="$(claude_json)"
+  list="$(claude_list "$json")"
   for p in $(names); do
     listed "$list" "$p" >/dev/null && continue
     [ -n "$fresh" ] || { refresh claude plugin marketplace update "$MARKET" --json; fresh=1; }
     run claude plugin install "$p@$MARKET" --scope user --json
   done
-  claude_remove
+  claude_remove "$json"
 }
 
-claude_installed() { # every plugin id installed at user scope, any marketplace
-  claude plugin list --json 2>/dev/null | jq -r '.[]? | select(.scope == "user") | .id'
+claude_installed() { # <json> : every plugin id installed at user scope, any marketplace
+  jq -r '.[]? | select(.scope == "user") | .id' <<<"$1"
 }
 
 claude_keyed() { # <id> : succeed when user settings have an enabledPlugins key for id
   jq -e --arg id "$1" '.enabledPlugins // {} | has($id)' "$CLAUDE_DIR/settings.json" >/dev/null 2>&1
 }
 
-claude_remove() { # uninstall each removed plugin and drop its enabledPlugins key, leaving every other key
+claude_remove() { # <json> : uninstall each removed plugin and drop its enabledPlugins key, leaving every other key
   local installed p s="$CLAUDE_DIR/settings.json"
-  installed="$(claude_installed)"
+  installed="$(claude_installed "$1")"
   for p in $(removed); do
     grep -qxF "$p" <<<"$installed" && run claude plugin uninstall "$p" --scope user --json
     claude_keyed "$p" || continue
@@ -129,7 +131,7 @@ claude_remove() { # uninstall each removed plugin and drop its enabledPlugins ke
 
 claude_update() {
   local list p
-  list="$(claude_list)"
+  list="$(claude_list "$(claude_json)")"
   [ -n "$list" ] || return 0
   run claude plugin marketplace update "$MARKET" --json
   for p in $(names); do
@@ -138,8 +140,9 @@ claude_update() {
 }
 
 claude_check() {
-  local list p want got installed
-  list="$(claude_list)"
+  local json list p want got installed
+  json="$(claude_json)"
+  list="$(claude_list "$json")"
   for p in $(names); do
     case "$(listed "$list" "$p")" in
       true) ;;
@@ -151,7 +154,7 @@ claude_check() {
       "$CLAUDE_DIR/plugins/installed_plugins.json" 2>/dev/null)"
     [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind claude "$p" "$BEHIND"
   done
-  installed="$(claude_installed)"
+  installed="$(claude_installed "$json")"
   for p in $(removed); do
     grep -qxF "$p" <<<"$installed" || claude_keyed "$p" || continue
     printf '%s\t%s\t%s\n' plugin-unwanted "claude $p" "chezmoi apply"

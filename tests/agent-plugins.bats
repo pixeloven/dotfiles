@@ -217,7 +217,7 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
   [ "$(jq -c '[.[] | select(.id == "'"$SP"'") | .scope]' "$CLAUDE_CONFIG_DIR/claude-list.json")" = '["project"]' ]
   [ "$(jq -cS . "$CLAUDE_CONFIG_DIR/settings.json")" = "$(jq -cnS '{model: "opus", hooks: {Stop: []},
     enabledPlugins: {"crew@pixeloven": true, "planning-skills@pixeloven": false, "other@elsewhere": true}}')" ]
-  [ "$(stat -f %Lp "$CLAUDE_CONFIG_DIR/settings.json" 2>/dev/null || stat -c %a "$CLAUDE_CONFIG_DIR/settings.json")" = 600 ]
+  [ "$(stat -c %a "$CLAUDE_CONFIG_DIR/settings.json" 2>/dev/null || stat -f %Lp "$CLAUDE_CONFIG_DIR/settings.json")" = 600 ]
   [ -z "$(installs)" ]
   cp "$CLAUDE_CONFIG_DIR/settings.json" "$TMP/after"; rm "$TMP/calls"
   run "$LIB" ensure
