@@ -7,10 +7,11 @@
 #   --hook     the summary as Claude Code hook JSON ({"systemMessage": ...}), shown to the user
 #   --json     findings as a JSON array of {kind, target, action}
 #
-# Kinds: edited, owned-key, pkg-extra, pkg-missing, plugin-missing, plugin-behind, skill-missing, skill-behind,
-# skill-ahead, untracked-config.
+# Kinds: edited, owned-key, pkg-extra, pkg-missing, plugin-missing, plugin-behind, plugin-unwanted, skill-missing,
+# skill-behind, skill-ahead, untracked-config.
 # plugin-behind: an installed plugin differs from this machine's local catalogue copy. The check is offline,
 # so a newly published marketplace re-pin is found by the operator's crew check and lib/agent-plugins.sh update.
+# plugin-unwanted: a Claude Code plugin in lib/claude-plugins-removed.txt is installed or keyed in enabledPlugins.
 # skill-*: the Impeccable skill against the version in lib/impeccable.txt (lib/impeccable.sh check).
 # Paths in lib/denylist.txt and packages in lib/drift-ignore.txt are never reported.
 # DRIFT_CHEZMOI_ARGS adds chezmoi flags (tests use it to point at a scratch source/state).
@@ -150,7 +151,7 @@ operator_persona() { # the persona selection we own when the operatorPersona key
   emit owned-key "$home/config/po-theme" "set operatorPersona in ~/.config/chezmoi/chezmoi.toml to $have, or lib/operator-persona.sh $(printf '%q %q' "$want" "$home")"
 }
 
-agent_plugins() { # crew and its packs for Claude Code, Codex and pi, unless agentPlugins = false
+agent_plugins() { # crew and its packs for Claude Code, Codex and pi, and removed Claude plugins, unless agentPlugins = false
   [ -x "$REPO/lib/agent-plugins.sh" ] || return 0
   [ "$("${CZ[@]}" data --format json 2>/dev/null | jq -r '.agentPlugins')" = false ] && return 0
   "$REPO/lib/agent-plugins.sh" check

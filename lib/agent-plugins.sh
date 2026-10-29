@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Keep the plugins in lib/agent-plugins.txt installed at user scope for Claude Code, Codex and pi,
-# all at the pixeloven marketplace's pins. A tool that isn't installed is skipped.
+# all at the pixeloven marketplace's pins, and the Claude Code plugins in lib/claude-plugins-removed.txt
+# off this machine. A tool that isn't installed is skipped.
 #
 # Usage: agent-plugins.sh ensure|update|check
-#   ensure  install only what is missing (run by chezmoi apply); a plugin you disabled stays disabled
+#   ensure  install only what is missing (run by chezmoi apply); a plugin you disabled stays disabled.
+#           A removed plugin is uninstalled at user scope and its enabledPlugins key dropped.
 #   update  bring every installed, enabled plugin to the catalogue's current pins
 #   check   read-only; one drift line per finding, as bin/drift prints them:
 #           plugin-missing / plugin-behind <tab> <tool> <name>@pixeloven <tab> <suggested action>
 #           plugin-behind means the installed commit differs from this machine's local catalogue copy.
+#           plugin-unwanted <tab> claude <name>@<marketplace> <tab> chezmoi apply: a removed plugin is
+#           installed at user scope or has an enabledPlugins key again.
 #           check stays offline (bin/drift runs it at session start), so it never sees a re-pin newly
 #           published in the marketplace; the operator's crew check (on demand) and `update` detect that.
 # Exit 0, or 1 when an install or update failed (check always exits 0).
@@ -29,6 +33,7 @@ TMPD=""
 trap '[ -z "$TMPD" ] || rm -rf "$TMPD"' EXIT
 
 names() { grep -vE '^[[:space:]]*(#|$)' "$REPO/lib/agent-plugins.txt"; }
+removed() { grep -vE '^[[:space:]]*(#|$)' "$REPO/lib/claude-plugins-removed.txt" 2>/dev/null; }
 say() { echo "agent plugins: $*" >&2; }
 BEHIND="installed differs from this machine's local catalogue copy; run $REPO/lib/agent-plugins.sh update"
 emit() { printf '%s\t%s\t%s\n' "$1" "$2 $3@$MARKET" "$4"; }
@@ -81,26 +86,52 @@ listed() { # <list> <name> : print name's enabled flag from "<name> <enabled>" l
 }
 
 # --- Claude Code -----------------------------------------------------------------------------
-claude_list() { # "<name> <enabled>" for each pixeloven plugin installed at user scope
-  claude plugin list --json 2>/dev/null |
-    jq -r --arg m "@$MARKET" '.[]? | select(.scope == "user" and (.id | endswith($m))) | "\(.id | rtrimstr($m)) \(.enabled)"'
+claude_json() { claude plugin list --json 2>/dev/null; }
+
+claude_list() { # <json> : "<name> <enabled>" for each pixeloven plugin installed at user scope
+  jq -r --arg m "@$MARKET" '.[]? | select(.scope == "user" and (.id | endswith($m))) | "\(.id | rtrimstr($m)) \(.enabled)"' <<<"$1"
 }
 
 claude_ensure() { # a marketplace added just now is current; an existing one is refreshed before the first install
-  local list p fresh=""
+  local json list p fresh=""
   claude plugin marketplace list --json 2>/dev/null | jq -e --arg m "$MARKET" 'any(.[]?; .name == $m)' >/dev/null ||
     { run claude plugin marketplace add "$SOURCE" --json; fresh=1; }
-  list="$(claude_list)"
+  json="$(claude_json)"
+  list="$(claude_list "$json")"
   for p in $(names); do
     listed "$list" "$p" >/dev/null && continue
     [ -n "$fresh" ] || { refresh claude plugin marketplace update "$MARKET" --json; fresh=1; }
     run claude plugin install "$p@$MARKET" --scope user --json
   done
+  claude_remove "$json"
+}
+
+claude_installed() { # <json> : every plugin id installed at user scope, any marketplace
+  jq -r '.[]? | select(.scope == "user") | .id' <<<"$1"
+}
+
+claude_keyed() { # <id> : succeed when user settings have an enabledPlugins key for id
+  jq -e --arg id "$1" '.enabledPlugins // {} | has($id)' "$CLAUDE_DIR/settings.json" >/dev/null 2>&1
+}
+
+claude_remove() { # <json> : uninstall each removed plugin and drop its enabledPlugins key, leaving every other key
+  local installed p s="$CLAUDE_DIR/settings.json"
+  installed="$(claude_installed "$1")"
+  for p in $(removed); do
+    grep -qxF "$p" <<<"$installed" && run claude plugin uninstall "$p" --scope user --json
+    claude_keyed "$p" || continue
+    say "drop $p from enabledPlugins in $s"
+    # Written back in place, so the file keeps its mode (and stays a symlink if it is one).
+    if ! { jq --arg id "$p" 'del(.enabledPlugins[$id])' "$s" > "$s.tmp" && cat "$s.tmp" > "$s"; }; then
+      say "failed: drop $p from enabledPlugins in $s"; FAILED=1
+    fi
+    rm -f "$s.tmp"
+  done
 }
 
 claude_update() {
   local list p
-  list="$(claude_list)"
+  list="$(claude_list "$(claude_json)")"
   [ -n "$list" ] || return 0
   run claude plugin marketplace update "$MARKET" --json
   for p in $(names); do
@@ -109,8 +140,9 @@ claude_update() {
 }
 
 claude_check() {
-  local list p want got
-  list="$(claude_list)"
+  local json list p want got installed
+  json="$(claude_json)"
+  list="$(claude_list "$json")"
   for p in $(names); do
     case "$(listed "$list" "$p")" in
       true) ;;
@@ -121,6 +153,11 @@ claude_check() {
     got="$(jq -r --arg id "$p@$MARKET" '.plugins[$id][]? | select(.scope == "user") | .gitCommitSha // empty' \
       "$CLAUDE_DIR/plugins/installed_plugins.json" 2>/dev/null)"
     [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind claude "$p" "$BEHIND"
+  done
+  installed="$(claude_installed "$json")"
+  for p in $(removed); do
+    grep -qxF "$p" <<<"$installed" || claude_keyed "$p" || continue
+    printf '%s\t%s\t%s\n' plugin-unwanted "claude $p" "chezmoi apply"
   done
 }
 

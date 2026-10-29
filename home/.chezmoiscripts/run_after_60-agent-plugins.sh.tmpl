@@ -3,7 +3,8 @@
 # Keep crew and its packs (lib/agent-plugins.txt) installed at user scope for Claude Code, Codex and
 # pi. Runs on every apply, so a tool installed after the first apply gets them at the next one; it
 # installs only what is missing and never touches an installed plugin, so a disabled one stays
-# disabled. Opt a machine out with agentPlugins = false in ~/.config/chezmoi/chezmoi.toml.
+# disabled. It also uninstalls the Claude Code plugins in lib/claude-plugins-removed.txt and drops
+# their enabledPlugins keys. Opt a machine out with agentPlugins = false in ~/.config/chezmoi/chezmoi.toml.
 set -eu
 exec "{{ .chezmoi.workingTree }}/lib/agent-plugins.sh" ensure
 {{ end -}}
