@@ -436,3 +436,32 @@ STUB
   wait "$pid"
   exec 7>&-
 }
+
+@test "reader: switching to another session and back keeps unread replies unread and the view" {
+  mkdir -p "$HOME/bin" "$HOME/.claude/projects/p"
+  # herdr agent list reports whichever session id is in tab-session.
+  printf '#!/bin/sh\nprintf %s "$(cat "$HOME/tab-session")"\n' \
+    "'{\"result\":{\"agents\":[{\"agent\":\"claude\",\"agent_session\":{\"value\":\"%s\"},\"tab_id\":\"w1:tA\"}]}}'" > "$HOME/bin/herdr"
+  chmod +x "$HOME/bin/herdr"
+  A="$HOME/.claude/projects/p/a.jsonl" B="$HOME/.claude/projects/p/b.jsonl"
+  for i in 1 2 3; do turn "$A" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply A$i."; done
+  for i in 1 2; do turn "$B" "2026-10-24T08:0$i:00.000Z" "ask $i" "Reply B$i."; done
+  echo a > "$HOME/tab-session"
+  export HERDR_TAB_ID=w1:tA
+  start_reader
+  for i in 4 5; do turn "$A" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply A$i."; done
+  sleep 3
+  press p
+  screen | grep -q '^Reply A2.$'
+  [[ "$(bar)" == " 2/5  ● 2 unread"* ]] || false
+  echo b > "$HOME/tab-session"
+  sleep 3
+  screen | grep -q '^Reply B2.$'
+  [[ "$(bar)" == " 2/2  ✓ caught up"* ]] || false
+  echo a > "$HOME/tab-session"
+  sleep 3
+  stop_reader
+  screen | grep -q '^Reply A2.$'
+  [[ "$(bar)" == " 2/5  ● 2 unread"* ]] || false
+  ! screen | grep -q 'caught up' || false
+}

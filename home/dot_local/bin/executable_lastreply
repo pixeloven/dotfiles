@@ -201,7 +201,8 @@ fi
 
 # The reader. The transcript is the queue: each read caches its newest finished turns as JSON,
 # and keys index into that cache. The read marker is the start time of the newest reply read;
-# it lives only as long as the pane, which always opens at the latest reply.
+# it lives only as long as the pane, which opens each transcript at its latest reply the first
+# time it shows it, and returns to where it was when it switches back.
 tmp="$(mktemp -d)"
 tty_mode=""
 # Echo stays off while the pane runs, so a key pressed mid-draw never lands on the screen.
@@ -211,8 +212,27 @@ trap 'exit 0' INT TERM HUP
 trap 'dirty=1' WINCH
 cache="$tmp/turns.json"
 
-open_session() { # a newly opened session starts at its latest reply, with every earlier one read
-  marker="" fresh=1 cur=-1 read_i=-1 n=0 times=()
+seen=() seen_marker=() seen_view=() # per transcript this pane has shown: read marker, reply in view
+
+leave_session() { # <file> : remember where the reader was in it
+  local i=0
+  [ -n "$1" ] && [ -z "$fresh" ] || return 0
+  while [ "$i" -lt "${#seen[@]}" ] && [ "${seen[i]}" != "$1" ]; do i=$((i + 1)); done
+  seen[i]="$1" seen_marker[i]="$marker" seen_view[i]=""
+  [ "$cur" -ge 0 ] && seen_view[i]="${times[cur]}"
+  return 0
+}
+
+open_session() { # <file> : a session seen first starts at its latest reply, with every earlier one
+  local i=0      # read; one seen before returns to its read marker and the reply it showed
+  marker="" fresh=1 cur=-1 read_i=-1 n=0 times=() view=""
+  while [ "$i" -lt "${#seen[@]}" ]; do
+    if [ "${seen[i]}" = "$1" ]; then
+      marker="${seen_marker[i]}" view="${seen_view[i]}" fresh=""
+      return 0
+    fi
+    i=$((i + 1))
+  done
 }
 
 mark_read() { # <index> : everything up to that reply is read
@@ -226,6 +246,7 @@ load_queue() { # re-read the transcript; keeps the old cache if this read came b
   parse "$file" "queue($QUEUE_CAP)" > "$tmp/new" 2>/dev/null && [ -s "$tmp/new" ] || return 1
   mv -f "$tmp/new" "$cache"
   writing="$(jq -r '.writing' "$cache")"
+  shown_time="$view" view=""
   [ "$cur" -ge 0 ] && shown_time="${times[cur]}"
   times=()
   while IFS= read -r t; do times+=("$t"); done < <(jq -r '.turns[] | .time // "-"' "$cache")
@@ -314,13 +335,14 @@ read_escape() { # the rest of an escape sequence after its ESC, up to 64 bytes: 
 
 # Poll the transcript every 2 s while waiting for a key. Once stdin has no more keys to give
 # (closed, or not a terminal), keep polling with sleep so new replies still count.
-opened="" last="" shown="" keys="" dirty=1 writing=false
+opened="" last="" shown="" keys="" dirty=1 writing=false fresh=""
 { [ -t 0 ] || [ -p /dev/stdin ]; } && keys=1
 while :; do
   file="$(transcript)"
   if [ "$file" != "$opened" ]; then
-    opened="$file" last=""
-    open_session
+    leave_session "$opened"
+    opened="$file" last="" dirty=1
+    open_session "$file"
   fi
   stamp="$file $(stat "${stat_fmt[@]}" "$file" 2>/dev/null)"
   if [ "$stamp" != "$last" ]; then
