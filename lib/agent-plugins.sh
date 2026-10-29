@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Keep the plugins in lib/agent-plugins.txt installed at user scope for Claude Code, Codex and pi,
-# all at the pixeloven marketplace's pins. A tool that isn't installed is skipped.
+# all at the pixeloven marketplace's pins, and the Claude Code plugins in lib/claude-plugins-removed.txt
+# off this machine. A tool that isn't installed is skipped.
 #
 # Usage: agent-plugins.sh ensure|update|check
-#   ensure  install only what is missing (run by chezmoi apply); a plugin you disabled stays disabled
+#   ensure  install only what is missing (run by chezmoi apply); a plugin you disabled stays disabled.
+#           A removed plugin is uninstalled at user scope and its enabledPlugins key dropped.
 #   update  bring every installed, enabled plugin to the catalogue's current pins
 #   check   read-only; one drift line per finding, as bin/drift prints them:
 #           plugin-missing / plugin-behind <tab> <tool> <name>@pixeloven <tab> <suggested action>
 #           plugin-behind means the installed commit differs from this machine's local catalogue copy.
+#           plugin-unwanted <tab> claude <name>@<marketplace> <tab> chezmoi apply: a removed plugin is
+#           installed at user scope or has an enabledPlugins key again.
 #           check stays offline (bin/drift runs it at session start), so it never sees a re-pin newly
 #           published in the marketplace; the operator's crew check (on demand) and `update` detect that.
 # Exit 0, or 1 when an install or update failed (check always exits 0).
@@ -29,6 +33,7 @@ TMPD=""
 trap '[ -z "$TMPD" ] || rm -rf "$TMPD"' EXIT
 
 names() { grep -vE '^[[:space:]]*(#|$)' "$REPO/lib/agent-plugins.txt"; }
+removed() { grep -vE '^[[:space:]]*(#|$)' "$REPO/lib/claude-plugins-removed.txt" 2>/dev/null; }
 say() { echo "agent plugins: $*" >&2; }
 BEHIND="installed differs from this machine's local catalogue copy; run $REPO/lib/agent-plugins.sh update"
 emit() { printf '%s\t%s\t%s\n' "$1" "$2 $3@$MARKET" "$4"; }
@@ -96,6 +101,30 @@ claude_ensure() { # a marketplace added just now is current; an existing one is 
     [ -n "$fresh" ] || { refresh claude plugin marketplace update "$MARKET" --json; fresh=1; }
     run claude plugin install "$p@$MARKET" --scope user --json
   done
+  claude_remove
+}
+
+claude_installed() { # every plugin id installed at user scope, any marketplace
+  claude plugin list --json 2>/dev/null | jq -r '.[]? | select(.scope == "user") | .id'
+}
+
+claude_keyed() { # <id> : succeed when user settings have an enabledPlugins key for id
+  jq -e --arg id "$1" '.enabledPlugins // {} | has($id)' "$CLAUDE_DIR/settings.json" >/dev/null 2>&1
+}
+
+claude_remove() { # uninstall each removed plugin and drop its enabledPlugins key, leaving every other key
+  local installed p s="$CLAUDE_DIR/settings.json"
+  installed="$(claude_installed)"
+  for p in $(removed); do
+    grep -qxF "$p" <<<"$installed" && run claude plugin uninstall "$p" --scope user --json
+    claude_keyed "$p" || continue
+    say "drop $p from enabledPlugins in $s"
+    # Written back in place, so the file keeps its mode (and stays a symlink if it is one).
+    if ! { jq --arg id "$p" 'del(.enabledPlugins[$id])' "$s" > "$s.tmp" && cat "$s.tmp" > "$s"; }; then
+      say "failed: drop $p from enabledPlugins in $s"; FAILED=1
+    fi
+    rm -f "$s.tmp"
+  done
 }
 
 claude_update() {
@@ -109,7 +138,7 @@ claude_update() {
 }
 
 claude_check() {
-  local list p want got
+  local list p want got installed
   list="$(claude_list)"
   for p in $(names); do
     case "$(listed "$list" "$p")" in
@@ -121,6 +150,11 @@ claude_check() {
     got="$(jq -r --arg id "$p@$MARKET" '.plugins[$id][]? | select(.scope == "user") | .gitCommitSha // empty' \
       "$CLAUDE_DIR/plugins/installed_plugins.json" 2>/dev/null)"
     [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind claude "$p" "$BEHIND"
+  done
+  installed="$(claude_installed)"
+  for p in $(removed); do
+    grep -qxF "$p" <<<"$installed" || claude_keyed "$p" || continue
+    printf '%s\t%s\t%s\n' plugin-unwanted "claude $p" "chezmoi apply"
   done
 }
 

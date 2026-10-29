@@ -36,6 +36,8 @@ case "$*" in
   "plugin marketplace update "*) [ ! -e "$d/offline" ] ;;
   "plugin install "*)
     jq --arg id "$3" '. + [{id: $id, scope: "user", enabled: true}]' "$d/claude-list.json" > "$d/t" && mv "$d/t" "$d/claude-list.json" ;;
+  "plugin uninstall "*)
+    jq --arg id "$3" 'map(select(.id != $id or .scope != "user"))' "$d/claude-list.json" > "$d/t" && mv "$d/t" "$d/claude-list.json" ;;
 esac
 STUB
   cat > "$TMP/stub/codex" <<'STUB'
@@ -112,6 +114,13 @@ all_installed() { # every name present and enabled in all three tools, at catalo
   done
   jq -n --arg l "$1" --arg names "$NAMES" '{packages: [$names | split(" ")[] | "git:github.com/pixeloven/\(.)@\($l * 40)"]}' \
     > "$PI_CODING_AGENT_DIR/settings.json"
+}
+
+SP=superpowers@claude-plugins-official
+
+claude_also() { # <id> <scope> <enabled> : add one more plugin to the stub's installed list
+  jq --arg id "$1" --arg s "$2" --argjson e "$3" '. + [{id: $id, scope: $s, enabled: $e}]' \
+    "$CLAUDE_CONFIG_DIR/claude-list.json" > "$TMP/l" && mv "$TMP/l" "$CLAUDE_CONFIG_DIR/claude-list.json"
 }
 
 codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse HEAD; }
@@ -191,6 +200,79 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
   [ "$status" -eq 0 ]
   [ -z "$(installs)" ]
   [ "$(jq '.[] | select(.id == "planning-skills@pixeloven") | .enabled' "$CLAUDE_CONFIG_DIR/claude-list.json")" = false ]
+}
+
+@test "ensure uninstalls a removed plugin and drops only its enabledPlugins key, and a re-run changes nothing" {
+  all_installed a
+  claude_also "$SP" user true
+  claude_also "$SP" project true # another scope's install is not dotfiles'
+  jq -n --arg sp "$SP" '{model: "opus", hooks: {Stop: []},
+    enabledPlugins: {($sp): true, "crew@pixeloven": true, "planning-skills@pixeloven": false, "other@elsewhere": true}}' \
+    > "$CLAUDE_CONFIG_DIR/settings.json"
+  chmod 600 "$CLAUDE_CONFIG_DIR/settings.json"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  calls | grep -qxF "claude plugin uninstall $SP --scope user --json"
+  [ "$(calls | grep -c 'plugin uninstall')" -eq 1 ]
+  [ "$(jq -c '[.[] | select(.id == "'"$SP"'") | .scope]' "$CLAUDE_CONFIG_DIR/claude-list.json")" = '["project"]' ]
+  [ "$(jq -cS . "$CLAUDE_CONFIG_DIR/settings.json")" = "$(jq -cnS '{model: "opus", hooks: {Stop: []},
+    enabledPlugins: {"crew@pixeloven": true, "planning-skills@pixeloven": false, "other@elsewhere": true}}')" ]
+  [ "$(stat -f %Lp "$CLAUDE_CONFIG_DIR/settings.json" 2>/dev/null || stat -c %a "$CLAUDE_CONFIG_DIR/settings.json")" = 600 ]
+  [ -z "$(installs)" ]
+  cp "$CLAUDE_CONFIG_DIR/settings.json" "$TMP/after"; rm "$TMP/calls"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  [ -z "$(calls | grep 'plugin uninstall')" ]
+  [[ "$output" != *enabledPlugins* ]] || false
+  cmp -s "$TMP/after" "$CLAUDE_CONFIG_DIR/settings.json"
+}
+
+@test "ensure drops a removed plugin's enabledPlugins key when it is not installed, and leaves a settings file without one alone" {
+  all_installed a
+  jq -n --arg sp "$SP" '{enabledPlugins: {($sp): false, "crew@pixeloven": true}}' > "$CLAUDE_CONFIG_DIR/settings.json"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  [ -z "$(calls | grep 'plugin uninstall')" ]
+  [ "$(jq -c .enabledPlugins "$CLAUDE_CONFIG_DIR/settings.json")" = '{"crew@pixeloven":true}' ]
+  rm "$CLAUDE_CONFIG_DIR/settings.json"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  [ ! -e "$CLAUDE_CONFIG_DIR/settings.json" ]
+}
+
+@test "ensure leaves settings that are not valid JSON untouched" {
+  all_installed a
+  printf '{"enabledPlugins": {"%s": true}, oops' "$SP" > "$CLAUDE_CONFIG_DIR/settings.json"
+  cp "$CLAUDE_CONFIG_DIR/settings.json" "$TMP/before"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ] # no key can be read, so none is dropped
+  cmp -s "$TMP/before" "$CLAUDE_CONFIG_DIR/settings.json"
+  [ ! -e "$CLAUDE_CONFIG_DIR/settings.json.tmp" ]
+}
+
+@test "check reports a removed plugin that is installed or keyed as plugin-unwanted, and nothing once ensure has run" {
+  all_installed a
+  claude_also "$SP" user false
+  run "$LIB" check
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'plugin-unwanted\tclaude '"$SP"$'\tchezmoi apply'* ]] || false
+  claude_has crew true infra-skills true planning-skills true identity-skills true language-skills true
+  run "$LIB" check
+  [[ "$output" != *plugin-unwanted* ]] || false
+  jq -n --arg sp "$SP" '{enabledPlugins: {($sp): true}}' > "$CLAUDE_CONFIG_DIR/settings.json"
+  run "$LIB" check
+  [ "$(grep -c '^plugin-unwanted' <<<"$output")" -eq 1 ]
+  claude_also "$SP" project true # another scope's install is not reported
+  jq -n '{enabledPlugins: {}}' > "$CLAUDE_CONFIG_DIR/settings.json"
+  run "$LIB" check
+  [[ "$output" != *plugin-unwanted* ]] || false
+  claude_also "$SP" user true
+  jq -n --arg sp "$SP" '{enabledPlugins: {($sp): true}}' > "$CLAUDE_CONFIG_DIR/settings.json"
+  run "$LIB" ensure
+  [ "$status" -eq 0 ]
+  run "$LIB" check
+  [[ "$output" != *plugin-unwanted* ]] || false
+  [ -z "$(installs)" ]
 }
 
 @test "pi installs each plugin at the catalogue's SHA" {
@@ -350,5 +432,5 @@ codex_head() { git -C "$CODEX_HOME/plugins/cache/pixeloven/$1/1.0.0" rev-parse H
   unset CLAUDE_CONFIG_DIR CODEX_HOME PI_CODING_AGENT_DIR
   HOME="$LIVE_HOME" PATH="$LIVE_PATH" run "$LIB" check
   [ "$status" -eq 0 ]
-  [ -z "$(grep -vE $'^plugin-(missing|behind)\t(claude|codex|pi) [a-z-]+@pixeloven\t' <<<"$output")" ]
+  [ -z "$(grep -vE $'^(plugin-(missing|behind)\t(claude|codex|pi) [a-z-]+@pixeloven|plugin-unwanted\tclaude [a-z-]+@[a-z-]+)\t' <<<"$output")" ]
 }
