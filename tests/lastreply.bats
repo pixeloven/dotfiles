@@ -431,6 +431,7 @@ STUB
   start_reader --session e
   press p
   press '\033]10;rgb:cdcd/d6d6/f4f4\033\\\033[74;25R\033]11;rgb:2828/2c2c/3434\007\033[74;25Rp'
+  for i in $(seq 1 40); do [[ "$(bar)" == " 1/3 "* ]] && break; sleep 0.5; done
   [[ "$(bar)" == " 1/3  ✓ caught up"* ]] || false
   press q
   wait "$pid"
