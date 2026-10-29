@@ -106,12 +106,13 @@ bar() { screen | tail -1; }
   cp "$FIX/claude-transcript.jsonl" "$T"
   PATH="$HOME/bin:$PATH" "$SCRIPT" --watch < /dev/null > "$HOME/out" 2>&1 3>&- &
   pid=$!
-  sleep 1
+  # The reply has to arrive after the pane opened, or opening marks it read too.
+  for i in $(seq 1 20); do grep -q 'caught up' "$HOME/out" 2>/dev/null && break; sleep 0.5; done
   turn "$T" 2026-10-24T07:02:00.000Z third "Fresh reply."
   sleep 3
   kill "$pid"
   screen | grep -q '^## Result'
-  ! screen | grep -q 'Fresh reply.'
+  ! screen | grep -q 'Fresh reply.' || false
   [[ "$(bar)" == " 2/3  ● 1 unread"* ]] || false
 }
 
@@ -284,7 +285,6 @@ STUB
   for i in 1 2 3; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
   start_reader --session q
   [[ "$(bar)" == " 3/3  ✓ caught up"* ]] || false
-  [ "$(cat "$HOME/.local/state/lastreply/q")" = "read_through=2026-10-24T07:03:00.000Z" ]
   for i in 4 5 6; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
   sleep 3
   screen | grep -q '^Reply 3.$'
@@ -305,34 +305,47 @@ STUB
   press p
   press '\033[F'
   [[ "$(bar)" == " 6/6  ✓ caught up"* ]] || false
-  [ "$(cat "$HOME/.local/state/lastreply/q")" = "read_through=2026-10-24T07:06:00.000Z" ]
   press q
   wait "$pid"
   exec 7>&-
 }
 
-@test "reader reopens at the oldest unread reply" {
-  mkdir -p "$HOME/.claude/projects/p" "$HOME/.local/state/lastreply"
+@test "reader opens at the latest reply with every earlier one read" {
+  mkdir -p "$HOME/.claude/projects/p"
   T="$HOME/.claude/projects/p/r.jsonl"
   for i in 1 2 3 4; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
-  echo 'read_through=2026-10-24T07:02:00.000Z' > "$HOME/.local/state/lastreply/r"
   start_reader --session r
-  stop_reader
+  screen | grep -q '^Reply 4.$'
+  [[ "$(bar)" == " 4/4  ✓ caught up"* ]] || false
+  press p
   screen | grep -q '^Reply 3.$'
-  [[ "$(bar)" == " 3/4  ● 2 unread"* ]] || false
+  [[ "$(bar)" == " 3/4  ✓ caught up"* ]] || false
+  press u
+  stop_reader
+  [[ "$(bar)" == " 3/4  ✓ caught up"* ]] || false
 }
 
-@test "reader prunes read state untouched for 30 days" {
-  claude_session p s
-  mkdir -p "$HOME/xdg/lastreply"
-  echo 'read_through=x' > "$HOME/xdg/lastreply/old"
-  touch -t 202001010000 "$HOME/xdg/lastreply/old"
-  echo 'read_through=x' > "$HOME/xdg/lastreply/recent"
-  XDG_STATE_HOME="$HOME/xdg" start_reader --session s
+@test "reader keeps only the newest 50 replies and stays on the one it shows" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/c.jsonl"
+  for i in $(seq 1 55); do turn "$T" "$(printf '2026-10-24T08:%02d:00.000Z' "$i")" "ask $i" "Reply $i."; done
+  start_reader --session c
+  [[ "$(bar)" == " 50/50  ✓ caught up"* ]] || false
+  for i in $(seq 1 49); do printf p >&7; done
+  for i in $(seq 1 40); do [[ "$(bar)" == " 1/50 "* ]] && break; sleep 0.5; done
+  screen | grep -q '^Reply 6.$'
+  [[ "$(bar)" == " 1/50  ✓ caught up"* ]] || false
+  press p
+  screen | grep -q '^Reply 6.$'
+  press G
+  for i in 56 57; do turn "$T" "2026-10-24T08:$i:00.000Z" "ask $i" "Reply $i."; done
+  sleep 3
+  screen | grep -q '^Reply 55.$'
+  [[ "$(bar)" == " 48/50  ● 2 unread"* ]] || false
+  press G
   stop_reader
-  [ ! -e "$HOME/xdg/lastreply/old" ]
-  [ -e "$HOME/xdg/lastreply/recent" ]
-  [ -e "$HOME/xdg/lastreply/s" ]
+  screen | grep -q '^Reply 57.$'
+  [[ "$(bar)" == " 50/50  ✓ caught up"* ]] || false
 }
 
 @test "reader: a Claude reply counts only once the turn has ended" {
@@ -342,7 +355,7 @@ STUB
   turn "$T" 2026-10-24T07:02:00.000Z "ask 2" "Working on it." tool_use
   start_reader --session w
   [[ "$(bar)" == " 1/1  ✓ caught up · ✎ writing"* ]] || false
-  ! screen | grep -q 'Working on it.'
+  ! screen | grep -q 'Working on it.' || false
   echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}],"stop_reason":"end_turn"}}' >> "$T"
   sleep 3
   stop_reader
@@ -384,10 +397,72 @@ STUB
   turn "$T" 2026-10-24T07:01:00.000Z "long one" "$(seq -f 'line %g' 1 100 | awk '{printf "%s\\n", $0}')"
   start_reader --session l
   screen | grep -q '^> long one$'
-  ! screen | grep -q '^line 100$'
+  ! screen | grep -q '^line 100$' || false
   [[ "$(bar)" == *"▼ "*" more lines, Enter"* ]] || false
   [ "$(screen | wc -l)" -eq 40 ]
   press '\n'
   stop_reader
   grep -q '^line 100$' "$HOME/paged"
+}
+
+@test "reader: arrow keys and terminal answers leave no stray characters on screen" {
+  reader_stubs
+  # Like glow 3.0: ask the terminal for its colours and cursor on every render, unless TERM is
+  # dumb, and take a moment so a key can arrive while the card is being drawn.
+  printf '#!/bin/sh\n[ "$TERM" = dumb ] || printf %s > /dev/tty\nsleep 0.3\ncat\n' \
+    "'\033]10;?\033\\\\\033[6n\033]11;?\033\\\\\033[6n'" > "$HOME/bin/glow"
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/a.jsonl"
+  for i in 1 2 3 4; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
+  keys='[[2,"\u001b[D"],[0.1,"\u001b[D"],[1.5,"\u001b[C"],[1.5,"p"],[1.5,"q"]]'
+  PATH="$HOME/bin:$PATH" TERM=xterm-256color python3 -I "$FIX/answering-terminal.py" "$HOME/out" "$keys" \
+    "$SCRIPT" --watch --session a
+  [[ "$(bar)" == *" 2/4  ✓ caught up"* ]] || false
+  ! grep -qF ']11;?' "$HOME/out" || false
+  ! grep -q 'rgb:' "$HOME/out" || false
+  ! grep -q '25R' "$HOME/out" || false
+  ! grep -q '\^\[' "$HOME/out" || false
+}
+
+@test "reader: a terminal's answers read as keys neither move the view nor eat the next key" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/e.jsonl"
+  for i in 1 2 3; do turn "$T" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply $i."; done
+  start_reader --session e
+  press p
+  press '\033]10;rgb:cdcd/d6d6/f4f4\033\\\033[74;25R\033]11;rgb:2828/2c2c/3434\007\033[74;25Rp'
+  for i in $(seq 1 40); do [[ "$(bar)" == " 1/3 "* ]] && break; sleep 0.5; done
+  [[ "$(bar)" == " 1/3  ✓ caught up"* ]] || false
+  press q
+  wait "$pid"
+  exec 7>&-
+}
+
+@test "reader: switching to another session and back keeps unread replies unread and the view" {
+  mkdir -p "$HOME/bin" "$HOME/.claude/projects/p"
+  # herdr agent list reports whichever session id is in tab-session.
+  printf '#!/bin/sh\nprintf %s "$(cat "$HOME/tab-session")"\n' \
+    "'{\"result\":{\"agents\":[{\"agent\":\"claude\",\"agent_session\":{\"value\":\"%s\"},\"tab_id\":\"w1:tA\"}]}}'" > "$HOME/bin/herdr"
+  chmod +x "$HOME/bin/herdr"
+  A="$HOME/.claude/projects/p/a.jsonl" B="$HOME/.claude/projects/p/b.jsonl"
+  for i in 1 2 3; do turn "$A" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply A$i."; done
+  for i in 1 2; do turn "$B" "2026-10-24T08:0$i:00.000Z" "ask $i" "Reply B$i."; done
+  echo a > "$HOME/tab-session"
+  export HERDR_TAB_ID=w1:tA
+  start_reader
+  for i in 4 5; do turn "$A" "2026-10-24T07:0$i:00.000Z" "ask $i" "Reply A$i."; done
+  sleep 3
+  press p
+  screen | grep -q '^Reply A2.$'
+  [[ "$(bar)" == " 2/5  ● 2 unread"* ]] || false
+  echo b > "$HOME/tab-session"
+  sleep 3
+  screen | grep -q '^Reply B2.$'
+  [[ "$(bar)" == " 2/2  ✓ caught up"* ]] || false
+  echo a > "$HOME/tab-session"
+  sleep 3
+  stop_reader
+  screen | grep -q '^Reply A2.$'
+  [[ "$(bar)" == " 2/5  ● 2 unread"* ]] || false
+  ! screen | grep -q 'caught up' || false
 }
