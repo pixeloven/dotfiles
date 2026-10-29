@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # lastreply: render the newest Claude Code (or Codex) reply with glow, for a herdr split
-# beside the chat. Reads the session transcripts; --watch also keeps a read marker per session.
+# beside the chat. Reads the session transcripts.
 # Usage: lastreply [--open] [--watch] [--codex] [--raw] [--session ID]
 #   --codex       read ~/.codex/sessions instead of ~/.claude/projects
-#   --watch       read the session's finished replies one at a time; a new one only raises
-#                 the unread count, the view moves on a key: Space/n/→ next (marks read),
-#                 p/← previous, u oldest unread, G/End latest (marks all read),
-#                 Enter page the card in less, q quit
+#   --watch       read the session's finished replies one at a time, opening at the latest
+#                 with every earlier one read; a new one only raises the unread count, the
+#                 view moves on a key: Space/n/→ next (marks read), p/← previous,
+#                 u oldest unread, G/End latest (marks all read), Enter page the card in
+#                 less, q quit. Only the newest 50 replies are kept.
 #   --raw         print the markdown without glow
 #   --session ID  follow that session ($CLAUDE_CODE_SESSION_ID or Codex's $CODEX_THREAD_ID)
 #   --open        split the current herdr pane and run --watch there for this session;
@@ -15,9 +16,10 @@
 # session for the current folder, else the newest anywhere.
 # A reply is all the text the assistant wrote since your last prompt, across tool calls
 # (for Codex, only its final answer, not its progress notes).
-# Read state: ${XDG_STATE_HOME:-~/.local/state}/lastreply/<transcript name>, pruned after 30 days.
 
 set -uo pipefail
+
+QUEUE_CAP=50 # the reader keeps only this many of the newest replies; older ones drop off
 
 agent=claude watch="" raw="" session="" open=""
 while [ $# -gt 0 ]; do
@@ -140,7 +142,7 @@ COMMON_JQ='
     + (if .prompt == "" then "> (no text)" else "> " + .prompt end)
     + "\n\n---\n\n" + (.texts | join("\n\n"));
   def last_card: turns | last | if . == null then "" else card end;
-  def queue: turns | {turns: map(select(.done)), writing: ((last // {done: true}) | .done | not)};'
+  def queue($cap): turns | {turns: (map(select(.done)) | .[-$cap:]), writing: ((last // {done: true}) | .done | not)};'
 # shellcheck disable=SC2016
 CLAUDE_JQ="$COMMON_JQ"'
   [ .[] | select(.isSidechain != true and .isMeta != true and (.type == "user" or .type == "assistant")) ]
@@ -197,61 +199,51 @@ if [ -z "$watch" ]; then
   exit 0
 fi
 
-# The reader. The transcript is the queue: each read caches its finished turns as JSON, and
-# keys index into that cache. The read marker is the start time of the newest reply read.
-state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/lastreply"
-find "$state_dir" -type f -mtime +30 -delete 2>/dev/null
+# The reader. The transcript is the queue: each read caches its newest finished turns as JSON,
+# and keys index into that cache. The read marker is the start time of the newest reply read;
+# it lives only as long as the pane, which always opens at the latest reply.
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+tty_mode=""
+# Echo stays off while the pane runs, so a key pressed mid-draw never lands on the screen.
+[ -t 0 ] && tty_mode="$(stty -g 2>/dev/null)" && stty -echo 2>/dev/null
+trap 'rm -rf "$tmp"; [ -z "$tty_mode" ] || stty "$tty_mode" 2>/dev/null' EXIT
 trap 'exit 0' INT TERM HUP
 trap 'dirty=1' WINCH
 cache="$tmp/turns.json"
 
-load_state() { # the read marker for $file; a first open starts at the latest finished reply
-  state="$state_dir/$(basename "$file" .jsonl)"
-  marker="" fresh=1 placed="" cur=-1 read_i=-1 n=0 times=()
-  if [ -f "$state" ]; then
-    marker="$(sed -n 's/^read_through=//p' "$state" | head -1)"
-    fresh=""
-  fi
-}
-
-save_state() { # written atomically, so a crash never leaves half a file
-  mkdir -p "$state_dir" && printf 'read_through=%s\n' "$marker" > "$state.$$" && mv -f "$state.$$" "$state"
+open_session() { # a newly opened session starts at its latest reply, with every earlier one read
+  marker="" fresh=1 cur=-1 read_i=-1 n=0 times=()
 }
 
 mark_read() { # <index> : everything up to that reply is read
   [ "$1" -gt "$read_i" ] || return 0
   read_i=$1
   marker="${times[$1]}"
-  save_state
 }
 
 load_queue() { # re-read the transcript; keeps the old cache if this read came back empty
-  local t i
-  parse "$file" queue > "$tmp/new" 2>/dev/null && [ -s "$tmp/new" ] || return 1
+  local t i shown_time=""
+  parse "$file" "queue($QUEUE_CAP)" > "$tmp/new" 2>/dev/null && [ -s "$tmp/new" ] || return 1
   mv -f "$tmp/new" "$cache"
   writing="$(jq -r '.writing' "$cache")"
+  [ "$cur" -ge 0 ] && shown_time="${times[cur]}"
   times=()
   while IFS= read -r t; do times+=("$t"); done < <(jq -r '.turns[] | .time // "-"' "$cache")
   n=${#times[@]}
   if [ -n "$fresh" ]; then
     fresh=""
-    [ "$n" -gt 0 ] && marker="${times[n - 1]}"
-    save_state
+    [ "$n" -gt 0 ] && marker="${times[n - 1]}" cur=$((n - 1))
   fi
   read_i=-1
-  if [ -n "$marker" ]; then
-    i=0
-    while [ "$i" -lt "$n" ]; do
-      t="${times[i]}"
-      [[ "$t" < "$marker" || "$t" == "$marker" ]] && read_i=$i
-      i=$((i + 1))
-    done
-  fi
-  # The first read opens at the oldest unread reply (the latest, on a first open);
-  # after that only a key moves the view.
-  [ -n "$placed" ] || placed=1 cur=$((read_i + 1))
+  [ -n "$shown_time" ] && cur=0 # unless found below, it dropped off the front: show the oldest
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    t="${times[i]}"
+    [ -n "$marker" ] && [[ "$t" < "$marker" || "$t" == "$marker" ]] && read_i=$i
+    # The view stays on the reply it showed, even when the cap drops older ones from the front.
+    [ -n "$shown_time" ] && [ "$t" = "$shown_time" ] && cur=$i
+    i=$((i + 1))
+  done
   [ "$cur" -lt "$n" ] || cur=$((n - 1))
   return 0
 }
@@ -269,9 +261,11 @@ draw() { # the card from its top, cut to the pane, then a status bar on the last
     jq -r --argjson i "$cur" "$COMMON_JQ"' .turns[$i] | card' "$cache" > "$tmp/card"
   else
     # Pipe the output so glow can never open its pager (the config turns it on), which
-    # would stall the reader. An explicit style keeps the colours.
+    # would stall the reader. An explicit style keeps the colours. TERM=dumb stops glow 3
+    # asking the terminal for its colours and cursor on every render: the answers arrive on
+    # stdin after glow has gone, where they were read as keys.
     jq -r --argjson i "$cur" "$COMMON_JQ"' .turns[$i] | card' "$cache" |
-      glow -s "$style" -w "$cols" - | cat > "$tmp/card"
+      TERM=dumb glow -s "$style" -w "$cols" - | cat > "$tmp/card"
   fi
   total=$(($(wc -l < "$tmp/card")))
   clear
@@ -296,6 +290,28 @@ else
   stat_fmt=(-f '%Fm %z')
 fi
 
+read_escape() { # the rest of an escape sequence after its ESC, up to 64 bytes: CSI or SS3
+  local c seq   # through its final byte, OSC through BEL or ESC \
+  IFS= read -rsn1 -t 1 c || return 0
+  seq="$c"
+  case "$c" in
+    "["|O)
+      while [ ${#seq} -lt 64 ] && IFS= read -rsn1 -t 1 c; do
+        seq="$seq$c"
+        case "$c" in [0-9\;:\<=\>?]) ;; *) break ;; esac
+      done ;;
+    "]")
+      while [ ${#seq} -lt 64 ] && IFS= read -rsn1 -t 1 c; do
+        seq="$seq$c"
+        case "$c" in
+          $'\a') break ;;
+          $'\e') IFS= read -rsn1 -t 1 c; break ;;
+        esac
+      done ;;
+  esac
+  printf '%s' "$seq"
+}
+
 # Poll the transcript every 2 s while waiting for a key. Once stdin has no more keys to give
 # (closed, or not a terminal), keep polling with sleep so new replies still count.
 opened="" last="" shown="" keys="" dirty=1 writing=false
@@ -304,16 +320,16 @@ while :; do
   file="$(transcript)"
   if [ "$file" != "$opened" ]; then
     opened="$file" last=""
-    load_state
+    open_session
   fi
   stamp="$file $(stat "${stat_fmt[@]}" "$file" 2>/dev/null)"
   if [ "$stamp" != "$last" ]; then
     last="$stamp"
-    load_queue && [ "$n $read_i $writing" != "$shown" ] && dirty=1
+    load_queue && [ "$n $read_i $writing $cur" != "$shown" ] && dirty=1
   fi
   if [ -n "$dirty" ]; then
     draw
-    dirty="" shown="$n $read_i $writing"
+    dirty="" shown="$n $read_i $writing $cur"
   fi
   if [ -z "$keys" ]; then
     sleep 2
@@ -332,14 +348,12 @@ while :; do
     G) action=latest ;;
     "") action=page ;;
     q) exit 0 ;;
-    $'\e') # arrow and End keys: ESC [ C, ESC O C, ESC [ F, ESC [ 4 ~ ...
-      seq=""
-      IFS= read -rsn2 -t 1 seq
-      case "$seq" in "[1"|"[4"|"[8") IFS= read -rsn1 -t 1 _ ;; esac
+    $'\e') # arrow and End keys (ESC [ C, ESC O C, ESC [ F, ESC [ 4 ~ ...); any other
+      seq="$(read_escape)" # sequence, such as a terminal's answer, is read whole and ignored
       case "$seq" in
         "[C"|OC) action=next ;;
         "[D"|OD) action=prev ;;
-        "[F"|OF|"[4"|"[8") action=latest ;;
+        "[F"|OF|"[4~"|"[8~") action=latest ;;
       esac ;;
   esac
   case "$action" in
