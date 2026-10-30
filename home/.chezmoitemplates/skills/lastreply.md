@@ -14,6 +14,6 @@ lastreply --open
 ```
 
 - On success it prints the new pane's id. Tell the user the pane is open at the latest reply, with earlier ones already read (p steps back to them); new replies wait behind an unread count rather than replacing the view. The pane keeps the newest 50 replies.
-- Keys in that pane: Space/n/→ next (marks read), p/← previous, u oldest unread, G/End latest (marks all read), Enter pages a long reply, q quits.
+- Keys in that pane: Space/n/→ next (marks read), p/← previous, u oldest unread, G/End latest (marks all read), q quits. A long reply scrolls in place: ↓/j/Enter and ↑/k a line, PgDn/PgUp a page, Ctrl-d/Ctrl-u half a page, g/Home/< its top, > its bottom.
 - If it says it needs a herdr pane, the session isn't running inside herdr. Tell the user to run `lastreply --watch {{ if eq .agent "codex" }}--codex {{ end }}--session <id>` in any terminal, giving them the value of `{{ .session_var }}`.
 - Don't open a second pane if one is already showing this session; ask first.
