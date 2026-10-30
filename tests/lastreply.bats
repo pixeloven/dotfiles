@@ -67,11 +67,11 @@ claude_session() { # <slug> <name> : copy the fixture into a project folder
   [ "$status" -eq 2 ]
 }
 
-reader_stubs() { # glow passes the card through, clear marks a new screen, less keeps what it paged
+reader_stubs() { # glow passes the card through, clear marks a new screen, less leaves a mark if run
   mkdir -p "$HOME/bin"
   printf '#!/bin/sh\ncat\n' > "$HOME/bin/glow"
   printf '#!/bin/sh\necho ---clear---\n' > "$HOME/bin/clear"
-  printf '#!/bin/sh\ncat "$2" > "$HOME/paged"\n' > "$HOME/bin/less"
+  printf '#!/bin/sh\necho ran > "$HOME/paged"\n' > "$HOME/bin/less"
   chmod +x "$HOME/bin/glow" "$HOME/bin/clear" "$HOME/bin/less"
 }
 
@@ -391,18 +391,104 @@ STUB
   [[ "$output" != *"being continued"* ]] || false
 }
 
-@test "reader shows a tall card from its top and Enter pages all of it" {
+tall_reply() { # <file> <time> <prompt> <lines> : a reply of that many numbered lines
+  turn "$1" "$2" "$3" "$(seq -f 'line %g' 1 "$4" | awk '{printf "%s\\n", $0}')"
+}
+
+@test "reader shows a tall card from its top with its position in the status bar" {
   mkdir -p "$HOME/.claude/projects/p"
   T="$HOME/.claude/projects/p/l.jsonl"
-  turn "$T" 2026-10-24T07:01:00.000Z "long one" "$(seq -f 'line %g' 1 100 | awk '{printf "%s\\n", $0}')"
+  tall_reply "$T" 2026-10-24T07:01:00.000Z "long one" 100
   start_reader --session l
+  stop_reader
   screen | grep -q '^> long one$'
   ! screen | grep -q '^line 100$' || false
-  [[ "$(bar)" == *"▼ "*" more lines, Enter"* ]] || false
+  [[ "$(bar)" == " 1/1  ✓ caught up · lines 1-39 of 107"* ]] || false
   [ "$(screen | wc -l)" -eq 40 ]
+}
+
+@test "reader scrolls a tall card in place, clamped to its first and last lines" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/l.jsonl"
+  tall_reply "$T" 2026-10-24T07:01:00.000Z "long one" 100
+  start_reader --session l
+  press j
+  [[ "$(bar)" == *"lines 2-40 of 107"* ]] || false
+  [ "$(screen | head -1)" = "" ]
+  press '\033[B'
+  press '\033OB'
   press '\n'
+  [[ "$(bar)" == *"lines 5-43 of 107"* ]] || false
+  press k
+  press '\033[A'
+  press '\033OA'
+  [[ "$(bar)" == *"lines 2-40 of 107"* ]] || false
+  press '\033[6~'
+  [[ "$(bar)" == *"lines 41-79 of 107"* ]] || false
+  press '\033[5~'
+  [[ "$(bar)" == *"lines 2-40 of 107"* ]] || false
+  press '\004'
+  [[ "$(bar)" == *"lines 21-59 of 107"* ]] || false
+  press '\025'
+  [[ "$(bar)" == *"lines 2-40 of 107"* ]] || false
+  press '>'
+  [[ "$(bar)" == *"lines 69-107 of 107"* ]] || false
+  screen | grep -q '^line 100$'
+  [ "$(screen | wc -l)" -eq 40 ]
+  press j
+  press '\033[6~'
+  [[ "$(bar)" == *"lines 69-107 of 107"* ]] || false
+  press g
+  [[ "$(bar)" == *"lines 1-39 of 107"* ]] || false
+  press k
+  press '\033[5~'
+  [[ "$(bar)" == *"lines 1-39 of 107"* ]] || false
+  for top in '\033[H' '\033OH' '\033[1~' '\033[7~' '<'; do
+    press '\033[6~'
+    [[ "$(bar)" == *"lines 40-78 of 107"* ]] || false
+    press "$top"
+    [[ "$(bar)" == *"lines 1-39 of 107"* ]] || false
+  done
+  screen | grep -q '^> long one$'
+  # Enter scrolls too; it no longer opens less, which had no way back shown on screen.
+  [ ! -e "$HOME/paged" ]
+  press q
+  wait "$pid"
+  exec 7>&-
+}
+
+@test "reader keeps a reply's scroll while it stays in view and opens another at its top" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/s.jsonl"
+  tall_reply "$T" 2026-10-24T07:01:00.000Z "first" 60
+  tall_reply "$T" 2026-10-24T07:02:00.000Z "second" 80
+  start_reader --session s
+  press '\033[6~'
+  [[ "$(bar)" == " 2/2  ✓ caught up · lines 40-78 of 87"* ]] || false
+  # A new reply only raises the unread count; the view and its scroll stay.
+  turn "$T" 2026-10-24T07:03:00.000Z "third" "Short reply."
+  sleep 3
+  [[ "$(bar)" == " 2/3  ● 1 unread · lines 40-78 of 87"* ]] || false
+  press p
+  [[ "$(bar)" == " 1/3  ● 1 unread · lines 1-39 of 67"* ]] || false
+  press '>'
+  [[ "$(bar)" == *"lines 29-67 of 67"* ]] || false
+  press n
+  [[ "$(bar)" == " 2/3  ● 1 unread · lines 1-39 of 87"* ]] || false
+  press n
   stop_reader
-  grep -q '^line 100$' "$HOME/paged"
+  screen | grep -q '^Short reply.$'
+  [[ "$(bar)" == " 3/3  ● 1 unread"* ]] || false
+  [[ "$(bar)" != *"lines"* ]] || false
+}
+
+@test "reader: the status bar names the scroll keys when the pane is wide enough" {
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/h.jsonl"
+  tall_reply "$T" 2026-10-24T07:01:00.000Z "long one" 100
+  start_reader --session h
+  stop_reader
+  [[ "$(bar)" == *"↑↓ "*"scroll"*"space"*"next"*"q"*"quit"* ]] || false
 }
 
 @test "reader: arrow keys and terminal answers leave no stray characters on screen" {
@@ -422,6 +508,21 @@ STUB
   ! grep -q 'rgb:' "$HOME/out" || false
   ! grep -q '25R' "$HOME/out" || false
   ! grep -q '\^\[' "$HOME/out" || false
+}
+
+@test "reader: scroll keys on a terminal leave no stray characters on screen" {
+  reader_stubs
+  mkdir -p "$HOME/.claude/projects/p"
+  T="$HOME/.claude/projects/p/t.jsonl"
+  tall_reply "$T" 2026-10-24T07:01:00.000Z "long one" 100
+  # PgDn, Home as ESC [ 1 ~, Ctrl-d (a raw control byte), ↓ and j: half a page and two lines down
+  keys='[[2,"\u001b[6~"],[0.5,"\u001b[1~"],[0.5,"\u0004"],[0.5,"\u001b[B"],[0.5,"j"],[1.5,"q"]]'
+  PATH="$HOME/bin:$PATH" TERM=xterm-256color python3 -I "$FIX/answering-terminal.py" "$HOME/out" "$keys" \
+    "$SCRIPT" --watch --session t
+  [[ "$(bar)" == *"lines 22-60 of 107"* ]] || false
+  ! grep -q '\^\[' "$HOME/out" || false
+  ! grep -q '\[6~\|\[1~\|\^D' "$HOME/out" || false
+  [ ! -e "$HOME/paged" ]
 }
 
 @test "reader: a terminal's answers read as keys neither move the view nor eat the next key" {

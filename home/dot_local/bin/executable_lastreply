@@ -6,8 +6,9 @@
 #   --watch       read the session's finished replies one at a time, opening at the latest
 #                 with every earlier one read; a new one only raises the unread count, the
 #                 view moves on a key: Space/n/→ next (marks read), p/← previous,
-#                 u oldest unread, G/End latest (marks all read), Enter page the card in
-#                 less, q quit. Only the newest 50 replies are kept.
+#                 u oldest unread, G/End latest (marks all read), q quit. A long reply
+#                 scrolls in place: ↓/j/Enter and ↑/k a line, PgDn/PgUp a page, Ctrl-d/Ctrl-u
+#                 half a page, g/Home/< its top, > its bottom. Only the newest 50 replies are kept.
 #   --raw         print the markdown without glow
 #   --session ID  follow that session ($CLAUDE_CODE_SESSION_ID or Codex's $CODEX_THREAD_ID)
 #   --open        split the current herdr pane and run --watch there for this session;
@@ -29,7 +30,7 @@ while [ $# -gt 0 ]; do
     --raw) raw=1 ;;
     --open) open=1 ;;
     --session) session="${2:-}"; shift ;;
-    -h|--help) sed -n '2,19s/^# \{0,1\}//p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20s/^# \{0,1\}//p' "$0"; exit 0 ;;
     *) echo "lastreply: unknown option $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -212,6 +213,7 @@ trap 'exit 0' INT TERM HUP
 trap 'dirty=1' WINCH
 cache="$tmp/turns.json"
 
+top=0 top_of="" page=39 # the card's first line on screen, the reply it belongs to, lines it shows
 seen=() seen_marker=() seen_view=() # per transcript this pane has shown: read marker, reply in view
 
 leave_session() { # <file> : remember where the reader was in it
@@ -269,13 +271,16 @@ load_queue() { # re-read the transcript; keeps the old cache if this read came b
   return 0
 }
 
-draw() { # the card from its top, cut to the pane, then a status bar on the last line
-  local rows=40 cols=100 body total pad unread line hint size
-  # stty reads the pane size from stdin; tput with stderr redirected falls back to 24x80.
-  if [ -t 0 ] && size="$(stty size 2>/dev/null)" && [ -n "$size" ]; then
-    rows="${size% *}" cols="${size#* }"
-  fi
-  body=$((rows - 1))
+shown_reply() { # the session and start time of the reply in view
+  printf '%s' "$opened "
+  [ "$cur" -lt 0 ] || printf '%s' "${times[cur]}"
+}
+
+render() { # <cols> : the reply in view as screen lines, in $tmp/card; skipped while it is unchanged
+  local key
+  key="$(shown_reply) $cur $n $1"
+  [ "$key" != "$rendered" ] || return 0
+  rendered="$key"
   if [ "$cur" -lt 0 ]; then
     if [ "$n" -gt 0 ]; then echo "Press Space for the next reply."; else echo "No finished reply yet."; fi > "$tmp/card"
   elif [ -n "$raw" ]; then
@@ -286,19 +291,37 @@ draw() { # the card from its top, cut to the pane, then a status bar on the last
     # asking the terminal for its colours and cursor on every render: the answers arrive on
     # stdin after glow has gone, where they were read as keys.
     jq -r --argjson i "$cur" "$COMMON_JQ"' .turns[$i] | card' "$cache" |
-      TERM=dumb glow -s "$style" -w "$cols" - | cat > "$tmp/card"
+      TERM=dumb glow -s "$style" -w "$1" - | cat > "$tmp/card"
   fi
+}
+
+draw() { # the card from its scroll position, cut to the pane, then a status bar on the last line
+  local rows=40 cols=100 total shown pad unread line hint size reply
+  # stty reads the pane size from stdin; tput with stderr redirected falls back to 24x80.
+  if [ -t 0 ] && size="$(stty size 2>/dev/null)" && [ -n "$size" ]; then
+    rows="${size% *}" cols="${size#* }"
+  fi
+  page=$((rows - 1))
+  render "$cols"
   total=$(($(wc -l < "$tmp/card")))
+  # Scrolling belongs to one reply: another reply opens at its top.
+  reply="$(shown_reply)"
+  [ "$top_of" = "$reply" ] || top=0 top_of="$reply"
+  [ "$top" -le $((total - page)) ] || top=$((total - page))
+  [ "$top" -ge 0 ] || top=0
+  shown=$((total - top))
+  [ "$shown" -le "$page" ] || shown=$page
   clear
-  head -n "$body" "$tmp/card"
-  pad=$total
-  while [ "$pad" -lt "$body" ]; do echo; pad=$((pad + 1)); done
+  tail -n +$((top + 1)) "$tmp/card" | head -n "$page"
+  pad=$shown
+  while [ "$pad" -lt "$page" ]; do echo; pad=$((pad + 1)); done
   unread=$((n - 1 - read_i))
   line=" $((cur + 1))/$n"
   if [ "$unread" -gt 0 ]; then line="$line  ● $unread unread"; else line="$line  ✓ caught up"; fi
-  [ "$total" -gt "$body" ] && line="$line · ▼ $((total - body)) more lines, Enter"
+  [ "$total" -gt "$page" ] && line="$line · lines $((top + 1))-$((top + shown)) of $total"
   [ "$writing" = true ] && line="$line · ✎ writing"
-  hint="   [space] next  [p] prev  [u] unread  [G] latest  [enter] page  [q] quit"
+  hint="   [↑↓ PgUp PgDn] scroll  [space] next  [p] prev  [u] unread  [G] latest  [q] quit"
+  [ $((${#line} + ${#hint})) -le "$cols" ] || hint="   ↑↓ scroll  space next  p prev  q quit"
   [ $((${#line} + ${#hint})) -le "$cols" ] && line="$line$hint"
   if [ -t 1 ]; then printf '\033[7m%s\033[0m' "$line"; else printf '%s\n' "$line"; fi
 }
@@ -335,7 +358,7 @@ read_escape() { # the rest of an escape sequence after its ESC, up to 64 bytes: 
 
 # Poll the transcript every 2 s while waiting for a key. Once stdin has no more keys to give
 # (closed, or not a terminal), keep polling with sleep so new replies still count.
-opened="" last="" shown="" keys="" dirty=1 writing=false fresh=""
+opened="" last="" shown="" keys="" dirty=1 writing=false fresh="" rendered=""
 { [ -t 0 ] || [ -p /dev/stdin ]; } && keys=1
 while :; do
   file="$(transcript)"
@@ -368,13 +391,23 @@ while :; do
     p) action=prev ;;
     u) action=unread ;;
     G) action=latest ;;
-    "") action=page ;;
+    j|"") action=down ;; # Enter reads as ""
+    k) action=up ;;
+    $'\004') action=half_down ;; # Ctrl-d
+    $'\025') action=half_up ;;   # Ctrl-u
+    g|"<") action=top ;;
+    ">") action=bottom ;;
     q) exit 0 ;;
-    $'\e') # arrow and End keys (ESC [ C, ESC O C, ESC [ F, ESC [ 4 ~ ...); any other
-      seq="$(read_escape)" # sequence, such as a terminal's answer, is read whole and ignored
+    $'\e') # arrows, PgUp/PgDn, Home/End (ESC [ C, ESC O C, ESC [ 5 ~, ESC [ H, ESC [ 1 ~ ...); any
+      seq="$(read_escape)" # other sequence, such as a terminal's answer, is read whole and ignored
       case "$seq" in
         "[C"|OC) action=next ;;
         "[D"|OD) action=prev ;;
+        "[B"|OB) action=down ;;
+        "[A"|OA) action=up ;;
+        "[6~") action=page_down ;;
+        "[5~") action=page_up ;;
+        "[H"|OH|"[1~"|"[7~") action=top ;;
         "[F"|OF|"[4~"|"[8~") action=latest ;;
       esac ;;
   esac
@@ -389,7 +422,15 @@ while :; do
         cur=$((n - 1))
         mark_read "$cur"
       fi ;;
-    page) [ "$cur" -ge 0 ] && less -R "$tmp/card" ;;
+    # draw clamps the scroll to the card.
+    down) top=$((top + 1)) ;;
+    up) top=$((top - 1)) ;;
+    page_down) top=$((top + page)) ;;
+    page_up) top=$((top - page)) ;;
+    half_down) top=$((top + page / 2)) ;;
+    half_up) top=$((top - page / 2)) ;;
+    top) top=0 ;;
+    bottom) top=1000000 ;;
   esac
   [ -n "$action" ] && dirty=1
 done
