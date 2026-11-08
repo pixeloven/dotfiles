@@ -320,3 +320,16 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   run "$R/bin/drift"
   [[ "$output" != *skill-* ]] || false
 }
+
+@test "edited template source suggests chezmoi edit, not re-add" {
+  mkdir -p "$R/home/dot_config/herdr"
+  echo 'name = "x"' > "$R/home/dot_config/herdr/config.toml.tmpl"
+  chezmoi --source "$R" --config "$TMP/chezmoi.toml" --persistent-state "$TMP/state.boltdb" apply --exclude scripts
+  echo 'name = "y"' > "$HOME/.config/herdr/config.toml"
+  run "$R/bin/drift"
+  [[ "$output" == *$'edited\t.config/herdr/config.toml\tchezmoi edit ~/.config/herdr/config.toml'* ]] || false
+  [[ "$output" == *$'edited\t.config/ghostty/config.ghostty'* ]] && false
+  echo 'font-size = 20' >> "$HOME/.config/ghostty/config.ghostty"
+  run "$R/bin/drift"
+  [[ "$output" == *$'edited\t.config/ghostty/config.ghostty\tchezmoi re-add ~/.config/ghostty/config.ghostty'* ]] || false
+}

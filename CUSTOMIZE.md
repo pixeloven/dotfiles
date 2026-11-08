@@ -49,7 +49,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Desktop notifications instead of in-app toasts: `[ui.toast] delivery = "terminal"`.
   - Sidebar rows per agent: `[ui.sidebar.agents.rows_by_agent] claude = [["state_icon", "workspace", "tab"], ["agent"]]`.
 - **Try it:** `herdr server reload-config`, then `herdr config check`.
-- **Keep it:** `/codify` or `chezmoi edit ~/.config/herdr/config.toml`
+- **Keep it:** `chezmoi edit ~/.config/herdr/config.toml` (it is a template, so `chezmoi re-add` skips it)
 - **Reference:** the commented defaults in herdr's built-in template (`herdr config check` shows anything it ignores), https://herdr.dev
 
 ## Claude Code
