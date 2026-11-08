@@ -317,3 +317,8 @@ For a machine whose shells should reach 1Password without the desktop app, as on
 **Turn it off:** delete `~/.config/harmony/op-sa-token` and open a new tab.
 
 **Done when:** a new tab starts with no warning, and the checks above print `600`, `token set` and `LITELLM_API_KEY set`.
+
+
+## Optional workstation application setup
+
+See [docs/workstation-apps.md](docs/workstation-apps.md) for the independent app selector and tested installer boundaries. This supplements the older manual agent-install instructions above: Homebrew-backed CLI selections can now be installed with `workstation-apps`, but login and personal state remain manual. Do not install a second copy over an existing vendor/npm setup without choosing which manager owns it.

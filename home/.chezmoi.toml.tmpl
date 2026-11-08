@@ -16,6 +16,8 @@
 {{- else -}}
 {{-   $toolsets = promptMultichoiceOnce . "toolsets" "Ops tool sets to install (lib/toolsets.txt; none by default)" $sets (get . "toolsets" | default list) -}}
 {{- end -}}
+{{- $apps := list "herdr-cli" "herdr-desktop" "claude-code" "codex" "claude-desktop" "chatgpt-desktop" "blender" "comfyui" -}}
+{{- $workstationApps := promptMultichoiceOnce . "workstationApps" "Optional workstation apps (preview and install with workstation-apps; none by default)" $apps (get . "workstationApps" | default list) -}}
 {{- $container := or (env "CONTAINER_ID") (stat "/run/.containerenv") (stat "/.dockerenv") | not | not -}}
 # Linux asks the terminal and where tools install; both OSes ask which ops tool sets to install
 # (a machine from before that question keeps its old opsTools answer: yes is every set, no is none).
@@ -26,6 +28,7 @@ sourceDir = "~/Development/dotfiles"
 terminal = {{ $terminal | quote }}
 installTarget = {{ $installTarget | quote }}
 toolsets = {{ $toolsets | toToml }}
+workstationApps = {{ $workstationApps | toToml }}
 container = {{ $container }}
 {{- range list "agentPlugins" "operatorPersona" "operatorHome" }}
 {{-   if hasKey $ . }}

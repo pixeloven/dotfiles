@@ -177,6 +177,12 @@ packages() {
   fi
   sets="$(jq -r 'if has("toolsets") then [.toolsets[]? | tostring] | join(",") elif .opsTools == true then "all" else "" end' <<<"$data" 2>/dev/null)"
   listed="$(HOMEBREW_DOTFILES_TOOLSETS=all brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
+  # Optional workstation apps are declared separately and never installed by the base Brewfile.
+  # Like ops toolsets, retained packages from a deselected app are not untracked extras.
+  if [ -f "$REPO/lib/workstation-apps.tsv" ]; then
+    listed="$listed
+$(awk -F '|' '$3 == "formula" || $3 == "cask" {print $4}' "$REPO/lib/workstation-apps.tsv")"
+  fi
   { brew leaves --installed-on-request 2>/dev/null; brew list --cask 2>/dev/null; } | sort -u |
     while IFS= read -r pkg; do
       [ -z "$pkg" ] && continue

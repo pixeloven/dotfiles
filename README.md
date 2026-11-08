@@ -53,6 +53,10 @@ sudo chsh -s /usr/bin/zsh "$USER"
 
 Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the global npm tools, your git name and email (dotfiles never sets them), the clipboard check, and, with a distrobox, moving the validation pipeline into the box. Each step says whether it applies to a Linux host, a distrobox, or both.
 
+## Optional workstation apps
+
+Choose Herdr CLI and desktop, Claude Code, Codex, Claude/ChatGPT desktop, Blender and ComfyUI independently with `workstation-apps`. Nothing new installs by default. `workstation-apps on <app>...` saves selections; `workstation-apps plan` previews platform-specific routes; `workstation-apps install` installs Homebrew-backed choices and reports manual items explicitly. See [workstation app setup](docs/workstation-apps.md) for the support matrix, Distrobox boundaries and validation steps.
+
 ## Day to day
 
 - Change something: see [CUSTOMIZE.md](CUSTOMIZE.md).

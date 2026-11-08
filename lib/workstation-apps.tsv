@@ -1,0 +1,18 @@
+# id|platform|method|package|source|note
+# Platforms: all, darwin, darwin-arm64 (takes precedence), linux.
+# manual means not automated here: read the note to distinguish a vendor installer from an unsupported/unverified combination.
+herdr-cli|all|formula|herdr|https://herdr.dev/tui/docs/install/|Herdr terminal app; existing chezmoi config remains in ~/.config/herdr
+herdr-desktop|darwin|manual|-|https://herdr.dev/download/|Desktop release currently requires Apple silicon on macOS
+herdr-desktop|darwin-arm64|cask|herdr-app|https://formulae.brew.sh/cask/herdr-app|Desktop app is distinct from Herdr TUI; first launch provisions herdr-core
+herdr-desktop|linux|manual|-|https://herdr.dev/download/|Official Linux installer; review and run it separately, then configure the desktop app
+claude-code|all|cask|claude-code|https://formulae.brew.sh/cask/claude-code|CLI; sign in locally after install, no credentials managed
+codex|all|cask|codex|https://formulae.brew.sh/cask/codex|CLI, not a desktop app; sign in locally after install
+claude-desktop|darwin|cask|claude|https://formulae.brew.sh/cask/claude|Desktop app; personal settings and login remain local
+claude-desktop|linux|manual|-|https://claude.com/download|No verified official Linux desktop package in this catalog; do not substitute a wrapper
+chatgpt-desktop|darwin|cask|chatgpt|https://formulae.brew.sh/cask/chatgpt|Desktop app; login and computer permissions stay manual
+chatgpt-desktop|linux|manual|-|https://chatgpt.com/download/|Core cask is macOS-only; see docs/workstation-apps.md for Linux packaging evaluation
+blender|darwin|cask|blender|https://formulae.brew.sh/cask/blender|No project files, addons or GPU preferences copied
+blender|linux|manual|-|https://docs.blender.org/manual/en/latest/getting_started/installing/linux.html|Use distro package or official archive; validate GPU driver and desktop integration separately
+comfyui|darwin|manual|-|https://docs.comfy.org/installation/desktop/overview|Desktop requires Apple silicon on macOS; do not substitute a CPU/source install
+comfyui|darwin-arm64|cask|comfy|https://formulae.brew.sh/cask/comfy|Comfy Desktop; choose local instance and model paths in first-run setup
+comfyui|linux|manual|-|https://docs.comfy.org/installation/desktop/linux|Official deb or AppImage; GPU/container integration and first-run setup remain explicit

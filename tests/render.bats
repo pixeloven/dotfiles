@@ -52,6 +52,7 @@ init_config() { # <os> [chezmoi flags] : render .chezmoi.toml.tmpl as `chezmoi i
 .local/bin/toolsets
 .local/bin/voice
 .local/bin/voice-cloud
+.local/bin/workstation-apps
 Library/Preferences/glow/glow.yml"
   [ "$(grep -v 'config file template has changed' <<<"$output")" = "$expected" ]
 }
@@ -188,4 +189,22 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
   [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "ptyxis"'* ]] || false
   [[ "$output" == *$'\ncontainer = '* ]] || false
+}
+
+
+@test "workstation apps default to none and preserve per-machine choices" {
+  run init_config darwin
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'workstationApps = []'* ]]
+  run re_init linux 'workstationApps = ["herdr-cli", "codex", "blender"]'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'workstationApps = ["herdr-cli", "codex", "blender"]'* ]]
+}
+
+@test "workstation init choices match the app catalog" {
+  local want
+  want="$(awk -F '|' '!/^#/ && NF && !seen[$1]++ {print $1}' "$REPO/lib/workstation-apps.tsv" | paste -sd / -)"
+  run init_config linux --promptMultichoice "Optional workstation apps (preview and install with workstation-apps; none by default)=$want"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'workstationApps = ["herdr-cli", "herdr-desktop", "claude-code", "codex", "claude-desktop", "chatgpt-desktop", "blender", "comfyui"]'* ]]
 }

@@ -333,3 +333,11 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   run "$R/bin/drift"
   [[ "$output" == *$'edited\t.config/ghostty/config.ghostty\tchezmoi re-add ~/.config/ghostty/config.ghostty'* ]] || false
 }
+
+@test "workstation app packages are codified even when left installed after deselection" {
+  cp "$REAL_REPO/lib/workstation-apps.tsv" "$R/lib/"
+  export STUB_EXTRA_FORMULA=herdr
+  run "$R/bin/drift"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *$'pkg-extra\therdr'* ]]
+}
