@@ -297,7 +297,7 @@ vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data 
   echo "workstation-apps: removed. Next: workstation-apps install $*"
 }
 warm() { # fill the Homebrew caches here, not in the subshells that call copies
-  command -v brew >/dev/null 2>&1 || return 0
+  brew_here && command -v brew >/dev/null 2>&1 || return 0
   under_brew / || true
   brew_installed - - || true
 }
