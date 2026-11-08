@@ -36,19 +36,26 @@ echo "local $*" >> "$GS_LOG"
 echo "No such schema" >&2
 exit 1
 STUB
+  # The host's podman knows the box by name; BOX_ID unset means there is no box.
+  cat > "$HOST_BIN/podman" <<'STUB'
+#!/bin/sh
+[ "$1 $2" = "inspect ubuntu-dev" ] && [ -n "${BOX_ID:-}" ] || exit 125
+echo "$BOX_ID"
+STUB
   printf '#!/bin/sh\n' > "$TMP/bin/brew"
-  chmod +x "$HOST_BIN/gsettings" "$TMP/bin/"*
+  chmod +x "$HOST_BIN/gsettings" "$HOST_BIN/podman" "$TMP/bin/"*
+  unset BOX_ID
   export PATH="$TMP/bin:$PATH"
 }
 
 teardown() { rm -rf "$TMP"; }
 
-config() { # <terminal> <container> : a chezmoi config for Linux with these answers
-  printf 'sourceDir = "%s"\n\n[data]\nterminal = "%s"\ncontainer = %s\n' "$REAL_REPO" "$1" "$2" > "$TMP/chezmoi.toml"
+config() { # <terminal> <container> [installTarget] : a chezmoi config for Linux with these answers
+  printf 'sourceDir = "%s"\n\n[data]\nterminal = "%s"\ncontainer = %s\ninstallTarget = "%s"\n' "$REAL_REPO" "$1" "$2" "${3:-host}" > "$TMP/chezmoi.toml"
 }
 
-ptyxis_script() { # <terminal> <container> : run the script as rendered for Linux with these answers
-  config "$1" "$2"
+ptyxis_script() { # <terminal> <container> [installTarget] : run the script as rendered for Linux with these answers
+  config "$1" "$2" "${3:-host}"
   chezmoi --source "$REAL_REPO" --config "$TMP/chezmoi.toml" execute-template \
     --override-data '{"chezmoi":{"os":"linux"}}' < "$REAL_REPO/$SCRIPT" > "$TMP/ptyxis.sh"
   sh "$TMP/ptyxis.sh"
@@ -119,4 +126,77 @@ drift() { # <terminal> : drift's findings on Linux with these answers, in a dist
   run drift ghostty
   [[ "$output" != *org.gnome.Ptyxis* ]] || false
   [ ! -s "$GS_LOG" ]
+}
+
+ID1=2af5000000000000000000000000000000000000000000000000000000000001
+ID2=2af5000000000000000000000000000000000000000000000000000000000002
+
+@test "on Bazzite the default profile opens the box's zsh by box ID, and a Host profile is added once" {
+  export BOX_ID=$ID1
+  run ptyxis_script ptyxis true distrobox
+  [ "$status" -eq 0 ]
+  [ "$(setting "$PROFILE" default-container)" = "'$ID1'" ]
+  [ "$(setting "$PROFILE" label)" = "'ubuntu-dev'" ]
+  [ "$(setting "$PROFILE" use-custom-command)" = true ]
+  [ "$(setting "$PROFILE" custom-command)" = "'/usr/bin/zsh -l'" ]
+  [ "$(setting "$PROFILE" palette)" = "'catppuccin-mocha'" ]
+  uuids="$(setting org.gnome.Ptyxis profile-uuids)"
+  host="$(sed "s/.*'$UUID', '\([0-9a-f]*\)'.*/\1/" <<<"$uuids")"
+  [ "${#host}" -eq 32 ]
+  [ "$(setting "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$host/" label)" = "'Host'" ]
+  [ "$(setting "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$host/" default-container)" = "'session'" ]
+  ! grep -q -e font -e palette.*Host "$GS_LOG" || false
+  # A rerun reuses the Host profile.
+  run ptyxis_script ptyxis true distrobox
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG")" -eq 1 ]
+}
+
+@test "on Bazzite a Host profile made by hand is reused, not duplicated" {
+  export BOX_ID=$ID1
+  printf 'org.gnome.Ptyxis\tprofile-uuids\t%s\n' "['$UUID', 'feedfacefeedfacefeedfacefeedface']" >> "$GS_DB"
+  printf 'org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/feedfacefeedfacefeedfacefeedface/\tlabel\t%s\n' "'Host'" >> "$GS_DB"
+  run ptyxis_script ptyxis true distrobox
+  [ "$status" -eq 0 ]
+  ! grep -q 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG" || false
+  [ "$(setting "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/feedfacefeedfacefeedfacefeedface/" default-container)" = "'session'" ]
+}
+
+@test "on Bazzite without the box, the default profile stays on the host" {
+  run ptyxis_script ptyxis true distrobox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"box ubuntu-dev not found"* ]] || false
+  [ -z "$(setting "$PROFILE" default-container)" ]
+  [ "$(grep -c ' set ' "$GS_LOG")" -eq 1 ]
+}
+
+@test "a rebuilt box (new ID) changes the rendered script, so chezmoi runs it again" {
+  export BOX_ID=$ID1
+  ptyxis_script ptyxis true distrobox
+  cp "$TMP/ptyxis.sh" "$TMP/first.sh"
+  export BOX_ID=$ID2
+  ptyxis_script ptyxis true distrobox
+  ! cmp -s "$TMP/first.sh" "$TMP/ptyxis.sh" || false
+  [ "$(setting "$PROFILE" default-container)" = "'$ID2'" ]
+}
+
+@test "a plain Linux host with Ptyxis never gets a box profile" {
+  export BOX_ID=$ID1
+  PATH="$HOST_BIN:$PATH" run ptyxis_script ptyxis false host
+  [ "$status" -eq 0 ]
+  [ "$(grep -c ' set ' "$GS_LOG")" -eq 1 ]
+  ! grep -q -e default-container -e profile-uuids "$GS_LOG" || false
+}
+
+@test "drift reports a changed box profile key as owned-key, but not the per-rebuild container ID" {
+  export BOX_ID=$ID1
+  ptyxis_script ptyxis true distrobox
+  printf 'sourceDir = "%s"\n\n[data]\nterminal = "ptyxis"\ncontainer = true\ninstallTarget = "distrobox"\n' "$REAL_REPO" > "$TMP/chezmoi.toml"
+  drift_bazzite() { DRIFT_CHEZMOI_ARGS="--source $REAL_REPO --config $TMP/chezmoi.toml --persistent-state $TMP/state.boltdb --override-data {\"chezmoi\":{\"os\":\"linux\"}}" "$REAL_REPO/bin/drift"; }
+  run drift_bazzite
+  [[ "$output" != *org.gnome.Ptyxis* ]] || false
+  printf '%s\tcustom-command\t%s\n' "$PROFILE" "'/bin/bash'" >> "$GS_DB"
+  run drift_bazzite
+  [[ "$output" == *$'owned-key\torg.gnome.Ptyxis.Profile custom-command'* ]] || false
+  [[ "$output" != *default-container* ]] || false
 }

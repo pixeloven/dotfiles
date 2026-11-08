@@ -38,6 +38,8 @@ distrobox assemble create --file ~/Development/dotfiles/lib/distrobox/ubuntu-dev
 distrobox enter ubuntu-dev
 ```
 
+On Bazzite the box is the Linux workstation and the host is the display. Tools and desktop apps install in the box, which gets the host's NVIDIA GPU (`nvidia=true`). With Ptyxis, its default profile opens the box's zsh, and a separate Host profile opens the host.
+
 Then, on the Linux host or inside the box (on a host, use its own package manager for the first line):
 
 ```sh
@@ -55,7 +57,7 @@ Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the gl
 
 ## Workstation apps
 
-`chezmoi init` also asks which workstation apps to install, none by default: Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop. Every `chezmoi apply` installs the selected ones, so a rebuild is `chezmoi init --apply` plus that saved selection. `workstation-apps` lists, previews, enables and disables them. Homebrew installs the CLIs and the macOS apps. On Linux, a desktop app installs on the host as a Flatpak only when it has an approved Flathub package; none qualifies today, so Linux desktop apps are manual, with a download link. See [workstation apps](docs/workstation-apps.md) and RUNBOOK.md section 12.
+`chezmoi init` also asks which workstation apps to install, none by default: Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop. Every `chezmoi apply` installs the selected ones, so a rebuild is `chezmoi init --apply` plus that saved selection. `workstation-apps` lists, previews, enables and disables them. Homebrew installs the CLIs and the macOS apps. On Linux, the Claude and ChatGPT desktop apps install from their vendors' apt packages: on Bazzite inside the `ubuntu-dev` box, where `distrobox-export` puts them in the host's menu. Herdr desktop uses Herdr's official installer. Blender and ComfyUI wait until the box has the GPU. See [workstation apps](docs/workstation-apps.md) and RUNBOOK.md section 12.
 
 ## Day to day
 

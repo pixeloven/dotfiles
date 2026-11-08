@@ -340,6 +340,8 @@ workstation_repo() { # the app catalog and its manager, as in the real repo, wit
   local d keep="" t dirs
   cp "$REAL_REPO/lib/workstation-apps.tsv" "$REAL_REPO/lib/workstation-apps.sh" "$R/lib/"
   for t in chezmoi jq git; do ln -sf "$(command -v "$t")" "$TMP/stub/$t"; done
+  # No apt packages are installed here, whatever this machine has.
+  printf '#!/bin/sh\nexit 1\n' > "$TMP/stub/dpkg-query"; chmod +x "$TMP/stub/dpkg-query"
   IFS=: read -ra dirs <<<"$PATH"
   for d in "${dirs[@]}"; do
     [ "$d" = "$TMP/stub" ] || { [ ! -e "$d/herdr" ] && [ ! -e "$d/claude" ] && [ ! -e "$d/codex" ]; } || continue

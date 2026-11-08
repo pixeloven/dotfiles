@@ -5,17 +5,18 @@
 #        workstation-apps.sh apply [app...]      the chezmoi apply step for the saved selection
 #        workstation-apps.sh drift [app...]      kind<TAB>target<TAB>action lines for bin/drift
 #        workstation-apps.sh vendor [app...] | vendor remove <app>...
-# Routes: formula and cask install with Homebrew (inside the box when installTarget = distrobox);
-# flatpak installs from Flathub on the Linux host (from a box through distrobox-host-exec); manual
-# is never automated. An app named on the command line must be in the catalog; with --saved (and
+# Routes: formula and cask install with Homebrew (inside the box when installTarget = distrobox).
+# apt installs a vendor's Ubuntu package (inside the box on Bazzite, where distrobox-export then
+# puts it in the host menu; natively on an apt-based host). installer runs a vendor's official
+# Linux installer into ~/.local when the app is missing. manual is never automated. An app named on the command line must be in the catalog; with --saved (and
 # for apply and drift) an ID the catalog no longer has is a retired app: warned about and skipped.
 # Copies of a Homebrew-routed app that Homebrew doesn't manage are left alone and reported; only
 # `vendor remove`, after you confirm, uninstalls them. Never execute this output as shell code.
-# Test seams: DOTFILES_APPS_OS, _ARCH, _TABLE, _CONTAINER_MARKER, _APPLICATIONS, _INSTALL_TARGET.
+# Test seams: DOTFILES_APPS_OS, _ARCH, _TABLE, _CONTAINER_MARKER, _APPLICATIONS, _INSTALL_TARGET,
+# _ROOT (prefix for /etc and /usr/share/keyrings in the apt recipes).
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 table="${DOTFILES_APPS_TABLE:-$repo/lib/workstation-apps.tsv}"
-flathub=https://dl.flathub.org/repo/flathub.flatpakrepo
 cmd="${1:-preview}"
 [ "$#" -eq 0 ] || shift
 os="${DOTFILES_APPS_OS:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
@@ -27,6 +28,8 @@ case "$target" in host|distrobox) ;; *) echo "workstation-apps: invalid installT
 in_box=false
 [ ! -e "${DOTFILES_APPS_CONTAINER_MARKER:-/run/.containerenv}" ] || in_box=true
 apps_dir="${DOTFILES_APPS_APPLICATIONS:-/Applications}"
+root="${DOTFILES_APPS_ROOT:-}"
+box="${CONTAINER_ID:-ubuntu-dev}"
 
 ids() { awk -F '|' '!/^#/ && NF && !seen[$1]++ {print $1}' "$table"; }
 known() { ids | grep -qxF -- "$1"; }
@@ -71,13 +74,86 @@ under_brew() { # <path> : Homebrew's own copy; an npm global under Homebrew's No
   return 0
 }
 
-# Flatpak: always the host's. From a container it runs through distrobox-host-exec.
-fp() { if $in_box; then distrobox-host-exec flatpak "$@"; else flatpak "$@"; fi; }
-flatpak_here() {
-  [ "$os" = linux ] || return 1
-  if $in_box; then command -v distrobox-host-exec >/dev/null 2>&1; else command -v flatpak >/dev/null 2>&1; fi
+# apt: the box's (installTarget = distrobox), or an apt-based host's. Never the Bazzite host.
+apt_skip() { # prints why apt apps can't install here; nothing when they can
+  [ "$os" = linux ] || { echo "apt apps are Linux only"; return 0; }
+  if [ "$target" = distrobox ] && ! $in_box; then echo "installTarget is distrobox and this is the host; apt apps install in the box"; return 0; fi
+  command -v apt-get >/dev/null 2>&1 && command -v dpkg-query >/dev/null 2>&1 || echo "needs apt (Debian or Ubuntu)"
 }
-flatpak_installed() { fp info "$1" >/dev/null 2>&1; }
+apt_installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'; }
+as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
+apt_recipe() { # <package> : the vendor's documented Ubuntu install, plus libsecret for the keyring
+  local key list tmp fpr
+  case "$1" in
+    claude-desktop) # Anthropic's signed apt repository; the key is checked against its fingerprint
+      key="$root/usr/share/keyrings/claude-desktop-archive-keyring.asc"
+      list="$root/etc/apt/sources.list.d/claude-desktop.list"
+      if [ ! -s "$list" ]; then
+        as_root apt-get install -y curl gnupg || return 1
+        as_root curl -fsSLo "$key" https://downloads.claude.ai/claude-desktop/key.asc || return 1
+        fpr="$(gpg --show-keys --with-colons "$key" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+        if [ "$fpr" != 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE ]; then
+          echo "workstation-apps: unexpected key fingerprint for claude-desktop (${fpr:-none}); not adding the repository" >&2
+          as_root rm -f "$key"; return 1
+        fi
+        echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main" |
+          as_root tee "$list" >/dev/null || return 1
+        as_root apt-get update || return 1
+      fi
+      as_root apt-get install -y claude-desktop libsecret-1-0 ;;
+    chatgpt) # OpenAI's Ubuntu package; its postinst adds OpenAI's apt repository for updates
+      tmp="$(mktemp -d)"
+      curl -fsSL -o "$tmp/chatgpt_amd64.deb" https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb &&
+        as_root apt-get install -y "$tmp/chatgpt_amd64.deb" libsecret-1-0
+      local rc=$?; rm -rf "$tmp"; return "$rc" ;;
+    *) as_root apt-get install -y "$1" ;;
+  esac
+}
+on_host() { # <cmd>... : run on the host; from the box through distrobox-host-exec, from $HOME
+  if $in_box; then (cd "$HOME" && distrobox-host-exec "$@"); else "$@"; fi
+}
+export_app() { # in the box only: launcher in the host menu, a link handler the app's own rewrite matches
+  local cmdname desktop scheme apps exported alias default
+  $in_box || return 0
+  IFS=: read -r _ cmdname desktop scheme <<<"$vendor"
+  [ -n "$desktop" ] || return 0
+  apps="$HOME/.local/share/applications" exported="$apps/$box-$desktop.desktop" alias="$apps/$desktop.desktop"
+  # ChatGPT, for one, registers for http and https; keep the host's browser as their default.
+  local s web=""
+  for s in http https; do web="$web $s=$(on_host xdg-mime query default "x-scheme-handler/$s" 2>/dev/null || true)"; done
+  if [ ! -f "$exported" ]; then
+    distrobox-export --app "$cmdname" >/dev/null || { echo "workstation-apps: distrobox-export --app $cmdname failed" >&2; return 1; }
+    [ -f "$exported" ] || { echo "workstation-apps: distrobox-export wrote no $exported" >&2; return 1; }
+  fi
+  # Each app rewrites its link default to <desktop>.desktop on every start. A hidden alias with that
+  # name opens the box's copy, unless another install already owns the name (then it wins for now).
+  default="$box-$desktop.desktop"
+  if [ ! -e "$alias" ] || grep -q '^X-Dotfiles-Alias-Of=' "$alias"; then
+    { sed '/^NoDisplay=/d; /^X-Dotfiles-Alias-Of=/d' "$exported" | awk -v of="$box-$desktop.desktop" '
+        { print } /^\[Desktop Entry\]/ && !done { print "NoDisplay=true"; print "X-Dotfiles-Alias-Of=" of; done = 1 }'; } > "$alias.tmp" &&
+      mv "$alias.tmp" "$alias"
+    default="$desktop.desktop"
+  else
+    echo "workstation-apps: $alias belongs to another install; $scheme:// links may open it until it is removed" >&2
+  fi
+  [ -z "$scheme" ] || on_host xdg-mime default "$default" "x-scheme-handler/$scheme" || true
+  # distrobox-export's own refresh can fail silently; refresh the host's link-handler index here.
+  on_host update-desktop-database "$apps" || true
+  for s in $web; do
+    [ -n "${s#*=}" ] || continue
+    [ "$(on_host xdg-mime query default "x-scheme-handler/${s%%=*}" 2>/dev/null || true)" = "${s#*=}" ] ||
+      on_host xdg-mime default "${s#*=}" "x-scheme-handler/${s%%=*}" || true
+  done
+}
+
+# installer: a vendor's official Linux installer into ~/.local (shared with the box), when missing.
+installer_installed() { [ -x "$HOME/.local/bin/$1" ] || command -v "$1" >/dev/null 2>&1; }
+run_installer() { # <url>
+  local tmp rc
+  tmp="$(mktemp -d)"
+  curl -fsSL -o "$tmp/install.sh" "$1" && sh "$tmp/install.sh"
+  rc=$?; rm -rf "$tmp"; return "$rc"
+}
 
 resolve() { # <path> : follow symlinks with plain readlink (no -f on older macOS)
   local p="$1" l d n=0
@@ -180,15 +256,26 @@ install_one() { # <id> : 0 installed or present, 3 left for you, 1 failed
       [ "$cmd" != apply ] || echo "workstation-apps: $id: brew install --$method $package"
       brew install "--$method" "$package" || { say "$id" "failed: brew install --$method $package" >&2; return 1; }
       [ "$cmd" = apply ] || say "$id" "installed (Homebrew)" ;;
-    flatpak)
-      flatpak_here || { say "$id" "skipped: Flatpak apps install on the Linux host and flatpak isn't reachable here"; return 3; }
-      if flatpak_installed "$package"; then say "$id" "installed (Flatpak)"; return 0; fi
-      [ "$cmd" != preview ] || { say "$id" "not installed (host Flatpak from Flathub)"; return 0; }
-      [ "$cmd" != apply ] || echo "workstation-apps: $id: flatpak install --user flathub $package$(tag)"
-      { fp remote-add --user --if-not-exists flathub "$flathub" &&
-        fp install --user --noninteractive flathub "$package"; } ||
-        { say "$id" "failed: flatpak install --user flathub $package" >&2; return 1; }
-      [ "$cmd" = apply ] || say "$id" "installed (Flatpak)" ;;
+    apt)
+      local why; why="$(apt_skip)"
+      [ -z "$why" ] || { say "$id" "skipped: $why"; return 3; }
+      if apt_installed "$package"; then
+        [ "$cmd" = preview ] || export_app || { say "$id" "failed: exporting $package to the host menu" >&2; return 1; }
+        say "$id" "installed (apt)"; return 0
+      fi
+      [ "$cmd" != preview ] || { say "$id" "not installed (apt$($in_box && echo ' in the box, exported to the host menu'))"; return 0; }
+      [ "$cmd" != apply ] || echo "workstation-apps: $id: apt install $package"
+      apt_recipe "$package" || { say "$id" "failed: apt install $package" >&2; return 1; }
+      export_app || { say "$id" "failed: exporting $package to the host menu" >&2; return 1; }
+      [ "$cmd" = apply ] || say "$id" "installed (apt)" ;;
+    installer)
+      [ "$os" = linux ] || { say "$id" "skipped: the installer route is Linux only"; return 3; }
+      if installer_installed "$package"; then say "$id" "installed (vendor installer; it updates itself)"; return 0; fi
+      [ "$cmd" != preview ] || { say "$id" "not installed (runs ${vendor#installer:})"; return 0; }
+      echo "workstation-apps: $id: running the vendor's installer ${vendor#installer:}"
+      run_installer "${vendor#installer:}" || { say "$id" "failed: ${vendor#installer:}" >&2; return 1; }
+      installer_installed "$package" || { say "$id" "failed: the installer left no $package" >&2; return 1; }
+      [ "$cmd" = apply ] || say "$id" "installed (vendor installer; it updates itself)" ;;
     "") say "$id" "no route for $os/$arch"; return 3 ;;
     *) say "$id" "unknown method in the catalog: $method" >&2; return 1 ;;
   esac
@@ -201,7 +288,7 @@ run_installs() {
     rc=0; install_one "$id" || rc=$?
     case "$rc" in 0) ;; 3) pending=1 ;; *) failed=1 ;; esac
   done
-  [ "$pending" -eq 0 ] || [ "$cmd" = apply ] || echo "workstation-apps: some apps are left for you (above); see docs/workstation-apps.md. No vendor scripts were run."
+  [ "$pending" -eq 0 ] || [ "$cmd" = apply ] || echo "workstation-apps: some apps are left for you (above); see docs/workstation-apps.md."
   [ "$failed" -eq 0 ] || return 1
   [ "$pending" -eq 0 ] || [ "$cmd" != install ] || return 3
   return 0
@@ -220,9 +307,12 @@ drift() { # selected IDs : what differs from the selection, for apps routed on t
       formula|cask)
         if ! brew_here || ! command -v brew >/dev/null 2>&1; then continue; fi
         ! brew_installed "$method" "$package" || have=true ;;
-      flatpak)
-        flatpak_here || continue
-        ! flatpak_installed "$package" || have=true ;;
+      apt)
+        [ -z "$(apt_skip)" ] || continue
+        ! apt_installed "$package" || have=true ;;
+      installer)
+        [ "$os" = linux ] || continue
+        ! installer_installed "$package" || have=true ;;
       *) continue ;;
     esac
     if $on && ! $have; then printf 'app-missing\t%s\t%s\n' "$id" "workstation-apps install $id"; fi

@@ -148,13 +148,13 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 ## Workstation apps (off by default)
 
-- **Where it lives:** `lib/workstation-apps.tsv` is the catalog: one row per app and platform with its route (Homebrew `formula`/`cask`, Flathub `flatpak`, or `manual`), how to spot a copy Homebrew doesn't manage, and a `community` label for packages their vendor doesn't publish. The selected apps are the chezmoi data key `workstationApps` in your untracked `~/.config/chezmoi/chezmoi.toml`. `chezmoi init` asks for it once as checkboxes. `lib/workstation-apps.sh` does the work, `home/.chezmoiscripts/run_before_01-workstation-apps.sh.tmpl` runs it on every apply, and `home/dot_local/bin/executable_workstation-apps` is the command.
+- **Where it lives:** `lib/workstation-apps.tsv` is the catalog: one row per app and platform with its route: Homebrew `formula`/`cask`; `apt`, a vendor's Ubuntu package, in the box on Bazzite and exported to the host menu; `installer`, a vendor's official Linux installer; or `manual`, how to spot a copy Homebrew doesn't manage, and a `community` label for packages their vendor doesn't publish. The selected apps are the chezmoi data key `workstationApps` in your untracked `~/.config/chezmoi/chezmoi.toml`. `chezmoi init` asks for it once as checkboxes. `lib/workstation-apps.sh` does the work, `home/.chezmoiscripts/run_before_01-workstation-apps.sh.tmpl` runs it on every apply, and `home/dot_local/bin/executable_workstation-apps` is the command.
 - **Common changes:**
   - See the apps and how each installs here: `workstation-apps`; `workstation-apps preview` shows the selection's state.
   - Select apps: `workstation-apps enable herdr-cli codex` (or `on`). It changes only the `workstationApps` line, then runs `chezmoi apply --include scripts`, which installs them.
   - Deselect: `workstation-apps disable codex` (or `off`). The app stays installed.
   - Hand a vendor or npm copy to Homebrew: `workstation-apps vendor`, then `workstation-apps vendor remove <app>` (it asks first).
-  - Add an app or a platform route: add a row to `lib/workstation-apps.tsv`; the `chezmoi init` choices come from it. A Flathub package its vendor doesn't publish gets `community` in the label column, and only after it is approved.
+  - Add an app or a platform route: add a row to `lib/workstation-apps.tsv`; the `chezmoi init` choices come from it. A package its vendor doesn't publish gets `community` in the label column, and only after it is approved. A new apt app also needs its vendor's install recipe in `apt_recipe` (`lib/workstation-apps.sh`), and its desktop ID and link scheme in the vendor column.
 - **Try it:** `workstation-apps`.
 - **Keep it:** the selection lives only in your local chezmoi config. `/codify` reports `app-missing`, `app-unselected`, `app-retired`, `app-vendor` and `app-unselected-vendor`, never `pkg-extra`, for catalog apps.
 

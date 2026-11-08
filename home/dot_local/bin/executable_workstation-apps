@@ -57,7 +57,8 @@ list() {
     ! $unread || state="?"
     case "$method" in
       formula|cask) route="Homebrew $method $package" ;;
-      flatpak) route="Flatpak $package (Flathub, host)" ;;
+      apt) route="apt $package (in the box on Bazzite, exported to the host menu)" ;;
+      installer) route="vendor installer ($package)" ;;
       manual) route="manual" ;;
       *) route="not available here" ;;
     esac

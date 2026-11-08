@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # workstation-apps: the catalog, preview, install, the chezmoi apply step, drift lines and vendor
-# copies. Stub brew, flatpak, distrobox-host-exec, npm and chezmoi log their calls into a throwaway
-# HOME; PATH leaves out the real ~/.local/bin and Homebrew, so nothing real is found or installed.
+# copies. Stub brew, apt-get, dpkg-query, sudo, curl, gpg, distrobox-export, distrobox-host-exec,
+# xdg-mime, update-desktop-database, npm and chezmoi log their calls into a throwaway HOME; PATH
+# leaves out the real ~/.local/bin and Homebrew, so nothing real is found, installed or exported.
 REPO="$BATS_TEST_DIRNAME/.."
 MANAGER="$REPO/lib/workstation-apps.sh"
 CLI="$REPO/home/dot_local/bin/executable_workstation-apps"
@@ -12,12 +13,14 @@ setup() {
   export DOTFILES_APPS_OS=linux DOTFILES_APPS_ARCH=x86_64
   export DOTFILES_APPS_CONTAINER_MARKER="$HOME/not-a-container"
   export DOTFILES_APPS_APPLICATIONS="$HOME/Applications"
-  unset XDG_CONFIG_HOME DOTFILES_APPS_INSTALL_TARGET DOTFILES_APPS_TABLE FAIL_INSTALL
-  mkdir -p "$HOME/bin" "$HOME/brew/bin" "$HOME/.config/chezmoi"
+  export DOTFILES_APPS_ROOT="$HOME/root"
+  unset XDG_CONFIG_HOME DOTFILES_APPS_INSTALL_TARGET DOTFILES_APPS_TABLE FAIL_INSTALL BAD_KEY FAIL_CURL CONTAINER_ID
+  mkdir -p "$HOME/bin" "$HOME/brew/bin" "$HOME/.config/chezmoi" "$HOME/.local/share/applications" \
+    "$HOME/root/etc/apt/sources.list.d" "$HOME/root/usr/share/keyrings"
   CONFIG="$HOME/.config/chezmoi/chezmoi.toml"
   printf '[data]\ninstallTarget = "host"\n# keep this\nagentPlugins = false\n' > "$CONFIG"
   : > "$HOME/installed"
-  : > "$HOME/flatpaks"
+  : > "$HOME/debs"
   # brew: installed packages are "<formula|cask> <name>" lines; a cask's binary lands in its prefix.
   cat > "$HOME/bin/brew" <<'STUB'
 #!/bin/sh
@@ -32,15 +35,64 @@ case "$1" in
   *) exit 2 ;;
 esac
 STUB
-  cat > "$HOME/bin/flatpak" <<'STUB'
+  # apt: installed packages are lines in $HOME/debs; a local .deb installs as its name before "_".
+  cat > "$HOME/bin/apt-get" <<'STUB'
 #!/bin/sh
-printf 'flatpak %s\n' "$*" >> "$HOME/calls"
-case "$1" in
-  info) grep -qxF -- "$2" "$HOME/flatpaks" ;;
-  remote-add) ;;
-  install) for a in "$@"; do last="$a"; done; echo "$last" >> "$HOME/flatpaks" ;;
-  *) exit 2 ;;
+printf 'apt-get %s\n' "$*" >> "$HOME/calls"
+[ "$1" = install ] || exit 0
+shift
+for a in "$@"; do
+  case "$a" in -*) ;; *.deb) b="${a##*/}"; echo "${b%%_*}" >> "$HOME/debs" ;; *) echo "$a" >> "$HOME/debs" ;; esac
+done
+STUB
+  cat > "$HOME/bin/dpkg-query" <<'STUB'
+#!/bin/sh
+for a in "$@"; do pkg="$a"; done
+grep -qxF -- "$pkg" "$HOME/debs" || exit 1
+printf 'install ok installed'
+STUB
+  printf '#!/bin/sh\nprintf "sudo %%s\\n" "$*" >> "$HOME/calls"\nexec "$@"\n' > "$HOME/bin/sudo"
+  # curl: the Herdr installer creates its app; any other download is a placeholder file.
+  cat > "$HOME/bin/curl" <<'STUB'
+#!/bin/sh
+printf 'curl %s\n' "$*" >> "$HOME/calls"
+[ -z "${FAIL_CURL:-}" ] || exit 22
+out="" prev=""
+for a in "$@"; do
+  case "$prev" in -o|-fsSLo) out="$a" ;; esac
+  prev="$a"; url="$a"
+done
+case "$url" in
+  */install.sh) printf 'mkdir -p "$HOME/.local/bin"\nprintf "#!/bin/sh\\n" > "$HOME/.local/bin/herdr-app"\nchmod +x "$HOME/.local/bin/herdr-app"\n' > "$out" ;;
+  *) echo placeholder > "$out" ;;
 esac
+STUB
+  cat > "$HOME/bin/gpg" <<'STUB'
+#!/bin/sh
+if [ -n "${BAD_KEY:-}" ]; then echo 'fpr:::::::::0000000000000000000000000000000000000000:'; else echo 'fpr:::::::::31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE:'; fi
+STUB
+  # distrobox-export --app <command>: the launcher it writes, named <box>-<desktop id>.desktop.
+  cat > "$HOME/bin/distrobox-export" <<'STUB'
+#!/bin/sh
+printf 'distrobox-export %s\n' "$*" >> "$HOME/calls"
+case "$2" in chatgpt) id=chatgpt ;; claude-desktop) id=com.anthropic.Claude ;; painter) id=org.example.Painter ;; *) exit 1 ;; esac
+printf '[Desktop Entry]\nName=%s\nExec=/usr/bin/distrobox-enter -n ubuntu-dev -- %s %%U\n' "$2" "$2" > "$HOME/.local/share/applications/ubuntu-dev-$id.desktop"
+STUB
+  # xdg-mime: defaults live in $HOME/mime/<scheme>. Refreshing the index lets an exported ChatGPT
+  # take over https when the host pinned no browser, as GNOME can.
+  mkdir -p "$HOME/mime"
+  cat > "$HOME/bin/xdg-mime" <<'STUB'
+#!/bin/sh
+case "$1" in query) ;; *) printf 'xdg-mime %s\n' "$*" >> "$HOME/calls" ;; esac
+case "$1 $2" in
+  "query default") cat "$HOME/mime/${3#x-scheme-handler/}" 2>/dev/null || true ;;
+  "default "*) echo "$2" > "$HOME/mime/${3#x-scheme-handler/}" ;;
+esac
+STUB
+  cat > "$HOME/bin/update-desktop-database" <<'STUB'
+#!/bin/sh
+printf 'update-desktop-database %s\n' "$*" >> "$HOME/calls"
+[ ! -f "$1/ubuntu-dev-chatgpt.desktop" ] || { echo ubuntu-dev-chatgpt.desktop > "$HOME/mime/https"; echo ubuntu-dev-chatgpt.desktop > "$HOME/mime/http"; }
 STUB
   printf '#!/bin/sh\nprintf "host-exec %%s\\n" "$*" >> "$HOME/calls"\nexec "$@"\n' > "$HOME/bin/distrobox-host-exec"
   printf '#!/bin/sh\nprintf "npm %%s\\n" "$*" >> "$HOME/calls"\n' > "$HOME/bin/npm"
@@ -51,15 +103,16 @@ STUB
 }
 teardown() { rm -rf "$HOME"; }
 
-installs() { { cat "$HOME/calls" 2>/dev/null || true; } | grep -c -e '^brew install' -e 'flatpak install' || true; }
-fixture() { # a catalog with one Flatpak app and one community-labelled Flatpak app
+installs() { { cat "$HOME/calls" 2>/dev/null || true; } | grep -c -e '^brew install' -e '^apt-get install' -e '^curl ' || true; }
+in_box() { touch "$DOTFILES_APPS_CONTAINER_MARKER"; export DOTFILES_APPS_INSTALL_TARGET=distrobox; }
+fixture() { # a catalog with one apt app and one community-labelled apt app
   export DOTFILES_APPS_TABLE="$HOME/catalog.tsv"
   cat > "$DOTFILES_APPS_TABLE" <<'TSV'
 # id|platform|method|package|vendor|label|source|note
 codex|all|cask|codex|bin:codex|-|https://example.invalid/codex|CLI
 painter|darwin|cask|painter|app:Painter.app|-|https://example.invalid/painter|Desktop
-painter|linux|flatpak|org.example.Painter|-|-|https://example.invalid/painter|Desktop
-sculptor|linux-x86_64|flatpak|org.example.Sculptor|-|community|https://example.invalid/sculptor|Desktop
+painter|linux|apt|painter|desktop:painter:org.example.Painter:painter|-|https://example.invalid/painter|Desktop
+sculptor|linux-x86_64|apt|sculptor|-|community|https://example.invalid/sculptor|Desktop
 TSV
 }
 
@@ -85,7 +138,6 @@ TSV
   [ "$status" -eq 0 ]
   [[ "$output" == *'cask codex'* ]] || false
   [[ "$output" == *'formula herdr'* ]] || false
-  [[ "$output" == *'Gear Lever'* ]] || false
   [[ "$output" == *'some apps are left for you'* ]] || false
   [ "$(installs)" -eq 0 ]
 }
@@ -102,8 +154,9 @@ TSV
 }
 
 @test "manual entries return incomplete without vendor installs" {
-  run "$MANAGER" install blender comfyui claude-desktop chatgpt-desktop herdr-desktop
+  run "$MANAGER" install blender comfyui
   [ "$status" -eq 3 ]
+  [[ "$output" == *'Deferred until the box has the GPU'* ]] || false
   [[ "$output" == *'manual: not automated here'* ]] || false
   [ "$(installs)" -eq 0 ]
 }
@@ -158,52 +211,131 @@ TSV
   grep -qx 'brew install --formula herdr' "$HOME/calls"
 }
 
-@test "Bazzite host: Homebrew apps are refused, host Flatpak apps install" {
-  fixture
+@test "Bazzite host: Homebrew and apt apps wait for the box; the Herdr installer still runs" {
   export DOTFILES_APPS_INSTALL_TARGET=distrobox
-  run "$MANAGER" install codex painter
+  run "$MANAGER" install codex claude-desktop herdr-desktop
   [ "$status" -eq 3 ]
-  [[ "$output" == *'codex'*'Homebrew apps install in the box'* ]] || false
-  ! grep -q '^brew install' "$HOME/calls" || false
-  grep -qx 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$HOME/calls"
-  grep -qx 'flatpak install --user --noninteractive flathub org.example.Painter' "$HOME/calls"
-  ! grep -q '^host-exec' "$HOME/calls" || false
+  [[ "$output" == *'Homebrew apps install in the box'* ]] || false
+  [[ "$output" == *'apt apps install in the box'* ]] || false
+  ! grep -q -e '^brew install' -e '^apt-get' -e '^distrobox-export' "$HOME/calls" || false
+  grep -q '^curl -fsSL -o .*/install\.sh https://releases\.herdr\.dev/app/install\.sh$' "$HOME/calls"
+  [ -x "$HOME/.local/bin/herdr-app" ]
 }
 
-@test "inside the box: Homebrew installs there and Flatpak apps go to the host" {
-  fixture
-  export DOTFILES_APPS_INSTALL_TARGET=distrobox
-  touch "$DOTFILES_APPS_CONTAINER_MARKER"
-  run "$MANAGER" install codex painter
+@test "in the box: Claude desktop installs from Anthropic's pinned repo, then exports with a link handler" {
+  in_box
+  run "$MANAGER" install claude-desktop
   [ "$status" -eq 0 ]
-  grep -qx 'brew install --cask codex' "$HOME/calls"
-  grep -qx 'host-exec flatpak install --user --noninteractive flathub org.example.Painter' "$HOME/calls"
-  run "$MANAGER" install painter
+  grep -qx 'sudo apt-get install -y curl gnupg' "$HOME/calls"
+  grep -qx "sudo curl -fsSLo $HOME/root/usr/share/keyrings/claude-desktop-archive-keyring.asc https://downloads.claude.ai/claude-desktop/key.asc" "$HOME/calls"
+  grep -qx 'deb \[arch=amd64,arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc\] https://downloads.claude.ai/claude-desktop/apt/stable stable main' "$HOME/root/etc/apt/sources.list.d/claude-desktop.list"
+  grep -qx 'sudo apt-get update' "$HOME/calls"
+  grep -qx 'sudo apt-get install -y claude-desktop libsecret-1-0' "$HOME/calls"
+  grep -qx 'distrobox-export --app claude-desktop' "$HOME/calls"
+  A="$HOME/.local/share/applications"
+  [ -f "$A/ubuntu-dev-com.anthropic.Claude.desktop" ]
+  # The app rewrites its default to com.anthropic.Claude.desktop on every start; that name opens the box.
+  grep -qx 'NoDisplay=true' "$A/com.anthropic.Claude.desktop"
+  grep -qx 'X-Dotfiles-Alias-Of=ubuntu-dev-com.anthropic.Claude.desktop' "$A/com.anthropic.Claude.desktop"
+  grep -qx 'Exec=/usr/bin/distrobox-enter -n ubuntu-dev -- claude-desktop %U' "$A/com.anthropic.Claude.desktop"
+  grep -qx 'host-exec xdg-mime default com.anthropic.Claude.desktop x-scheme-handler/claude' "$HOME/calls"
+  grep -qx "host-exec update-desktop-database $A" "$HOME/calls"
+  ! grep -q -- '--delete' "$HOME/calls" || false
+  run "$MANAGER" install claude-desktop
   [ "$status" -eq 0 ]
-  [[ "$output" == *'installed (Flatpak)'* ]] || false
-  [ "$(grep -c '^flatpak install' "$HOME/calls")" -eq 1 ]
+  [[ "$output" == *'installed (apt)'* ]] || false
+  [ "$(grep -c '^sudo apt-get install -y claude-desktop' "$HOME/calls")" -eq 1 ]
+  [ "$(grep -c '^distrobox-export' "$HOME/calls")" -eq 1 ]
 }
 
-@test "plain Linux host: the same split without a box, and macOS has no Flatpak route" {
-  fixture
-  run "$MANAGER" install codex painter
-  [ "$status" -eq 0 ]
-  grep -qx 'brew install --cask codex' "$HOME/calls"
-  grep -qx 'flatpak install --user --noninteractive flathub org.example.Painter' "$HOME/calls"
-  export DOTFILES_APPS_OS=darwin DOTFILES_APPS_ARCH=arm64
-  run "$MANAGER" install painter
-  [ "$status" -eq 0 ]
-  grep -qx 'brew install --cask painter' "$HOME/calls"
+@test "a repository key with the wrong fingerprint stops the Claude desktop install" {
+  in_box
+  export BAD_KEY=1
+  run "$MANAGER" install claude-desktop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'unexpected key fingerprint'* ]] || false
+  [ ! -e "$HOME/root/usr/share/keyrings/claude-desktop-archive-keyring.asc" ]
+  [ ! -e "$HOME/root/etc/apt/sources.list.d/claude-desktop.list" ]
+  ! grep -q 'apt-get install -y claude-desktop' "$HOME/calls" || false
 }
 
-@test "a Flatpak app is skipped, not failed, where flatpak is unreachable" {
-  fixture
-  # A PATH with only the basics, so neither the stub nor a system flatpak is found.
+@test "in the box: ChatGPT installs from OpenAI's package, and a host launcher of the same name is never touched" {
+  in_box
+  A="$HOME/.local/share/applications"
+  printf '[Desktop Entry]\nName=host ChatGPT\n' > "$A/chatgpt.desktop"
+  cp "$A/chatgpt.desktop" "$HOME/host-launcher"
+  run "$MANAGER" install chatgpt-desktop
+  [ "$status" -eq 0 ]
+  grep -q '^curl -fsSL -o .*/chatgpt_amd64\.deb https://persistent\.oaistatic\.com/codex-app-prod/linux/deb/latest/chatgpt_amd64\.deb$' "$HOME/calls"
+  grep -q '^sudo apt-get install -y .*/chatgpt_amd64.deb libsecret-1-0$' "$HOME/calls"
+  [ -f "$A/ubuntu-dev-chatgpt.desktop" ]
+  cmp "$HOME/host-launcher" "$A/chatgpt.desktop"
+  [[ "$output" == *'chatgpt.desktop belongs to another install'* ]] || false
+  grep -qx 'host-exec xdg-mime default ubuntu-dev-chatgpt.desktop x-scheme-handler/codex' "$HOME/calls"
+  ! grep -q -- '--delete' "$HOME/calls" || false
+  export DOTFILES_APPS_ARCH=arm64
+  run "$MANAGER" preview chatgpt-desktop
+  [[ "$output" == *'manual'*'Only the x86_64 package'* ]] || false
+}
+
+@test "exporting ChatGPT keeps the host's default browser for http and https" {
+  in_box
+  echo firefox.desktop > "$HOME/mime/https"; echo firefox.desktop > "$HOME/mime/http"
+  run "$MANAGER" install chatgpt-desktop
+  [ "$status" -eq 0 ]
+  [ "$(cat "$HOME/mime/https")" = firefox.desktop ]
+  [ "$(cat "$HOME/mime/http")" = firefox.desktop ]
+  grep -qx 'host-exec xdg-mime default firefox.desktop x-scheme-handler/https' "$HOME/calls"
+  [ "$(cat "$HOME/mime/codex")" = chatgpt.desktop ]
+  grep -qx 'NoDisplay=true' "$HOME/.local/share/applications/chatgpt.desktop"
+}
+
+@test "plain Ubuntu host: apt apps install natively, with no export or host crossing" {
+  run "$MANAGER" install claude-desktop
+  [ "$status" -eq 0 ]
+  grep -qx 'sudo apt-get install -y claude-desktop libsecret-1-0' "$HOME/calls"
+  ! grep -q -e '^distrobox-export' -e '^host-exec' -e '^xdg-mime' "$HOME/calls" || false
+  [ ! -e "$HOME/.local/share/applications/com.anthropic.Claude.desktop" ]
+}
+
+@test "a Linux host without apt skips apt apps instead of failing" {
   mkdir -p "$HOME/sys"
   for t in awk sed grep tr uname dirname readlink cat; do ln -s "$(command -v "$t")" "$HOME/sys/$t"; done
-  run env PATH="$HOME/sys" "$BASH" "$MANAGER" install painter
-  [ "$status" -eq 3 ]
-  [[ "$output" == *"flatpak isn't reachable here"* ]] || false
+  run env PATH="$HOME/sys" "$BASH" "$MANAGER" apply claude-desktop
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'claude-desktop: skipped: needs apt (Debian or Ubuntu)'* ]] || false
+}
+
+@test "Herdr desktop runs Herdr's installer only when the app is missing" {
+  run "$MANAGER" install herdr-desktop
+  [ "$status" -eq 0 ]
+  [ -x "$HOME/.local/bin/herdr-app" ]
+  run "$MANAGER" install herdr-desktop
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'installed (vendor installer; it updates itself)'* ]] || false
+  [ "$(grep -c '^curl ' "$HOME/calls")" -eq 1 ]
+  rm "$HOME/.local/bin/herdr-app"
+  export FAIL_CURL=1
+  run "$MANAGER" install herdr-desktop
+  [ "$status" -eq 1 ]
+  export DOTFILES_APPS_OS=darwin DOTFILES_APPS_ARCH=arm64
+  unset FAIL_CURL
+  run "$MANAGER" install herdr-desktop
+  grep -qx 'brew install --cask herdr-app' "$HOME/calls"
+}
+
+@test "drift checks apt apps in the box and leaves them alone on the Bazzite host" {
+  echo claude-desktop >> "$HOME/debs"
+  export DOTFILES_APPS_INSTALL_TARGET=distrobox
+  run "$MANAGER" drift
+  [ "$status" -eq 0 ]
+  [[ "$output" != *claude-desktop* ]] || false
+  touch "$DOTFILES_APPS_CONTAINER_MARKER"
+  run "$MANAGER" drift
+  [[ "$output" == *$'app-unselected\tclaude-desktop\tworkstation-apps enable claude-desktop (or /codify)'* ]] || false
+  run "$MANAGER" drift claude-desktop chatgpt-desktop
+  [[ "$output" == *$'app-missing\tchatgpt-desktop\tworkstation-apps install chatgpt-desktop'* ]] || false
+  [[ "$output" != *$'\tclaude-desktop\t'* ]] || false
 }
 
 @test "without Homebrew, apply skips Homebrew apps instead of failing" {
@@ -217,9 +349,9 @@ TSV
 @test "community packages are labelled wherever they are listed" {
   fixture
   run "$MANAGER" preview sculptor
-  [[ "$output" == *'flatpak org.example.Sculptor [community]'* ]] || false
+  [[ "$output" == *'apt sculptor [community]'* ]] || false
   run "$CLI" list
-  [[ "$output" == *'sculptor         off  Flatpak org.example.Sculptor (Flathub, host) [community]'* ]] || false
+  [[ "$output" == *'sculptor         off  apt sculptor (in the box on Bazzite, exported to the host menu) [community]'* ]] || false
   export DOTFILES_APPS_ARCH=arm64
   run "$MANAGER" preview sculptor
   [ "$status" -eq 0 ]
@@ -367,15 +499,6 @@ TSV
   [[ "$output" == *$'app-unselected\tcodex\t'* ]] || false
   [[ "$output" != *$'app-unselected-vendor\tcodex'* ]] || false
   [[ "$output" != *app-vendor* ]] || false
-}
-
-@test "drift checks host Flatpaks and leaves Homebrew alone on a Bazzite host" {
-  fixture
-  echo org.example.Painter >> "$HOME/flatpaks"
-  export DOTFILES_APPS_INSTALL_TARGET=distrobox
-  run "$MANAGER" drift codex
-  [ "$status" -eq 0 ]
-  [ "$output" = $'app-unselected\tpainter\tworkstation-apps enable painter (or /codify)' ]
 }
 
 @test "enable and disable (and on/off) change only the selection; enable then applies" {

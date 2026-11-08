@@ -1,0 +1,5 @@
+# herdr-core settings, managed by chezmoi on Bazzite only (installTarget = "distrobox"; see
+# .chezmoiignore). Herdr desktop's core runs on the host, so every terminal it opens without a
+# command enters the ubuntu-dev box, where `distrobox enter` starts the box's login zsh.
+# Commands Herdr launches with an argv (its agent menu, hc run, templates) still run on the host.
+shell = ["distrobox", "enter", "ubuntu-dev"]

@@ -1,0 +1,8 @@
+{{ if and (eq .chezmoi.os "linux") (eq (toString (get . "installTarget")) "distrobox") -}}
+#!/bin/sh
+# Bazzite (installTarget = distrobox): inside an nvidia=true box, add the NVIDIA EGL and Vulkan
+# manifests distrobox doesn't map (lib/distrobox/nvidia-manifests.sh). Runs on every apply, so a
+# rebuilt box gets them again; it writes only when one is missing, and skips outside a box.
+set -eu
+exec "{{ .chezmoi.workingTree }}/lib/distrobox/nvidia-manifests.sh"
+{{ end -}}

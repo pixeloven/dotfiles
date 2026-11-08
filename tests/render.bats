@@ -76,6 +76,18 @@ Library/Preferences/glow/glow.yml"
   [[ "$output" == *$palette* ]] || false
 }
 
+@test "only Bazzite (Linux with installTarget distrobox) gets herdr-core's shell into the box" {
+  run render darwin
+  [[ "$output" != *.config/herdr-core* ]] || false
+  run render linux
+  [[ "$output" != *.config/herdr-core* ]] || false
+  printf 'sourceDir = "%s"\n\n[data]\nterminal = "ptyxis"\ninstallTarget = "distrobox"\ncontainer = true\n' "$REPO" > "$TMP/chezmoi.toml"
+  run render linux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *.config/herdr-core/config.toml* ]] || false
+  grep -qx 'shell = \["distrobox", "enter", "ubuntu-dev"\]' "$TMP/linux/.config/herdr-core/config.toml"
+}
+
 @test "the Ptyxis settings script renders nothing without Ptyxis" {
   script() { # <os> <terminal> <container>
     chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \

@@ -1,8 +1,17 @@
 {{ if and (eq .chezmoi.os "linux") (eq (get . "terminal") "ptyxis") -}}
+{{- $box := "ubuntu-dev" -}}
+{{- $bazzite := eq (toString (get . "installTarget")) "distrobox" -}}
+{{- $id := "" -}}
+{{- if $bazzite -}}
+{{-   $podman := "podman" }}{{ if get . "container" }}{{ $podman = "distrobox-host-exec podman" }}{{ end -}}
+{{-   $id = output "sh" "-c" (printf "%s inspect %s --format '{{.Id}}' 2>/dev/null || true" $podman $box) | trim -}}
+{{-   if not (regexMatch "^[0-9a-f]{64}$" $id) }}{{ $id = "" }}{{ end -}}
+{{- end -}}
 #!/bin/sh
-# Set the one Ptyxis setting we own: the default profile's palette (the catppuccin-mocha.palette
-# chezmoi puts in ~/.local/share/org.gnome.Ptyxis/palettes). Every other Ptyxis setting, the font
-# included, is left alone. bin/drift reads the `own` lines below.
+# The Ptyxis settings we own. Everywhere: the default profile's palette (the catppuccin-mocha.palette
+# chezmoi puts in ~/.local/share/org.gnome.Ptyxis/palettes). On Bazzite (installTarget = distrobox)
+# also: the default profile opens the box's zsh login shell, and a profile labelled Host opens the
+# host. Every other Ptyxis setting, the font included, is left alone. bin/drift reads the `own` lines.
 # Ptyxis and its GSettings schema exist only on the host, so in a distrobox gsettings runs there.
 set -eu
 {{ if get . "container" -}}
@@ -24,4 +33,38 @@ if [ -z "$uuid" ]; then
 fi
 PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$uuid/"
 own "$PROFILE" palette "'catppuccin-mocha'"
+{{- if $bazzite }}
+{{-   if $id }}
+
+# Box {{ $box }}, podman ID {{ $id }}, looked up when this rendered. Ptyxis needs the ID, not the
+# name; a rebuild changes it, which changes this script, so the next apply runs it again.
+gs set "$PROFILE" default-container "'{{ $id }}'"
+own "$PROFILE" label "'{{ $box }}'"
+# Ptyxis would run the host user's bash in the box; this is the box's zsh login shell.
+own "$PROFILE" use-custom-command true
+own "$PROFILE" custom-command "'/usr/bin/zsh -l'"
+
+# The Host profile, found by its label so a rerun (or one made by hand) reuses it.
+host=""
+for u in $(gs get org.gnome.Ptyxis profile-uuids | sed 's/^@as //' | tr -d "[]',"); do
+  if [ "$(gs get "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$u/" label)" = "'Host'" ]; then host="$u"; fi
+done
+if [ -z "$host" ]; then
+  host="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  uuids="$(gs get org.gnome.Ptyxis profile-uuids | sed 's/^@as //')"
+  case "$uuids" in
+    "[]"|"") uuids="['$uuid', '$host']" ;;
+    *"'$uuid'"*) uuids="${uuids%]}, '$host']" ;;
+    *) uuids="${uuids%]}, '$uuid', '$host']" ;;
+  esac
+  gs set org.gnome.Ptyxis profile-uuids "$uuids"
+fi
+HOST_PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$host/"
+gs set "$HOST_PROFILE" label "'Host'"
+gs set "$HOST_PROFILE" default-container "'session'"
+{{-   else }}
+
+echo "ptyxis: box {{ $box }} not found; the default profile still opens the host. Once the box exists, run chezmoi apply again" >&2
+{{-   end }}
+{{- end }}
 {{ end -}}

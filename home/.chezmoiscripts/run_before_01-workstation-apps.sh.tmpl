@@ -8,7 +8,8 @@
 # Installs the workstation apps chosen in chezmoi init (workstationApps; workstation-apps enable
 # changes them) on every apply, after the Brewfile and before the agent plugins need Claude Code
 # and Codex. Apps already installed are left alone. Homebrew apps install where the Brewfile does
-# (in the box with installTarget = distrobox); Flatpak apps install on the Linux host. Manual apps,
+# (in the box with installTarget = distrobox); apt apps install in the box and are exported to the host
+# menu; installer apps run the vendor's installer into ~/.local when missing. Manual apps,
 # copies Homebrew doesn't manage and IDs the catalog no longer has are reported and skipped, so
 # they never fail the apply; a failed install does.
 set -eu
