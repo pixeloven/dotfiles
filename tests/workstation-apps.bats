@@ -46,7 +46,8 @@ STUB
   printf '#!/bin/sh\nprintf "npm %%s\\n" "$*" >> "$HOME/calls"\n' > "$HOME/bin/npm"
   printf '#!/bin/sh\nprintf "chezmoi %%s\\n" "$*" >> "$HOME/calls"\n' > "$HOME/bin/chezmoi"
   chmod +x "$HOME/bin/"*
-  export PATH="$HOME/bin:$HOME/brew/bin:$(dirname "$BASH"):/usr/bin:/bin"
+  mkdir -p "$HOME/shell"; ln -s "$BASH" "$HOME/shell/bash"
+  export PATH="$HOME/bin:$HOME/brew/bin:$HOME/shell:/usr/bin:/bin"
 }
 teardown() { rm -rf "$HOME"; }
 
@@ -257,7 +258,7 @@ TSV
   [[ "$output" == *$'app-vendor\tclaude-code '"$HOME/brew/bin/claude"* ]] || false
   run "$MANAGER" vendor remove claude-code <<<"y"
   [ "$status" -eq 0 ]
-  grep -qx 'npm uninstall -g @anthropic-ai/claude-code' "$HOME/calls"
+  grep -qxF "npm uninstall -g --prefix $(cd -P "$HOME/brew" && pwd) @anthropic-ai/claude-code" "$HOME/calls"
 }
 
 @test "vendor remove asks first and removes nothing unless you confirm" {
@@ -291,7 +292,8 @@ TSV
   [[ "$output" == *'global npm package @openai/codex'* ]] || false
   run "$MANAGER" vendor remove codex <<<"y"
   [ "$status" -eq 0 ]
-  grep -qx 'npm uninstall -g @openai/codex' "$HOME/calls"
+  [[ "$output" == *"npm uninstall -g --prefix $(cd -P "$HOME/npm" && pwd) @openai/codex"* ]] || false
+  grep -qxF "npm uninstall -g --prefix $(cd -P "$HOME/npm" && pwd) @openai/codex" "$HOME/calls"
 }
 
 @test "a macOS app bundle Homebrew doesn't manage goes to the Trash only when confirmed" {

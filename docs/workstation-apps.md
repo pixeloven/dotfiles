@@ -59,7 +59,7 @@ workstation-apps install claude-code
 `vendor remove` never runs without your confirmation, and it never runs during `chezmoi apply`. It removes:
 
 - a vendor-installed command, and Claude Code's `~/.local/share/claude` versions directory;
-- an npm global, with `npm uninstall -g`;
+- an npm global, with `npm uninstall -g --prefix <prefix>`, from the prefix it was installed into;
 - a macOS app bundle, moved to `~/.Trash`.
 
 Settings, sign-ins and data (`~/.claude`, `~/.codex`, `~/.config/herdr`) stay. Update Homebrew-owned apps with `brew upgrade`. Apps whose casks update themselves (`auto_updates`) keep doing so.

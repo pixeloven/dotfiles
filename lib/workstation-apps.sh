@@ -248,7 +248,7 @@ vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data 
         app) plan+=("trash|$p") ;;
         bin)
           real="$(resolve "$p")"; pkg="$(npm_package "$real")"
-          if [ -n "$pkg" ]; then plan+=("npm|$pkg"); else
+          if [ -n "$pkg" ]; then plan+=("npm|${real%%/lib/node_modules/*}|$pkg"); else
             plan+=("rm|$p")
             # shellcheck disable=SC2088 # the catalog writes ~ literally; expanded here only
             case "$x" in "~/"?*) [ ! -e "$HOME/${x#\~/}" ] || plan+=("rmdir|$HOME/${x#\~/}") ;; esac
@@ -261,7 +261,7 @@ vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data 
   for i in "${plan[@]}"; do
     case "${i%%|*}" in
       trash) echo "  move ${i#*|} to ~/.Trash" ;;
-      npm) echo "  npm uninstall -g ${i#*|}" ;;
+      npm) x="${i#*|}"; echo "  npm uninstall -g --prefix ${x%%|*} ${x#*|}" ;;
       rm) echo "  rm ${i#*|}" ;;
       rmdir) echo "  rm -r ${i#*|} (the installer's versions)" ;;
     esac
@@ -272,7 +272,7 @@ vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data 
   for i in "${plan[@]}"; do
     case "${i%%|*}" in
       trash) mkdir -p "$HOME/.Trash"; mv "${i#*|}" "$HOME/.Trash/" ;;
-      npm) npm uninstall -g "${i#*|}" ;;
+      npm) x="${i#*|}"; npm uninstall -g --prefix "${x%%|*}" "${x#*|}" ;;
       rm) rm -f "${i#*|}" ;;
       rmdir) rm -rf "${i#*|}" ;;
     esac
