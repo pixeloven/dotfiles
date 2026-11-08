@@ -1,7 +1,22 @@
 #!/usr/bin/env bats
 
 REPO="$BATS_TEST_DIRNAME/.."
-SRC="$REPO/home/dot_config/herdr/config.toml"
+SRC="$REPO/home/dot_config/herdr/config.toml.tmpl"
+
+setup() { TMP="$(mktemp -d)"; }
+teardown() { rm -rf "$TMP"; }
+
+render() { # <os> : the herdr config as chezmoi writes it on <os>
+  chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \
+    --override-data "{\"chezmoi\":{\"os\":\"$1\"}}" < "$SRC"
+}
+
+toml_get() { # <section> <key> : read a value from the TOML on stdin ("" when absent)
+  python3 -I -c '
+import sys, tomllib
+print(tomllib.load(sys.stdin.buffer).get(sys.argv[1], {}).get(sys.argv[2], ""))
+' "$1" "$2"
+}
 
 # bats test_tags=machine
 @test "herdr config checks clean" {
@@ -17,23 +32,18 @@ SRC="$REPO/home/dot_config/herdr/config.toml"
 }
 
 @test "herdr agents panel grouped by workspace" {
-  run python3 -I -c '
-import sys, tomllib
-with open(sys.argv[1], "rb") as f:
-    print(tomllib.load(f)["ui"]["agent_panel_sort"])
-' "$SRC"
-  [ "$status" -eq 0 ]
-  [ "$output" = "spaces" ]
+  for os in darwin linux; do
+    render "$os" > "$TMP/$os.toml"
+    [ "$(toml_get ui agent_panel_sort < "$TMP/$os.toml")" = "spaces" ] || { echo "not spaces on $os"; false; }
+  done
 }
 
-# Panes start from $SHELL (dotfiles.zsh corrects a bare one). A fixed shell here would also reach
-# the host's herdr, since a distrobox shares this file with the host and the host keeps bash.
-@test "herdr config leaves the pane shell to \$SHELL" {
-  run python3 -I -c '
-import sys, tomllib
-with open(sys.argv[1], "rb") as f:
-    print(tomllib.load(f).get("terminal", {}).get("default_shell", ""))
-' "$SRC"
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
+# distrobox sets SHELL=bash in the box, so a herdr server started from it would open bash panes.
+# Linux pins zsh; macOS leaves the pane shell to $SHELL.
+@test "herdr pins the pane shell to zsh on Linux only" {
+  render linux > "$TMP/linux.toml"
+  render darwin > "$TMP/darwin.toml"
+  [ "$(toml_get terminal default_shell < "$TMP/linux.toml")" = "/usr/bin/zsh" ]
+  [ -z "$(toml_get terminal default_shell < "$TMP/darwin.toml")" ]
+  ! grep -q '^\[terminal\]' "$TMP/darwin.toml"
 }

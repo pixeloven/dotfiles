@@ -254,3 +254,26 @@ starship_warnings() { STARSHIP_CACHE="$(mktemp -d "$TMP/cache.XXXXXX")" STARSHIP
     grep -qx "$pkg" <<<"$output" || { echo "missing $pkg"; false; }
   done
 }
+
+# The box and a Mac otherwise show the same prompt; $container marks the box and renders nothing
+# outside a container.
+@test "starship prompt starts with the container marker" {
+  run python3 -I -c '
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    print(tomllib.load(f)["format"])
+' "$STARSHIP"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '$container$directory'* ]] || false
+}
+
+# A macOS or Ubuntu VM (and CI) shows no marker; a distrobox shows "⬢ [<box>]".
+@test "starship container marker renders only inside a container" {
+  run env STARSHIP_CACHE="$TMP/cache" STARSHIP_CONFIG="$STARSHIP" starship module container
+  [ "$status" -eq 0 ]
+  if [ -e /run/.containerenv ] || [ -e /.dockerenv ]; then
+    [[ "$output" == *'⬢'* ]] || false
+  else
+    [ -z "$output" ]
+  fi
+}

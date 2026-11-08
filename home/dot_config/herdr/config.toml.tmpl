@@ -19,6 +19,14 @@ delivery = "herdr"
 # Off: interactive Claude sessions speak their own alerts (~/.claude/hooks/speak-alert.sh)
 enabled = false
 
+{{- if eq .chezmoi.os "linux" }}
+
+[terminal]
+# Pin the pane shell to zsh. distrobox sets SHELL=bash in the box, and a herdr server started from
+# that environment would otherwise open bash panes. macOS leaves this unset, so panes use $SHELL.
+default_shell = "/usr/bin/zsh"
+{{- end }}
+
 [experimental]
 # Inline images (Kitty graphics) in terminals that support them, such as Ghostty; a no-op in
 # Ptyxis, which has no Kitty graphics. Set false if images misbehave.

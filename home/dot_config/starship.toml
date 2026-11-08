@@ -5,7 +5,7 @@
 
 palette = "catppuccin_mocha"
 add_newline = true
-format = "$directory$git_branch$git_status$nodejs$python$cmd_duration$line_break$character"
+format = "$container$directory$git_branch$git_status$nodejs$python$cmd_duration$line_break$character"
 
 [directory]
 style = "bold mauve"

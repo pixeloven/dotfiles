@@ -41,7 +41,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 
 ## herdr
 
-- **Where it lives:** `home/dot_config/herdr/config.toml` → `~/.config/herdr/config.toml`
+- **Where it lives:** `home/dot_config/herdr/config.toml.tmpl` → `~/.config/herdr/config.toml` (Linux pins the pane shell to `/usr/bin/zsh` under `[terminal]`)
 - **Common changes:**
   - Theme: `[theme] name = "tokyo-night"`. Built-ins: catppuccin, terminal, tokyo-night, dracula, nord, gruvbox, one-dark, solarized, kanagawa, rose-pine, vesper.
   - A single colour: `[theme.custom] accent = "#f5c2e7"`.
