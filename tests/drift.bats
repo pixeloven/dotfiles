@@ -336,8 +336,16 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   [[ "$output" == *$'edited\t.config/ghostty/config.ghostty\tchezmoi re-add ~/.config/ghostty/config.ghostty'* ]] || false
 }
 
-workstation_repo() { # the app catalog and its manager, as in the real repo
+workstation_repo() { # the app catalog and its manager, as in the real repo, without this machine's apps
+  local d keep="" t dirs
   cp "$REAL_REPO/lib/workstation-apps.tsv" "$REAL_REPO/lib/workstation-apps.sh" "$R/lib/"
+  for t in chezmoi jq git; do ln -sf "$(command -v "$t")" "$TMP/stub/$t"; done
+  IFS=: read -ra dirs <<<"$PATH"
+  for d in "${dirs[@]}"; do
+    [ "$d" = "$TMP/stub" ] || { [ ! -e "$d/herdr" ] && [ ! -e "$d/claude" ] && [ ! -e "$d/codex" ]; } || continue
+    keep="$keep${keep:+:}$d"
+  done
+  export PATH="$keep"
   export DOTFILES_CONTAINER_MARKER="$TMP/no-containerenv"
 }
 

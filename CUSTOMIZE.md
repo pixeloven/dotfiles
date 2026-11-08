@@ -156,7 +156,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Hand a vendor or npm copy to Homebrew: `workstation-apps vendor`, then `workstation-apps vendor remove <app>` (it asks first).
   - Add an app or a platform route: add a row to `lib/workstation-apps.tsv`; the `chezmoi init` choices come from it. A Flathub package its vendor doesn't publish gets `community` in the label column, and only after it is approved.
 - **Try it:** `workstation-apps`.
-- **Keep it:** the selection lives only in your local chezmoi config. `/codify` reports `app-missing`, `app-unselected`, `app-retired` and `app-vendor`, never `pkg-extra`, for catalog apps.
+- **Keep it:** the selection lives only in your local chezmoi config. `/codify` reports `app-missing`, `app-unselected`, `app-retired`, `app-vendor` and `app-unselected-vendor`, never `pkg-extra`, for catalog apps.
 
 ## Packages
 

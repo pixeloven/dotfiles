@@ -163,10 +163,10 @@ TSV
   run "$MANAGER" install codex painter
   [ "$status" -eq 3 ]
   [[ "$output" == *'codex'*'Homebrew apps install in the box'* ]] || false
-  ! grep -q '^brew install' "$HOME/calls"
+  ! grep -q '^brew install' "$HOME/calls" || false
   grep -qx 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$HOME/calls"
   grep -qx 'flatpak install --user --noninteractive flathub org.example.Painter' "$HOME/calls"
-  ! grep -q '^host-exec' "$HOME/calls"
+  ! grep -q '^host-exec' "$HOME/calls" || false
 }
 
 @test "inside the box: Homebrew installs there and Flatpak apps go to the host" {
@@ -238,10 +238,26 @@ TSV
   [ "$status" -eq 3 ]
   [[ "$output" == *"found $HOME/.local/bin/claude (vendor installer)"* ]] || false
   [[ "$output" == *'workstation-apps vendor remove claude-code'* ]] || false
-  ! grep -q '^brew install' "$HOME/calls"
+  ! grep -q '^brew install' "$HOME/calls" || false
   run "$MANAGER" vendor
   [ "$status" -eq 0 ]
   [[ "$output" == *"claude-code: $HOME/.local/bin/claude (vendor installer)"* ]] || false
+}
+
+@test "an npm global under Homebrew's Node is a vendor copy, removed with npm" {
+  mkdir -p "$HOME/brew/lib/node_modules/@anthropic-ai/claude-code"
+  : > "$HOME/brew/lib/node_modules/@anthropic-ai/claude-code/cli.js"
+  chmod +x "$HOME/brew/lib/node_modules/@anthropic-ai/claude-code/cli.js"
+  ln -s ../lib/node_modules/@anthropic-ai/claude-code/cli.js "$HOME/brew/bin/claude"
+  run "$MANAGER" install claude-code
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"found $HOME/brew/bin/claude (global npm package @anthropic-ai/claude-code)"* ]] || false
+  ! grep -q '^brew install' "$HOME/calls" || false
+  run "$MANAGER" drift claude-code
+  [[ "$output" == *$'app-vendor\tclaude-code '"$HOME/brew/bin/claude"* ]] || false
+  run "$MANAGER" vendor remove claude-code <<<"y"
+  [ "$status" -eq 0 ]
+  grep -qx 'npm uninstall -g @anthropic-ai/claude-code' "$HOME/calls"
 }
 
 @test "vendor remove asks first and removes nothing unless you confirm" {
@@ -283,7 +299,7 @@ TSV
   mkdir -p "$HOME/Applications/Claude.app/Contents"
   run "$MANAGER" install claude-desktop
   [ "$status" -eq 3 ]
-  ! grep -q '^brew install' "$HOME/calls"
+  ! grep -q '^brew install' "$HOME/calls" || false
   run "$MANAGER" vendor remove claude-desktop <<<"y"
   [ "$status" -eq 0 ]
   [ -d "$HOME/.Trash/Claude.app" ]
@@ -318,7 +334,21 @@ TSV
   [[ "$output" == *$'app-unselected\tcodex\tworkstation-apps enable codex (or /codify)'* ]] || false
   [[ "$output" == *$'app-vendor\tclaude-code '"$HOME/.local/bin/claude"$'\tworkstation-apps vendor remove claude-code'* ]] || false
   [[ "$output" != *blender* ]] || false
-  ! grep -q 'install' "$HOME/calls"
+  ! grep -q 'install' "$HOME/calls" || false
+}
+
+@test "drift flags an unselected app's vendor copies apart from Homebrew installs" {
+  export DOTFILES_APPS_OS=darwin DOTFILES_APPS_ARCH=arm64
+  mkdir -p "$HOME/.local/bin" "$HOME/Applications/Claude.app"
+  : > "$HOME/.local/bin/herdr"
+  echo 'cask codex' >> "$HOME/installed"; : > "$HOME/brew/bin/codex"
+  run "$MANAGER" drift
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'app-unselected-vendor\therdr-cli '"$HOME/.local/bin/herdr"$'\tworkstation-apps enable herdr-cli, then workstation-apps vendor remove herdr-cli'* ]] || false
+  [[ "$output" == *$'app-unselected-vendor\tclaude-desktop '"$HOME/Applications/Claude.app"$'\tworkstation-apps enable claude-desktop, then workstation-apps vendor remove claude-desktop'* ]] || false
+  [[ "$output" == *$'app-unselected\tcodex\t'* ]] || false
+  [[ "$output" != *$'app-unselected-vendor\tcodex'* ]] || false
+  [[ "$output" != *app-vendor* ]] || false
 }
 
 @test "drift checks host Flatpaks and leaves Homebrew alone on a Bazzite host" {

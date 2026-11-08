@@ -32,7 +32,7 @@ workstation-apps install [app...]         # install now without changing the sel
 How it splits:
 
 - **macOS:** everything is a Homebrew formula or cask.
-- **Linux:** command-line tools install with Homebrew. With `installTarget = "distrobox"`, they install inside the box only, as the Brewfile does. Desktop apps install on the host as Flatpaks from Flathub. From inside a box they go through `distrobox-host-exec`, the same crossing the Ptyxis palette uses. On a Bazzite host, `chezmoi apply` and `workstation-apps install` skip the Homebrew apps and still install the Flatpak apps.
+- **Linux:** command-line tools install with Homebrew. With `installTarget = "distrobox"`, they install inside the box only, as the Brewfile does. A desktop app with an approved Flathub package installs on the host as a Flatpak; none qualifies today, so the Linux desktop apps above are manual. From inside a box they go through `distrobox-host-exec`, the same crossing the Ptyxis palette uses. On a Bazzite host, `chezmoi apply` and `workstation-apps install` skip the Homebrew apps and still install the Flatpak apps.
 - **Flatpak installs** use `flatpak install --user` from Flathub, which needs no root. The `flathub` user remote is added if it is missing.
 - **macOS app versions:** the casks follow each vendor's own requirements. For example, `herdr-app` and `comfy` need Apple silicon, and `claude` and `chatgpt` need macOS 13 or later.
 
@@ -72,6 +72,7 @@ Settings, sign-ins and data (`~/.claude`, `~/.codex`, `~/.config/herdr`) stay. U
 - `app-unselected`: a catalog app installed but not selected. Run `workstation-apps enable <app>`, or keep it through `/codify`.
 - `app-retired`: selected, but the catalog no longer has it. `chezmoi apply` and `install` warn and skip it until you run `workstation-apps disable <app>`.
 - `app-vendor`: a selected app also has a copy Homebrew doesn't manage. Run `workstation-apps vendor remove <app>`.
+- `app-unselected-vendor`: a catalog app installed by hand (a vendor installer, `npm install -g`, or a downloaded macOS app) but not selected, with the copy's path. Run `workstation-apps enable <app>`, then `workstation-apps vendor remove <app>` so Homebrew takes over.
 
 ## Left to you
 

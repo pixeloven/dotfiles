@@ -60,11 +60,15 @@ brew_installed() { # <method> <package>
   fi
   grep -qxF -- "$1 $2" <<<"$brew_lists"
 }
-brew_prefix=""
-under_brew() { # <path>
-  [ -n "$brew_prefix" ] || brew_prefix="$(brew --prefix 2>/dev/null || echo /nonexistent-brew)"
-  case "$1" in "$brew_prefix"/*) return 0 ;; esac
-  return 1
+brew_prefix="" brew_real=""
+under_brew() { # <path> : Homebrew's own copy; an npm global under Homebrew's Node is not
+  if [ -z "$brew_prefix" ]; then
+    brew_prefix="$(brew --prefix 2>/dev/null || echo /nonexistent-brew)"
+    brew_real="$(cd -P "$brew_prefix" 2>/dev/null && pwd || echo "$brew_prefix")"
+  fi
+  case "$1" in "$brew_prefix"/*) ;; *) return 1 ;; esac
+  case "$(resolve "$1")" in "$brew_real"/lib/node_modules/*) return 1 ;; esac
+  return 0
 }
 
 # Flatpak: always the host's. From a container it runs through distrobox-host-exec.
@@ -76,12 +80,13 @@ flatpak_here() {
 flatpak_installed() { fp info "$1" >/dev/null 2>&1; }
 
 resolve() { # <path> : follow symlinks with plain readlink (no -f on older macOS)
-  local p="$1" l n=0
+  local p="$1" l d n=0
   while [ -L "$p" ] && [ "$n" -lt 20 ]; do
     l="$(readlink "$p")"
     case "$l" in /*) p="$l" ;; *) p="$(dirname "$p")/$l" ;; esac
     n=$((n + 1))
   done
+  if d="$(cd -P "$(dirname "$p")" 2>/dev/null && pwd)"; then p="$d/${p##*/}"; fi
   printf '%s\n' "$p"
 }
 copies() { # <id> : vendor copies of its Homebrew-routed app, as kind<TAB>path<TAB>extra lines
@@ -215,11 +220,10 @@ drift() { # selected IDs : what differs from the selection, for apps routed on t
     esac
     if $on && ! $have; then printf 'app-missing\t%s\t%s\n' "$id" "workstation-apps install $id"; fi
     if ! $on && $have; then printf 'app-unselected\t%s\t%s\n' "$id" "workstation-apps enable $id (or /codify)"; fi
-    if $on && [ "$method" != flatpak ]; then
-      copies "$id" | while IFS=$'\t' read -r _ p _; do
-        printf 'app-vendor\t%s %s\t%s\n' "$id" "$p" "workstation-apps vendor remove $id"
-      done
-    fi
+    copies "$id" | while IFS=$'\t' read -r _ p _; do
+      if $on; then printf 'app-vendor\t%s %s\t%s\n' "$id" "$p" "workstation-apps vendor remove $id"
+      else printf 'app-unselected-vendor\t%s %s\t%s\n' "$id" "$p" "workstation-apps enable $id, then workstation-apps vendor remove $id"; fi
+    done
   done
 }
 
