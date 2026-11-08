@@ -61,7 +61,10 @@ edited() {
     [ "${line:0:1}" = " " ] && continue
     path="${line:3}"
     denylisted "$path" && continue
-    emit edited "$path" "chezmoi re-add ~/$path"
+    case "$("${CZ[@]}" source-path "$HOME/$path" 2>/dev/null)" in
+      *.tmpl) emit edited "$path" "chezmoi edit ~/$path" ;;
+      *) emit edited "$path" "chezmoi re-add ~/$path" ;;
+    esac
   done
 }
 
