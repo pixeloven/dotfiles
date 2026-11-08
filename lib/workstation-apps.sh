@@ -115,13 +115,20 @@ npm_package() { # <resolved path> : the global npm package that owns it, if any
   first="${rest%%/*}"
   case "$first" in @*) rest="${rest#*/}"; printf '%s/%s\n' "$first" "${rest%%/*}" ;; *) printf '%s\n' "$first" ;; esac
 }
+owner() { # <path> : sets pkg and npm_prefix; npm_prefix only for an npm global (<prefix>/lib/node_modules)
+  local real
+  real="$(resolve "$1")"; pkg="$(npm_package "$real")"; npm_prefix=""
+  case "$real" in */lib/node_modules/*) npm_prefix="${real%%/lib/node_modules/*}" ;; esac
+}
 describe() { # kind path extra : one readable line for a vendor copy
-  local real pkg
+  local pkg npm_prefix
   case "$1" in
     app) echo "$2 (app bundle Homebrew doesn't manage)" ;;
     bin)
-      real="$(resolve "$2")"; pkg="$(npm_package "$real")"
-      if [ -n "$pkg" ]; then echo "$2 (global npm package $pkg)"; else echo "$2 (vendor installer)"; fi ;;
+      owner "$2"
+      if [ -n "$npm_prefix" ]; then echo "$2 (global npm package $pkg)"
+      elif [ -n "$pkg" ]; then echo "$2 (global package $pkg from another package manager, such as bun or yarn)"
+      else echo "$2 (vendor installer)"; fi ;;
   esac
 }
 
@@ -239,7 +246,7 @@ vendor_list() {
 }
 
 vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data are kept
-  local id c p x real pkg plan=() reply i
+  local id c p x pkg npm_prefix plan=() kept=() reply i
   [ "$#" -gt 0 ] || { echo "workstation-apps: name the apps: workstation-apps vendor remove <app>..." >&2; exit 2; }
   for id in "$@"; do
     while IFS=$'\t' read -r c p x; do
@@ -247,8 +254,10 @@ vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data 
       case "$c" in
         app) plan+=("trash|$p") ;;
         bin)
-          real="$(resolve "$p")"; pkg="$(npm_package "$real")"
-          if [ -n "$pkg" ]; then plan+=("npm|${real%%/lib/node_modules/*}|$pkg"); else
+          owner "$p"
+          if [ -n "$npm_prefix" ]; then plan+=("npm|$npm_prefix|$pkg")
+          elif [ -n "$pkg" ]; then kept+=("$p (global package $pkg): uninstall it with the package manager that installed it")
+          else
             plan+=("rm|$p")
             # shellcheck disable=SC2088 # the catalog writes ~ literally; expanded here only
             case "$x" in "~/"?*) [ ! -e "$HOME/${x#\~/}" ] || plan+=("rmdir|$HOME/${x#\~/}") ;; esac
@@ -256,7 +265,14 @@ vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data 
       esac
     done <<<"$(copies "$id")"
   done
-  [ "${#plan[@]}" -gt 0 ] || { echo "workstation-apps: no copies outside Homebrew found for: $*"; return 0; }
+  if [ "${#kept[@]}" -gt 0 ]; then
+    echo "workstation-apps: not removed here:"
+    for i in "${kept[@]}"; do echo "  $i"; done
+  fi
+  if [ "${#plan[@]}" -eq 0 ]; then
+    [ "${#kept[@]}" -eq 0 ] || return 1
+    echo "workstation-apps: no copies outside Homebrew found for: $*"; return 0
+  fi
   echo "workstation-apps: this removes (settings, sign-ins and app data stay):"
   for i in "${plan[@]}"; do
     case "${i%%|*}" in
@@ -277,7 +293,13 @@ vendor_remove() { # confirmed, never automatic; settings, sign-ins and app data 
       rmdir) rm -rf "${i#*|}" ;;
     esac
   done
+  [ "${#kept[@]}" -eq 0 ] || { echo "workstation-apps: removed the rest; uninstall the copies above, then: workstation-apps install $*"; return 1; }
   echo "workstation-apps: removed. Next: workstation-apps install $*"
+}
+warm() { # fill the Homebrew caches here, not in the subshells that call copies
+  command -v brew >/dev/null 2>&1 || return 0
+  under_brew / || true
+  brew_installed - - || true
 }
 
 case "$cmd" in
@@ -285,18 +307,18 @@ case "$cmd" in
   routes) # id<TAB>method<TAB>package<TAB>label for this OS and arch
     for id in $(ids); do fields "$id"; printf '%s\t%s\t%s\t%s\n' "$id" "${method:-none}" "$package" "$label"; done ;;
   preview|install|apply)
-    check_ids "$@"
+    check_ids "$@"; warm
     run_installs || exit $? ;;
   drift)
-    check_ids "$@"
+    check_ids "$@"; warm
     drift "$@" ;;
   vendor)
     if [ "${1:-}" = remove ]; then
-      shift; check_ids "$@"; vendor_remove ${picked[@]+"${picked[@]}"}
+      shift; check_ids "$@"; warm; vendor_remove ${picked[@]+"${picked[@]}"}
     else
       # shellcheck disable=SC2046 # catalog IDs are [a-z0-9-]
       [ "$#" -gt 0 ] || set -- $(ids)
-      check_ids "$@"; vendor_list ${picked[@]+"${picked[@]}"}
+      check_ids "$@"; warm; vendor_list ${picked[@]+"${picked[@]}"}
     fi ;;
   *) echo "workstation-apps: use ids, routes, preview, install, apply, drift or vendor" >&2; exit 2 ;;
 esac

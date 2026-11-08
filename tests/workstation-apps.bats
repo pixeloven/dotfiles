@@ -296,6 +296,22 @@ TSV
   grep -qxF "npm uninstall -g --prefix $(cd -P "$HOME/npm" && pwd) @openai/codex" "$HOME/calls"
 }
 
+@test "a bun or yarn global is reported, and vendor remove leaves it to that package manager" {
+  mkdir -p "$HOME/.bun/bin" "$HOME/.bun/install/global/node_modules/@anthropic-ai/claude-code"
+  : > "$HOME/.bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js"
+  chmod +x "$HOME/.bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js"
+  ln -s "$HOME/.bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js" "$HOME/.bun/bin/claude"
+  export PATH="$HOME/.bun/bin:$PATH"
+  run "$MANAGER" vendor claude-code
+  [[ "$output" == *"$HOME/.bun/bin/claude (global package @anthropic-ai/claude-code from another package manager"* ]] || false
+  run "$MANAGER" vendor remove claude-code <<<"y"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$HOME/.bun/bin/claude (global package @anthropic-ai/claude-code): uninstall it with the package manager that installed it"* ]] || false
+  [[ "$output" != *'removed.'* ]] || false
+  [ -L "$HOME/.bun/bin/claude" ]
+  ! grep -q '^npm' "$HOME/calls" || false
+}
+
 @test "a macOS app bundle Homebrew doesn't manage goes to the Trash only when confirmed" {
   export DOTFILES_APPS_OS=darwin DOTFILES_APPS_ARCH=arm64
   mkdir -p "$HOME/Applications/Claude.app/Contents"

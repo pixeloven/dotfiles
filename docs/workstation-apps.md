@@ -62,6 +62,8 @@ workstation-apps install claude-code
 - an npm global, with `npm uninstall -g --prefix <prefix>`, from the prefix it was installed into;
 - a macOS app bundle, moved to `~/.Trash`.
 
+A global package from another package manager, such as bun or yarn, is listed but not removed: uninstall it with that tool.
+
 Settings, sign-ins and data (`~/.claude`, `~/.codex`, `~/.config/herdr`) stay. Update Homebrew-owned apps with `brew upgrade`. Apps whose casks update themselves (`auto_updates`) keep doing so.
 
 ## Drift
