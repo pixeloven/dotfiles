@@ -318,7 +318,6 @@ For a machine whose shells should reach 1Password without the desktop app, as on
 
 **Done when:** a new tab starts with no warning, and the checks above print `600`, `token set` and `LITELLM_API_KEY set`.
 
-
 ## 12. Workstation apps
 
 Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop, each selected on its own. [docs/workstation-apps.md](docs/workstation-apps.md) has the per-platform table.
