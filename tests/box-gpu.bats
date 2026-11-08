@@ -36,21 +36,11 @@ teardown() { rm -rf "$TMP"; }
   grep -q '"api_version" : "1.4.351"' "$TMP/box/etc/vulkan/icd.d/nvidia_box.json"
 }
 
-@test "it is idempotent: a second run writes nothing, and --check then passes" {
+@test "it is idempotent: a second run writes nothing" {
   "$SCRIPT"
   run "$SCRIPT"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  run "$SCRIPT" --check
-  [ "$status" -eq 0 ]
-}
-
-@test "--check reports what a fresh (rebuilt) box is missing, without writing" {
-  run "$SCRIPT" --check
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"missing: $TMP/box/etc/egl/egl_external_platform.d/20_nvidia_xcb.json"* ]] || false
-  [[ "$output" == *"missing: $TMP/box/etc/vulkan/icd.d/nvidia_box.json"* ]] || false
-  [ ! -e "$TMP/box/etc/egl" ]
 }
 
 @test "it does nothing outside a box, or on a host without the NVIDIA driver" {

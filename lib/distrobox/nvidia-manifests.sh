@@ -7,14 +7,11 @@
 # /etc/vulkan/icd.d/nvidia_box.json with the bare library name. It changes only those box-local
 # files (the container's /etc, gone with a rebuild), never the host. Outside a box, or on a host
 # without the NVIDIA driver, or a box made without nvidia=true, it does nothing.
-# Usage: nvidia-manifests.sh [--check]   --check prints what is missing and exits 1 if anything is.
 # Test seams: DOTFILES_GPU_HOST_ROOT (default /run/host), DOTFILES_GPU_BOX_ROOT (default /),
 # DOTFILES_GPU_CONTAINER_MARKER (default /run/.containerenv).
 set -eu
 host="${DOTFILES_GPU_HOST_ROOT:-/run/host}"
 box="${DOTFILES_GPU_BOX_ROOT:-}"
-check=""
-[ "${1:-}" != --check ] || check=1
 [ -e "${DOTFILES_GPU_CONTAINER_MARKER:-/run/.containerenv}" ] || exit 0
 egl_host="$host/usr/share/egl/egl_external_platform.d"
 ls "$egl_host"/*nvidia*.json >/dev/null 2>&1 || exit 0
@@ -24,11 +21,8 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
 fi
 
 as_root() { if [ -w "$box/etc" ] || [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
-missing=0
 put() { # <dest> <content file> : write it when it differs
   if [ -f "$1" ] && cmp -s "$1" "$2"; then return 0; fi
-  missing=1
-  if [ -n "$check" ]; then echo "missing: $1"; return 0; fi
   as_root mkdir -p "$(dirname "$1")"
   as_root cp "$2" "$1"
   echo "dotfiles: wrote $1"
@@ -51,4 +45,3 @@ if [ -n "$icd" ]; then
   put "$box/etc/vulkan/icd.d/nvidia_box.json" "$tmp"
   rm -f "$tmp"
 fi
-[ -z "$check" ] || [ "$missing" -eq 0 ]
