@@ -1,53 +1,121 @@
 #!/usr/bin/env bash
-# Select optional apps independently of ops toolsets and the existing base Brewfile.
-# Usage: workstation-apps list | plan [app...] | install [app...] | on <app>... | off <app>...
-# on/off only change selection. install is explicit; off never uninstalls or removes app data.
+# workstation-apps: choose, preview and install the optional workstation apps (lib/workstation-apps.tsv).
+# Usage: workstation-apps [list] | preview [app...] | install [app...] | enable <app>... | disable <app>...
+#        workstation-apps vendor [app...] | vendor remove <app>...
+#   list     every app: on or off, and how it installs on this machine (the default)
+#   preview  read-only: route, source and state of the selected apps, or of the apps named
+#   install  installs the selected apps, or the apps named, without changing the selection
+#   enable   adds apps to workstationApps in ~/.config/chezmoi/chezmoi.toml, then chezmoi apply
+#            --include scripts installs them, as every later apply does (on is the short form)
+#   disable  removes apps from the selection (off is the short form); installed apps and their
+#            data stay, and drift then lists them as installed but not selected
+#   vendor   finds copies that Homebrew doesn't manage (vendor installers, npm, app bundles);
+#            vendor remove uninstalls them after you confirm, so Homebrew can own the app
+# Only the workstationApps line changes; every other key and comment stays. It never runs chezmoi init.
+# DOTFILES_APPS_REPO is a test seam for the dotfiles repo (default: chezmoi's working tree).
 set -euo pipefail
-repo="${DOTFILES_APPS_REPO:-$(dirname "$(chezmoi source-path)")}"
 config="${XDG_CONFIG_HOME:-$HOME/.config}/chezmoi/chezmoi.toml"
+if [ -n "${DOTFILES_APPS_REPO:-}" ]; then
+  repo="$DOTFILES_APPS_REPO"
+else
+  # Never fall back to the current directory: its lib/ would run as ours.
+  src="$(chezmoi source-path 2>/dev/null)" || src=""
+  case "$src" in /*) repo="$(dirname "$src")" ;; *) echo "workstation-apps: chezmoi not found or has no source directory; set DOTFILES_APPS_REPO to the dotfiles repo" >&2; exit 1 ;; esac
+fi
+case "$repo" in /*) ;; *) echo "workstation-apps: DOTFILES_APPS_REPO must be an absolute path" >&2; exit 1 ;; esac
+[ -f "$repo/lib/workstation-apps.tsv" ] || { echo "workstation-apps: $repo/lib/workstation-apps.tsv not found; is the dotfiles repo where chezmoi expects it?" >&2; exit 1; }
 manager="$repo/lib/workstation-apps.sh"
-cmd="${1:-plan}"; [ "$#" -eq 0 ] || shift
-selection() {
-  local raw
-  raw="$("$repo/lib/toml-set.sh" --get "$config" data workstationApps)"
+
+value_of() { # <key> : the raw value from [data], without a trailing comment
+  "$repo/lib/toml-set.sh" --get "$config" data "$1" | sed -E 's/[[:space:]]*#.*$//; s/[[:space:]]+$//'
+}
+selection() { # saved app IDs, one per line; parsed only by the commands that need it
+  local raw array_re='^\[[[:space:]]*("[a-z0-9-]+"([[:space:]]*,[[:space:]]*"[a-z0-9-]+")*[[:space:]]*,?)?[[:space:]]*\]$'
+  raw="$(value_of workstationApps)"
   [ -n "$raw" ] || return 0
-  # Strict single-line array of IDs; never evaluate configuration as shell code.
-  local array_re='^\[[[:space:]]*("[a-z0-9-]+"([[:space:]]*,[[:space:]]*"[a-z0-9-]+")*[[:space:]]*,?)?[[:space:]]*\]$'
+  # Strict one-line array of IDs; configuration is never evaluated as shell code.
   if [[ ! "$raw" =~ $array_re ]]; then
-    echo "workstation-apps: workstationApps must be a single-line array of app IDs" >&2; return 2
+    echo "workstation-apps: workstationApps in $config must be a one-line array of app IDs, like [\"codex\", \"herdr-cli\"]; edit it by hand" >&2
+    return 2
   fi
   tr -d '[]"' <<<"$raw" | tr -d '[:space:]' | tr ',' '\n' | sed '/^$/d'
 }
-selected=()
-raw="$(selection)"
-while IFS= read -r item; do [ -z "$item" ] || selected+=("$item"); done <<<"$raw"
+export_target() {
+  local t; t="$(value_of installTarget)"; t="${t//\"/}"
+  export DOTFILES_APPS_INSTALL_TARGET="${t:-host}"
+}
+need_config() { [ -f "$config" ] || { echo "workstation-apps: no $config; run chezmoi init first" >&2; exit 2; }; }
+
+list() {
+  local on id method package label unread=false
+  # An unreadable selection still lists the catalog; selection() has said why on stderr.
+  on="$(selection)" || unread=true
+  export_target
+  while IFS=$'\t' read -r id method package label; do
+    local state=off route
+    grep -qxF -- "$id" <<<"$on" && state=on
+    ! $unread || state="?"
+    case "$method" in
+      formula|cask) route="Homebrew $method $package" ;;
+      flatpak) route="Flatpak $package (Flathub, host)" ;;
+      manual) route="manual" ;;
+      *) route="not available here" ;;
+    esac
+    [ "$label" != community ] || route="$route [community]"
+    printf '%-16s %-4s %s\n' "$id" "$state" "$route"
+  done < <("$manager" routes)
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    "$manager" ids | grep -qxF -- "$id" && continue
+    printf '%-16s %-4s %s\n' "$id" on "retired: no longer in the catalog (workstation-apps disable $id)"
+  done <<<"$on"
+}
+
+save() { # enable|disable <app>... : rewrite the selection in catalog order, retired IDs kept last
+  local mode="$1" on item value="" all
+  shift
+  need_config
+  [ "$#" -gt 0 ] || { echo "workstation-apps: name at least one app (try workstation-apps list)" >&2; exit 2; }
+  on="$(selection)" || exit $?
+  all="$("$manager" ids)"
+  for item in "$@"; do
+    grep -qxF -- "$item" <<<"$all" && continue
+    if [ "$mode" = disable ] && grep -qxF -- "$item" <<<"$on"; then continue; fi
+    echo "workstation-apps: unknown app: $item (try workstation-apps list)" >&2; exit 2
+  done
+  local requested; requested="$(printf '%s\n' "$@")"
+  while IFS= read -r item; do
+    [ -n "$item" ] || continue
+    local keep=false
+    grep -qxF -- "$item" <<<"$on" && keep=true
+    if grep -qxF -- "$item" <<<"$requested"; then
+      if [ "$mode" = disable ]; then keep=false; else keep=true; fi
+    fi
+    if $keep; then value="$value${value:+, }\"$item\""; fi
+  done < <(printf '%s\n' "$all"; grep -vxF -- "$all" <<<"$on" || true)
+  "$repo/lib/toml-set.sh" "$config" data workstationApps "[$value]"
+  echo "workstation-apps: selected [$value]"
+}
+
+cmd="${1:-list}"
+[ "$#" -eq 0 ] || shift
 case "$cmd" in
-  list) exec "$manager" list ;;
-  plan|install)
-    [ "$#" -gt 0 ] || set -- ${selected[@]+"${selected[@]}"}
-    target="$("$repo/lib/toml-set.sh" --get "$config" data installTarget)"
-    target="${target//\"/}"
-    export DOTFILES_APPS_INSTALL_TARGET="${target:-host}"
-    exec "$manager" "$cmd" "$@" ;;
-  on|off)
-    [ -f "$config" ] || { echo "workstation-apps: run chezmoi init first" >&2; exit 2; }
-    [ "$#" -gt 0 ] || { echo "workstation-apps: specify at least one app" >&2; exit 2; }
-    for item in "$@" ${selected[@]+"${selected[@]}"}; do
-      "$manager" list | grep -qxF "$item" || { echo "workstation-apps: unknown app: $item" >&2; exit 2; }
-    done
-    value=""; requested="$(printf '%s\n' "$@")"
-    while IFS= read -r item; do
-      keep=false
-      printf '%s\n' ${selected[@]+"${selected[@]}"} | grep -qxF "$item" && keep=true
-      if grep -qxF "$item" <<<"$requested"; then
-        [ "$cmd" = off ] && keep=false || keep=true
-      fi
-      if $keep; then value="$value${value:+, }\"$item\""; fi
-    done < <("$manager" list)
-    "$repo/lib/toml-set.sh" "$config" data workstationApps "[$value]"
-    echo "workstation-apps: selected [$value]; no apps installed or removed"
-    echo "Next: workstation-apps plan, then workstation-apps install"
-    ;;
-  -h|--help) sed -n '2,4s/^# //p' "$0" ;;
-  *) echo "workstation-apps: unknown command: $cmd" >&2; exit 2 ;;
+  list) list ;;
+  preview|install)
+    export_target
+    if [ "$#" -gt 0 ]; then exec "$manager" "$cmd" "$@"; fi
+    raw="$(selection)" || exit $?
+    # shellcheck disable=SC2086 # one app ID per line, validated above
+    exec "$manager" "$cmd" --saved $raw ;;
+  enable|on)
+    save enable "$@"
+    chezmoi apply --include scripts ;;
+  disable|off)
+    save disable "$@"
+    echo "workstation-apps: nothing was uninstalled; settings and app data stay" ;;
+  vendor)
+    export_target
+    exec "$manager" vendor "$@" ;;
+  -h|--help) sed -n '2,15s/^# \{0,1\}//p' "$0" ;;
+  *) echo "workstation-apps: unknown command: $cmd (try --help)" >&2; exit 2 ;;
 esac

@@ -177,8 +177,7 @@ packages() {
   fi
   sets="$(jq -r 'if has("toolsets") then [.toolsets[]? | tostring] | join(",") elif .opsTools == true then "all" else "" end' <<<"$data" 2>/dev/null)"
   listed="$(HOMEBREW_DOTFILES_TOOLSETS=all brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
-  # Optional workstation apps are declared separately and never installed by the base Brewfile.
-  # Like ops toolsets, retained packages from a deselected app are not untracked extras.
+  # Workstation app packages are never pkg-extra: workstation_apps reports them against the selection.
   if [ -f "$REPO/lib/workstation-apps.tsv" ]; then
     listed="$listed
 $(awk -F '|' '$3 == "formula" || $3 == "cask" {print $4}' "$REPO/lib/workstation-apps.tsv")"
@@ -198,6 +197,16 @@ $(awk -F '|' '$3 == "formula" || $3 == "cask" {print $4}' "$REPO/lib/workstation
     done
 }
 
+workstation_apps() { # the workstationApps selection: missing, installed but not selected, retired, vendor copies
+  local data target
+  [ -x "$REPO/lib/workstation-apps.sh" ] || return 0
+  data="$("${CZ[@]}" data --format json 2>/dev/null)" || return 0
+  target="$(jq -r 'if .installTarget == "distrobox" then "distrobox" else "host" end' <<<"$data")"
+  # shellcheck disable=SC2046 # IDs are filtered to [a-z0-9-]
+  DOTFILES_APPS_INSTALL_TARGET="$target" DOTFILES_APPS_CONTAINER_MARKER="${DOTFILES_CONTAINER_MARKER:-/run/.containerenv}" \
+    "$REPO/lib/workstation-apps.sh" drift $(jq -r '.workstationApps // [] | if type == "array" then .[] else empty end | tostring | select(test("^[a-z0-9-]+$"))' <<<"$data")
+}
+
 untracked() {
   local managed dir path
   managed="$("${CZ[@]}" managed --include files 2>/dev/null)"
@@ -213,7 +222,7 @@ untracked() {
   done
 }
 
-findings="$({ edited; owned_keys; ptyxis_keys; zshrc_line; codex_keys; operator_persona; agent_plugins; impeccable; packages; untracked; } 2>/dev/null)"
+findings="$({ edited; owned_keys; ptyxis_keys; zshrc_line; codex_keys; operator_persona; agent_plugins; impeccable; packages; workstation_apps; untracked; } 2>/dev/null)"
 
 case "${1:-}" in
   --summary)

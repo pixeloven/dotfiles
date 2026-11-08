@@ -1,69 +1,82 @@
-# Selectable workstation applications
+# Workstation apps
 
-This public repository sets up an environment, not a machine's projects or identity. The workstation app catalog is **opt-in** and independent of the existing ops `toolsets`. Selections live in the local chezmoi configuration, never in a machine-specific file committed here. Existing base Brewfile and configuration behavior is unchanged; a full `chezmoi apply` is not a minimal-app bootstrap.
+Rebuilding a development environment is `chezmoi init --apply` plus the saved selection of workstation apps. This page covers that selection: which apps it can install, how each one installs on each platform, and what stays manual. It never installs anything you didn't select.
 
-## Choose, preview, install
+## Choose and install
 
-After applying dotfiles, use:
+`chezmoi init` asks once which apps to install; none are selected by default. The answer is the `workstationApps` list in your untracked `~/.config/chezmoi/chezmoi.toml`. Every `chezmoi apply` then installs the selected apps that are missing and leaves installed ones alone, the way it installs the ops `toolsets`. A rebuild needs no extra step.
 
 ```sh
-workstation-apps list
-workstation-apps on herdr-cli herdr-desktop claude-code codex blender comfyui
-workstation-apps plan
-workstation-apps install
+workstation-apps                          # list: every app, on or off, and how it installs here
+workstation-apps enable herdr-cli codex   # select apps, then run chezmoi apply --include scripts
+workstation-apps disable codex            # deselect; nothing is uninstalled
+workstation-apps preview                  # read-only: route, source and state of the selection
+workstation-apps install [app...]         # install now without changing the selection
 ```
 
-`chezmoi init` also offers these app selections, all off by default. `on` and `off` **only save selection**; they never install, uninstall, sign in, stop services, or remove app data. `install` is a separate explicit step and does not run the rest of chezmoi's scripts. `plan app...` and `install app...` work for a one-off subset without changing saved selections. `off` leaves binaries, user preferences and content untouched. There is intentionally no automatic uninstall/cleanup command.
+`on` and `off` are short forms of `enable` and `disable`. `preview app...` and `install app...` work on apps you haven't selected. Disabling an app leaves its program, settings and data in place. `install` exits 3 when some selected apps still need you (manual apps, a host/box mismatch, or a copy Homebrew doesn't manage). That result is partial, not a success. No vendor download script is run for you.
 
-Homebrew-backed entries install with an explicit `--formula` or `--cask`. Already installed entries are left alone; use Homebrew separately for upgrades. Existing vendor/npm installs are not removed or migrated automatically. Check `type -a herdr claude codex` before adopting an app already installed another way, and keep one intended installation owner.
+## Platforms
 
-`plan` is read-only and shows the route and source for every selection. `install` exits 3 when selected items need manual work; this is a partial result, not an install success. A failed Homebrew command stops immediately. No vendor download script is automatically executed.
-
-## Platform catalog
-
-Sources checked 2026-11-08. Availability changes; the source links in `lib/workstation-apps.tsv` are the evidence, not a claim that every listed route was executed on every OS.
-
-| Selection | macOS | Linux host / Ubuntu Distrobox |
+| App | macOS | Linux (plain host, or Bazzite with a distrobox) |
 |---|---|---|
-| `herdr-cli` | Homebrew formula `herdr` | Homebrew formula `herdr` |
-| `herdr-desktop` | Cask `herdr-app`, Apple silicon | Official vendor installer; manual |
-| `claude-code` | Cask `claude-code` | Cask `claude-code` |
-| `codex` | Cask `codex` (CLI) | Cask `codex` (CLI) |
-| `claude-desktop` | Cask `claude` | No verified official package in this catalog; manual evaluation |
-| `chatgpt-desktop` | Cask `chatgpt` | Linux packaging evaluation; manual |
-| `blender` | Cask `blender` | Distro package or official archive; manual |
-| `comfyui` | Cask `comfy`, Apple silicon | Official Comfy Desktop deb or AppImage; manual |
+| `herdr-cli` | Homebrew formula `herdr` | Homebrew formula `herdr` (in the box) |
+| `herdr-desktop` | Cask `herdr-app`, Apple silicon only | Manual: [vendor installer](https://herdr.dev/download/), no Flathub package |
+| `claude-code` | Cask `claude-code` | Cask `claude-code` (in the box) |
+| `codex` | Cask `codex` (the CLI) | Cask `codex` (in the box) |
+| `claude-desktop` | Cask `claude` | Manual: [beta apt repository](https://code.claude.com/docs/en/desktop-linux), Debian and Ubuntu only |
+| `chatgpt-desktop` | Cask `chatgpt`, which includes Codex's desktop app | Manual: [preview deb/rpm repositories](https://learn.chatgpt.com/docs/linux/linux-app) |
+| `blender` | Cask `blender` | Manual: [official tarball](https://www.blender.org/download/) |
+| `comfyui` | Cask `comfy`, Apple silicon only | Manual: [deb or AppImage](https://docs.comfy.org/installation/desktop/linux), x86_64 |
 
-Herdr's desktop app and its TUI are different products/configuration surfaces. The app's own installer sets up `herdr-core`; selecting `herdr-cli` is not a substitute for the desktop app. See [Herdr download](https://herdr.dev/download/) and [TUI install](https://herdr.dev/tui/docs/install/).
+How it splits:
 
-The [Comfy Linux guide](https://docs.comfy.org/installation/desktop/linux) now documents official deb/AppImage packages. Do not silently replace Desktop with a Git checkout or a Python server. The first-run terms, local/cloud choice, instance version, GPU backend, models and output locations remain deliberate local setup. Do not add `--no-sandbox` or alter AppArmor as an installer workaround.
+- **macOS:** everything is a Homebrew formula or cask.
+- **Linux:** command-line tools install with Homebrew. With `installTarget = "distrobox"`, they install inside the box only, as the Brewfile does. Desktop apps install on the host as Flatpaks from Flathub. From inside a box they go through `distrobox-host-exec`, the same crossing the Ptyxis palette uses. On a Bazzite host, `chezmoi apply` and `workstation-apps install` skip the Homebrew apps and still install the Flatpak apps.
+- **Flatpak installs** use `flatpak install --user` from Flathub, which needs no root. The `flathub` user remote is added if it is missing.
+- **macOS app versions:** the casks follow each vendor's own requirements. For example, `herdr-app` and `comfy` need Apple silicon, and `claude` and `chatgpt` need macOS 13 or later.
 
-The core ChatGPT cask only represents its macOS package. A separate `ublue-os/experimental-tap/chatgpt-linux` package exists and uses OpenAI-hosted assets, but is a community experimental packaging route, not the core cask. It is deliberately not added as an implicit tap or fallback. Evaluate its support, permissions and lifecycle before adding an explicitly named opt-in route. Do not assume a working local installation proves compatibility on every Ubuntu/Distrobox system.
+There is no separate Codex desktop app to select. OpenAI folded it into the ChatGPT app, and Homebrew retired the `codex-app` cask in favor of `chatgpt`. If `codex-app` is still installed, run `brew uninstall --cask codex-app` before selecting `chatgpt-desktop`. `chatgpt` and `chatgpt-classic` both install `ChatGPT.app`, so keep only one.
 
-## Configuration boundaries
+### Flathub and community packages
 
-- Existing Herdr TUI preferences remain in `home/dot_config/herdr/config.toml`.
-- Herdr Desktop uses `~/.config/herdr-app`, distinct from the TUI. Its version-matched `AGENTS.md` describes its supported settings. This first increment **does not overwrite or import** that directory, its layouts, machines, sessions or project lists. A follow-up can patch an allowlist of portable theme/keyboard preferences once their schema is verified. See [Herdr guide](https://herdr.dev/guide/).
-- Existing Claude/Codex hooks and selected plugin configuration are unchanged. They do not imply an authenticated login, paid subscription, or agent access to another computer.
-- Claude/ChatGPT desktop login, device authorization, desktop-control permissions and credential stores remain local and manual. Never copy another machine's auth files.
-- Blender preferences/addons and Comfy installations, models, workflows, inputs and outputs are not imported, generated or synced by this feature.
-- No SSH keys, tokens, project work, personal content, remote-host names or machine addresses belong in the catalog or committed configuration.
+None of these desktop apps has a Flathub package published or verified by its vendor. So no Linux desktop app installs automatically yet. The Flatpak route is in place for the first one that qualifies.
 
-## Distrobox and GPU boundary
+A package that Flathub lists but its vendor doesn't publish is a community package. It is added only after it is approved app by app. Once added, it carries the `community` label in the catalog, in `list` and in `preview`. The only candidate today is Blender's [`org.blender.Blender`](https://flathub.org/apps/org.blender.Blender): it is unverified, community-packaged from Blender's release tarball, and x86_64 only.
 
-For an Ubuntu VM, use the `host` target. On Bazzite with `installTarget = "distrobox"`, the installer refuses to run on the host: enter the intended box first. It never invokes `distrobox-host-exec`, installs host packages, exports launchers, changes drivers, or starts services. `plan` works on either side of the boundary.
+An app whose only Linux download is an AppImage stays manual. Manage the AppImage with [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever), a verified Flathub app. On an image-based host that can't install a deb, this applies to Comfy Desktop's AppImage.
 
-The existing `ubuntu-dev.ini` is a CLI dev box and explicitly sets `nvidia=false`. Installing Blender/Comfy or Herdr inside it does not supply GPU access, GUI libraries, clipboard integration or a host launcher. Keep that box unchanged. Validate a separate GPU-enabled creative box and its host integration before declaring Linux desktop apps supported there. Shared `$HOME` also means preference and app-data paths are shared unless deliberately separated; Distrobox is not a security boundary.
+## One copy per app: Homebrew owns the CLIs
 
-Hardware provisioning stays in the workstation runbook: Proxmox VM creation, passthrough, signed NVIDIA drivers/MOK enrollment, snapshots and shared-storage mounts. This app selection layer does not manage those.
+Homebrew owns herdr, Claude Code and Codex. A copy from a vendor installer (`~/.local/bin`), from `npm install -g`, or a macOS app bundle that Homebrew doesn't manage would shadow the Homebrew copy or block the cask. So installs skip any app that already has such a copy and tell you how to hand it over:
 
-## Validation and rollout
+```sh
+workstation-apps vendor                        # read-only: copies Homebrew doesn't manage
+workstation-apps vendor remove claude-code     # shows what it removes, then asks y/N
+workstation-apps install claude-code
+```
 
-1. Start from a known-good VM snapshot. Confirm OS, GPU driver and available disk separately.
-2. Preview selections; resolve manual items rather than treating them as installed.
-3. Install a small subset. Re-run it; Homebrew-installed items should be unchanged.
-4. Verify executable paths and vendor versions, sign in locally, then test a small actual task.
-5. For GUI apps test launch, clipboard, remote-session visibility and correct GPU use. Test an agent reading back a human edit, not just launching a process.
-6. Snapshot after validation. Repeat on another OS only after the first machine works.
+`vendor remove` never runs without your confirmation, and it never runs during `chezmoi apply`. It removes:
 
-Repository tests use fake Homebrew and throwaway HOME/config paths. They cover selection, idempotent install, manual outcomes, malformed input and the Distrobox guard. They do not establish real app install, GUI or GPU support; macOS and Ubuntu/Distrobox runtime validation remains necessary.
+- a vendor-installed command, and Claude Code's `~/.local/share/claude` versions directory;
+- an npm global, with `npm uninstall -g`;
+- a macOS app bundle, moved to `~/.Trash`.
+
+Settings, sign-ins and data (`~/.claude`, `~/.codex`, `~/.config/herdr`) stay. Update Homebrew-owned apps with `brew upgrade`. Apps whose casks update themselves (`auto_updates`) keep doing so.
+
+## Drift
+
+`bin/drift`, which `/codify` reads, compares the selection with what is installed. It reports:
+
+- `app-missing`: selected but not installed. Run `workstation-apps install <app>`, or `chezmoi apply`.
+- `app-unselected`: a catalog app installed but not selected. Run `workstation-apps enable <app>`, or keep it through `/codify`.
+- `app-retired`: selected, but the catalog no longer has it. `chezmoi apply` and `install` warn and skip it until you run `workstation-apps disable <app>`.
+- `app-vendor`: a selected app also has a copy Homebrew doesn't manage. Run `workstation-apps vendor remove <app>`.
+
+## Left to you
+
+- Signing in to every app, desktop-control permissions and credential stores. Never copy another machine's auth files.
+- Each desktop app's first-run choices: Comfy's models and output folders, and Blender's preferences and add-ons. Herdr Desktop's own settings in `~/.config/herdr-app` are separate from the herdr CLI's `~/.config/herdr`, and this repo doesn't write them.
+- GPU drivers and GPU access. A distrobox with the GPU switched off can't run GPU apps, which is why desktop apps install on the host.
+
+The tests use stub `brew`, `flatpak` and `npm` in a throwaway home, so they show the routing and guard logic, not that a real app installs, launches or uses the GPU.

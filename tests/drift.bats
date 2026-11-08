@@ -22,6 +22,8 @@ setup() {
 case "$*" in
   "leaves --installed-on-request") printf '%s\n' bat $STUB_EXTRA_FORMULA ;;
   "list --cask") echo ghostty ;;
+  "list --formula") printf '%s\n' bat $STUB_EXTRA_FORMULA ;;
+  "--prefix") echo "$HOME/no-brew-prefix" ;;
   "bundle list --all --file="*) printf 'bat\nghostty\n'
     # The Brewfile's kubernetes set, read through the variable the real Brewfile checks.
     case ",$HOMEBREW_DOTFILES_TOOLSETS," in *,all,*|*,kubernetes,*) echo kubernetes-cli ;; esac
@@ -334,10 +336,35 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   [[ "$output" == *$'edited\t.config/ghostty/config.ghostty\tchezmoi re-add ~/.config/ghostty/config.ghostty'* ]] || false
 }
 
-@test "workstation app packages are codified even when left installed after deselection" {
-  cp "$REAL_REPO/lib/workstation-apps.tsv" "$R/lib/"
+workstation_repo() { # the app catalog and its manager, as in the real repo
+  cp "$REAL_REPO/lib/workstation-apps.tsv" "$REAL_REPO/lib/workstation-apps.sh" "$R/lib/"
+  export DOTFILES_CONTAINER_MARKER="$TMP/no-containerenv"
+}
+
+@test "an installed but unselected workstation app is app-unselected, not pkg-extra" {
+  workstation_repo
   export STUB_EXTRA_FORMULA=herdr
   run "$R/bin/drift"
   [ "$status" -eq 0 ]
-  [[ "$output" != *$'pkg-extra\therdr'* ]]
+  [[ "$output" != *$'pkg-extra\therdr'* ]] || false
+  [[ "$output" == *$'app-unselected\therdr-cli\tworkstation-apps enable herdr-cli (or /codify)'* ]] || false
+}
+
+@test "a selected workstation app that isn't installed is app-missing; a retired one is app-retired" {
+  workstation_repo
+  printf '[data]\nworkstationApps = ["herdr-cli", "gone-app"]\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'app-missing\therdr-cli\tworkstation-apps install herdr-cli'* ]] || false
+  [[ "$output" == *$'app-retired\tgone-app\tworkstation-apps disable gone-app'* ]] || false
+  export STUB_EXTRA_FORMULA=herdr
+  run "$R/bin/drift"
+  [[ "$output" != *app-missing* ]] || false
+}
+
+@test "workstation apps add nothing to a clean drift" {
+  workstation_repo
+  run "$R/bin/drift"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }

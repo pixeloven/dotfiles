@@ -16,10 +16,13 @@
 {{- else -}}
 {{-   $toolsets = promptMultichoiceOnce . "toolsets" "Ops tool sets to install (lib/toolsets.txt; none by default)" $sets (get . "toolsets" | default list) -}}
 {{- end -}}
-{{- $apps := list "herdr-cli" "herdr-desktop" "claude-code" "codex" "claude-desktop" "chatgpt-desktop" "blender" "comfyui" -}}
-{{- $workstationApps := promptMultichoiceOnce . "workstationApps" "Optional workstation apps (preview and install with workstation-apps; none by default)" $apps (get . "workstationApps" | default list) -}}
+{{- $apps := list -}}
+{{- range include "../lib/workstation-apps.tsv" | splitList "\n" -}}
+{{-   if and (trim .) (not (hasPrefix "#" .)) }}{{ $id := regexFind "^[^|]+" . }}{{ if not (has $id $apps) }}{{ $apps = append $apps $id }}{{ end }}{{ end -}}
+{{- end -}}
+{{- $workstationApps := promptMultichoiceOnce . "workstationApps" "Workstation apps to install (lib/workstation-apps.tsv; none by default)" $apps (get . "workstationApps" | default list) -}}
 {{- $container := or (env "CONTAINER_ID") (stat "/run/.containerenv") (stat "/.dockerenv") | not | not -}}
-# Linux asks the terminal and where tools install; both OSes ask which ops tool sets to install
+# Linux asks the terminal and where tools install; both OSes ask which ops tool sets and workstation apps to install
 # (a machine from before that question keeps its old opsTools answer: yes is every set, no is none).
 # Each is asked once. Keys set by hand are kept. This repo holds no names, emails, or other personal data.
 sourceDir = "~/Development/dotfiles"

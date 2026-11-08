@@ -191,20 +191,20 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
   [[ "$output" == *$'\ncontainer = '* ]] || false
 }
 
-
 @test "workstation apps default to none and preserve per-machine choices" {
   run init_config darwin
   [ "$status" -eq 0 ]
-  [[ "$output" == *'workstationApps = []'* ]]
+  [[ "$output" == *'workstationApps = []'* ]] || false
   run re_init linux 'workstationApps = ["herdr-cli", "codex", "blender"]'
   [ "$status" -eq 0 ]
-  [[ "$output" == *'workstationApps = ["herdr-cli", "codex", "blender"]'* ]]
+  [[ "$output" == *'workstationApps = ["herdr-cli", "codex", "blender"]'* ]] || false
 }
 
-@test "workstation init choices match the app catalog" {
-  local want
-  want="$(awk -F '|' '!/^#/ && NF && !seen[$1]++ {print $1}' "$REPO/lib/workstation-apps.tsv" | paste -sd / -)"
-  run init_config linux --promptMultichoice "Optional workstation apps (preview and install with workstation-apps; none by default)=$want"
+@test "workstation init choices come from the app catalog" {
+  local ids want
+  ids="$(awk -F '|' '!/^#/ && NF && !seen[$1]++ {print $1}' "$REPO/lib/workstation-apps.tsv")"
+  want="$(sed 's/.*/"&"/' <<<"$ids" | paste -sd , - | sed 's/,/, /g')"
+  run init_config linux --promptMultichoice "Workstation apps to install (lib/workstation-apps.tsv; none by default)=$(paste -sd / - <<<"$ids")"
   [ "$status" -eq 0 ]
-  [[ "$output" == *'workstationApps = ["herdr-cli", "herdr-desktop", "claude-code", "codex", "claude-desktop", "chatgpt-desktop", "blender", "comfyui"]'* ]]
+  [[ "$output" == *"workstationApps = [$want]"* ]] || false
 }

@@ -127,3 +127,17 @@ teardown() { rm -rf "$HOME"; }
   [[ "$output" == *"run chezmoi init first"* ]] || false
   [ ! -e "$CONFIG" ]
 }
+
+@test "without chezmoi it never reads lib/ from the current directory" {
+  unset TOOLSETS_REPO
+  rm "$HOME/bin/chezmoi"
+  mkdir -p "$HOME/planted/lib"
+  printf 'evil  planted\n' > "$HOME/planted/lib/toolsets.txt"
+  printf '#!/bin/sh\necho PLANTED-RAN\n' > "$HOME/planted/lib/toml-set.sh"
+  chmod +x "$HOME/planted/lib/toml-set.sh"
+  run env PATH="$HOME/bin:/usr/bin:/bin" "$BASH" -c 'cd "$1" && "$2" "$3" status' _ "$HOME/planted" "$BASH" "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'chezmoi not found'* ]] || false
+  [[ "$output" != *PLANTED-RAN* ]] || false
+  [[ "$output" != *evil* ]] || false
+}

@@ -53,9 +53,9 @@ sudo chsh -s /usr/bin/zsh "$USER"
 
 Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the global npm tools, your git name and email (dotfiles never sets them), the clipboard check, and, with a distrobox, moving the validation pipeline into the box. Each step says whether it applies to a Linux host, a distrobox, or both.
 
-## Optional workstation apps
+## Workstation apps
 
-Choose Herdr CLI and desktop, Claude Code, Codex, Claude/ChatGPT desktop, Blender and ComfyUI independently with `workstation-apps`. Nothing new installs by default. `workstation-apps on <app>...` saves selections; `workstation-apps plan` previews platform-specific routes; `workstation-apps install` installs Homebrew-backed choices and reports manual items explicitly. See [workstation app setup](docs/workstation-apps.md) for the support matrix, Distrobox boundaries and validation steps.
+`chezmoi init` also asks which workstation apps to install, none by default: Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop. Every `chezmoi apply` installs the selected ones, so a rebuild is `chezmoi init --apply` plus that saved selection. `workstation-apps` lists, previews, enables and disables them. Homebrew installs the CLIs and the macOS apps; Linux desktop apps install on the host as Flathub Flatpaks. See [workstation apps](docs/workstation-apps.md) and RUNBOOK.md section 12.
 
 ## Day to day
 
