@@ -23,7 +23,7 @@ fi
 as_root() { if [ -w "$box/etc" ] || [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
 put() { # <dest> <content file> : write it world-readable (0644) when its content or mode differs
   if [ -f "$1" ] && cmp -s "$1" "$2" && [ "$(stat -c %a "$1")" = 644 ]; then return 0; fi
-  as_root mkdir -p "$(dirname "$1")"
+  (umask 022; as_root mkdir -p "$(dirname "$1")")
   as_root install -m 0644 "$2" "$1"
   echo "dotfiles: wrote $1"
 }

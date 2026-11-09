@@ -79,6 +79,9 @@ teardown() { rm -rf "$TMP"; }
   for f in "$TMP"/box/etc/egl/egl_external_platform.d/*.json "$TMP/box/etc/vulkan/icd.d/nvidia_box.json"; do
     [ "$(stat -c %a "$f")" = 644 ]
   done
+  for d in egl egl/egl_external_platform.d vulkan vulkan/icd.d; do
+    [ "$(stat -c %a "$TMP/box/etc/$d")" = 755 ]
+  done
 }
 
 @test "an existing manifest with matching content but mode 0600 is fixed to 0644" {
