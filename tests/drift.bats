@@ -22,6 +22,8 @@ setup() {
 case "$*" in
   "leaves --installed-on-request") printf '%s\n' bat $STUB_EXTRA_FORMULA ;;
   "list --cask") echo ghostty ;;
+  "list --formula") printf '%s\n' bat $STUB_EXTRA_FORMULA ;;
+  "--prefix") echo "$HOME/no-brew-prefix" ;;
   "bundle list --all --file="*) printf 'bat\nghostty\n'
     # The Brewfile's kubernetes set, read through the variable the real Brewfile checks.
     case ",$HOMEBREW_DOTFILES_TOOLSETS," in *,all,*|*,kubernetes,*) echo kubernetes-cli ;; esac
@@ -332,4 +334,47 @@ persona_home() { # a stub operator home; po-theme.sh only records its calls
   echo 'font-size = 20' >> "$HOME/.config/ghostty/config.ghostty"
   run "$R/bin/drift"
   [[ "$output" == *$'edited\t.config/ghostty/config.ghostty\tchezmoi re-add ~/.config/ghostty/config.ghostty'* ]] || false
+}
+
+workstation_repo() { # the app catalog and its manager, as in the real repo, without this machine's apps
+  local d keep="" t dirs
+  cp "$REAL_REPO/lib/workstation-apps.tsv" "$REAL_REPO/lib/workstation-apps.sh" "$R/lib/"
+  for t in chezmoi jq git; do ln -sf "$(command -v "$t")" "$TMP/stub/$t"; done
+  # No apt packages are installed here, whatever this machine has.
+  printf '#!/bin/sh\nexit 1\n' > "$TMP/stub/dpkg-query"; chmod +x "$TMP/stub/dpkg-query"
+  IFS=: read -ra dirs <<<"$PATH"
+  for d in "${dirs[@]}"; do
+    [ "$d" = "$TMP/stub" ] || { [ ! -e "$d/herdr" ] && [ ! -e "$d/claude" ] && [ ! -e "$d/codex" ]; } || continue
+    keep="$keep${keep:+:}$d"
+  done
+  export PATH="$keep"
+  export DOTFILES_CONTAINER_MARKER="$TMP/no-containerenv"
+}
+
+@test "an installed but unselected workstation app is app-unselected, not pkg-extra" {
+  workstation_repo
+  export STUB_EXTRA_FORMULA=herdr
+  run "$R/bin/drift"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *$'pkg-extra\therdr'* ]] || false
+  [[ "$output" == *$'app-unselected\therdr-cli\tworkstation-apps enable herdr-cli (or /codify)'* ]] || false
+}
+
+@test "a selected workstation app that isn't installed is app-missing; a retired one is app-retired" {
+  workstation_repo
+  printf '[data]\nworkstationApps = ["herdr-cli", "gone-app"]\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'app-missing\therdr-cli\tworkstation-apps install herdr-cli'* ]] || false
+  [[ "$output" == *$'app-retired\tgone-app\tworkstation-apps disable gone-app'* ]] || false
+  export STUB_EXTRA_FORMULA=herdr
+  run "$R/bin/drift"
+  [[ "$output" != *app-missing* ]] || false
+}
+
+@test "workstation apps add nothing to a clean drift" {
+  workstation_repo
+  run "$R/bin/drift"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }

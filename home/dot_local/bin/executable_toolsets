@@ -13,7 +13,14 @@
 set -uo pipefail
 
 config="${XDG_CONFIG_HOME:-$HOME/.config}/chezmoi/chezmoi.toml"
-repo="${TOOLSETS_REPO:-$(dirname "$(chezmoi source-path 2>/dev/null || echo .)")}"
+if [ -n "${TOOLSETS_REPO:-}" ]; then
+  repo="$TOOLSETS_REPO"
+else
+  # Never fall back to the current directory: its lib/ would run as ours.
+  src="$(chezmoi source-path 2>/dev/null)" || src=""
+  case "$src" in /*) repo="$(dirname "$src")" ;; *) echo "toolsets: chezmoi not found or has no source directory; set TOOLSETS_REPO to the dotfiles repo" >&2; exit 1 ;; esac
+fi
+case "$repo" in /*) ;; *) echo "toolsets: TOOLSETS_REPO must be an absolute path" >&2; exit 1 ;; esac
 table="$repo/lib/toolsets.txt"
 [ -f "$table" ] || { echo "toolsets: $table not found; is the dotfiles repo where chezmoi expects it?" >&2; exit 1; }
 

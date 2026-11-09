@@ -1,0 +1,23 @@
+# id|platform|method|package|vendor|label|source|note
+# One app per id; a row per platform: all, darwin, linux, or os-arch such as darwin-arm64 (wins over its os).
+# method: formula or cask (Homebrew); apt (a vendor's Ubuntu package: in the box on Bazzite, exported to
+#   the host menu); installer (a vendor's official Linux installer into ~/.local); manual (never automated).
+# vendor: for Homebrew rows, how to find a copy Homebrew doesn't manage: bin:<command>[:<installer dir>] or
+#   app:<bundle>; for apt rows, desktop:<command>:<desktop id>:<link scheme>; for installer rows, installer:<url>.
+# label: community for a package its vendor doesn't publish; it is shown wherever the app is listed.
+herdr-cli|all|formula|herdr|bin:herdr|-|https://formulae.brew.sh/formula/herdr|Herdr terminal workspace (CLI); config stays in ~/.config/herdr
+herdr-desktop|darwin|manual|-|-|-|https://herdr.dev/download/|The desktop app needs Apple silicon
+herdr-desktop|darwin-arm64|cask|herdr-app|app:Herdr.app|-|https://formulae.brew.sh/cask/herdr-app|Desktop app, separate from the CLI; its first launch sets up herdr-core
+herdr-desktop|linux|installer|herdr-app|installer:https://releases.herdr.dev/app/install.sh|-|https://herdr.dev/download/|Herdr's official Linux installer; Herdr's own updater keeps it current. On Bazzite the window runs on the host and its terminals open in the box
+claude-code|all|cask|claude-code|bin:claude:~/.local/share/claude|-|https://formulae.brew.sh/cask/claude-code|CLI; sign in after install
+codex|all|cask|codex|bin:codex|-|https://formulae.brew.sh/cask/codex|CLI; sign in after install
+claude-desktop|darwin|cask|claude|app:Claude.app|-|https://formulae.brew.sh/cask/claude|Desktop app; sign in after install
+claude-desktop|linux|apt|claude-desktop|desktop:claude-desktop:com.anthropic.Claude:claude|-|https://code.claude.com/docs/en/desktop-linux|Anthropic's apt repository (beta); in the box on Bazzite, exported to the host menu; sign in after install
+chatgpt-desktop|darwin|cask|chatgpt|app:ChatGPT.app|-|https://formulae.brew.sh/cask/chatgpt|One app for Chat and the Codex desktop experience; sign in after install
+chatgpt-desktop|linux-x86_64|apt|chatgpt|desktop:chatgpt:chatgpt:codex|-|https://learn.chatgpt.com/docs/linux/linux-app|OpenAI's Ubuntu package and apt repository (preview), with the Codex desktop experience; in the box on Bazzite, exported to the host menu
+chatgpt-desktop|linux|manual|-|-|-|https://learn.chatgpt.com/docs/linux/linux-app|Only the x86_64 package is automated here
+blender|darwin|cask|blender|app:Blender.app|-|https://formulae.brew.sh/cask/blender|Preferences, add-ons and projects are not copied
+blender|linux|manual|-|-|-|https://www.blender.org/download/|Deferred until the box has the GPU; then the official tarball
+comfyui|darwin|manual|-|-|-|https://docs.comfy.org/installation/desktop/macos|The desktop app needs Apple silicon
+comfyui|darwin-arm64|cask|comfy|app:Comfy Desktop.app|-|https://formulae.brew.sh/cask/comfy|Comfy Desktop; choose the models and output folders at first launch
+comfyui|linux|manual|-|-|-|https://docs.comfy.org/installation/desktop/linux|Deferred until the box has the GPU; then the vendor's deb

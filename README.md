@@ -38,6 +38,8 @@ distrobox assemble create --file ~/Development/dotfiles/lib/distrobox/ubuntu-dev
 distrobox enter ubuntu-dev
 ```
 
+On Bazzite the box is the Linux workstation and the host is the display. Tools and desktop apps install in the box, which gets the host's NVIDIA GPU (`nvidia=true`). With Ptyxis, its default profile opens the box's zsh, and a separate Host profile opens the host.
+
 Then, on the Linux host or inside the box (on a host, use its own package manager for the first line):
 
 ```sh
@@ -52,6 +54,10 @@ sudo chsh -s /usr/bin/zsh "$USER"
 `chezmoi init` asks a few questions once. On Linux: which terminal you use (Ptyxis by default) and where tools install (`host` by default, `distrobox` suggested on an image-based host and in a box on one; with `distrobox`, nothing installs outside a container). On both OSes: which ops tool sets to install, as checkboxes, none by default: `kubernetes` (kubectl, helm, argocd), `talos` (talosctl, omnictl), `terraform`, `ansible` and `containers` (the docker CLI). `toolsets` shows them and turns them on or off later (CUSTOMIZE.md, Optional tool sets). With Ptyxis, `chezmoi apply` sets its Catppuccin Mocha palette and leaves the font alone (from a distrobox, on the host through `distrobox-host-exec`); with Ghostty, see RUNBOOK section 10. The Brewfile's `if OS.mac?` / `if OS.linux?` blocks pick the per-OS packages. On Linux, zsh puts Homebrew ahead of the system dirs so its Node and git win over apt's; on an image-based host (`/run/ostree-booted`) Homebrew stays last. Node comes from fnm on both OSes.
 
 Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the global npm tools, your git name and email (dotfiles never sets them), the clipboard check, and, with a distrobox, moving the validation pipeline into the box. Each step says whether it applies to a Linux host, a distrobox, or both.
+
+## Workstation apps
+
+`chezmoi init` also asks which workstation apps to install, none by default: Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop. Every `chezmoi apply` installs the selected ones, so a rebuild is `chezmoi init --apply` plus that saved selection. `workstation-apps` lists, previews, enables and disables them. Homebrew installs the CLIs and the macOS apps. On Linux, the Claude and ChatGPT desktop apps install from their vendors' apt packages: on Bazzite inside the `ubuntu-dev` box, where `distrobox-export` puts them in the host's menu. Herdr desktop uses Herdr's official installer. Blender and ComfyUI wait until the box has the GPU. See [workstation apps](docs/workstation-apps.md) and RUNBOOK.md section 12.
 
 ## Day to day
 

@@ -26,3 +26,7 @@ Library
 # The Ptyxis palette only where Ptyxis is the terminal (Linux, terminal = ptyxis)
 .local/share/org.gnome.Ptyxis
 {{- end }}
+{{- if not (and (eq .chezmoi.os "linux") (eq (toString (get . "installTarget")) "distrobox")) }}
+# herdr-core's shell points into the ubuntu-dev box only on Bazzite (installTarget = distrobox)
+.config/herdr-core
+{{- end }}

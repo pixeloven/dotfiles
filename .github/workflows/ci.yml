@@ -15,9 +15,9 @@ jobs:
       # Templates render as Linux with Ptyxis in a distrobox, so the Linux-only Ptyxis script isn't empty.
       - name: shellcheck scripts and rendered chezmoi templates
         run: |
-          shellcheck lib/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh
+          shellcheck lib/*.sh lib/distrobox/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh home/dot_local/bin/executable_workstation-apps
           for t in home/.chezmoiscripts/*.tmpl; do
-            chezmoi --source "$PWD" execute-template --override-data '{"chezmoi":{"os":"linux"},"terminal":"ptyxis","container":true,"installTarget":"distrobox","toolsets":["kubernetes","terraform"]}' \
+            chezmoi --source "$PWD" execute-template --override-data '{"chezmoi":{"os":"linux"},"terminal":"ptyxis","container":true,"installTarget":"distrobox","toolsets":["kubernetes","terraform"],"workstationApps":["codex","herdr-cli"]}' \
               < "$t" > "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
             # opt-in scripts (e.g. operatorPersona) render empty without their data key
             [ -s "${RUNNER_TEMP}/$(basename "$t" .tmpl)" ] || continue

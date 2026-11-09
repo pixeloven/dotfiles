@@ -1,0 +1,18 @@
+{{- $apps := list -}}
+{{- $chosen := get . "workstationApps" -}}
+{{- if kindIs "slice" $chosen -}}
+{{-   range $chosen }}{{ if regexMatch "^[a-z0-9-]+$" (toString .) }}{{ $apps = append $apps (toString .) }}{{ end }}{{ end -}}
+{{- end -}}
+{{- if $apps -}}
+#!/bin/sh
+# Installs the workstation apps chosen in chezmoi init (workstationApps; workstation-apps enable
+# changes them) on every apply, after the Brewfile and before the agent plugins need Claude Code
+# and Codex. Apps already installed are left alone. Homebrew apps install where the Brewfile does
+# (in the box with installTarget = distrobox); apt apps install in the box and are exported to the host
+# menu; installer apps run the vendor's installer into ~/.local when missing. Manual apps,
+# copies Homebrew doesn't manage and IDs the catalog no longer has are reported and skipped, so
+# they never fail the apply; a failed install does.
+set -eu
+export DOTFILES_APPS_INSTALL_TARGET={{ if eq (toString (get . "installTarget")) "distrobox" }}distrobox{{ else }}host{{ end }}
+exec "{{ .chezmoi.workingTree }}/lib/workstation-apps.sh" apply {{ join " " $apps }}
+{{ end -}}

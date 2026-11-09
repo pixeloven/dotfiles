@@ -52,6 +52,7 @@ init_config() { # <os> [chezmoi flags] : render .chezmoi.toml.tmpl as `chezmoi i
 .local/bin/toolsets
 .local/bin/voice
 .local/bin/voice-cloud
+.local/bin/workstation-apps
 Library/Preferences/glow/glow.yml"
   [ "$(grep -v 'config file template has changed' <<<"$output")" = "$expected" ]
 }
@@ -73,6 +74,18 @@ Library/Preferences/glow/glow.yml"
   run render linux
   [ "$status" -eq 0 ]
   [[ "$output" == *$palette* ]] || false
+}
+
+@test "only Bazzite (Linux with installTarget distrobox) gets herdr-core's shell into the box" {
+  run render darwin
+  [[ "$output" != *.config/herdr-core* ]] || false
+  run render linux
+  [[ "$output" != *.config/herdr-core* ]] || false
+  printf 'sourceDir = "%s"\n\n[data]\nterminal = "ptyxis"\ninstallTarget = "distrobox"\ncontainer = true\n' "$REPO" > "$TMP/chezmoi.toml"
+  run render linux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *.config/herdr-core/config.toml* ]] || false
+  grep -qx 'shell = \["distrobox", "enter", "ubuntu-dev"\]' "$TMP/linux/.config/herdr-core/config.toml"
 }
 
 @test "the Ptyxis settings script renders nothing without Ptyxis" {
@@ -188,4 +201,22 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
   [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "ptyxis"'* ]] || false
   [[ "$output" == *$'\ncontainer = '* ]] || false
+}
+
+@test "workstation apps default to none and preserve per-machine choices" {
+  run init_config darwin
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'workstationApps = []'* ]] || false
+  run re_init linux 'workstationApps = ["herdr-cli", "codex", "blender"]'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'workstationApps = ["herdr-cli", "codex", "blender"]'* ]] || false
+}
+
+@test "workstation init choices come from the app catalog" {
+  local ids want
+  ids="$(awk -F '|' '!/^#/ && NF && !seen[$1]++ {print $1}' "$REPO/lib/workstation-apps.tsv")"
+  want="$(sed 's/.*/"&"/' <<<"$ids" | paste -sd , - | sed 's/,/, /g')"
+  run init_config linux --promptMultichoice "Workstation apps to install (lib/workstation-apps.tsv; none by default)=$(paste -sd / - <<<"$ids")"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"workstationApps = [$want]"* ]] || false
 }

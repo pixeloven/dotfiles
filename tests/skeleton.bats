@@ -125,7 +125,7 @@ brew_sets() { # <data-json> : the HOMEBREW_DOTFILES_TOOLSETS the brew script pas
   [ -s "$BATS_TEST_TMPDIR/calls" ]
 }
 
-@test "the distrobox file builds ubuntu-dev on the shared home, without a GPU" {
+@test "the distrobox file builds ubuntu-dev on the shared home, with the NVIDIA GPU" {
   run python3 -I -c '
 import configparser, sys
 ini = configparser.ConfigParser(strict=True, interpolation=None)
@@ -135,5 +135,5 @@ box = ini["ubuntu-dev"]
 print(ini.sections(), box["nvidia"], "home" in box)
 ' "$REPO/lib/distrobox/ubuntu-dev.ini"
   [ "$status" -eq 0 ]
-  [ "$output" = "['ubuntu-dev'] false False" ]
+  [ "$output" = "['ubuntu-dev'] true False" ]
 }
