@@ -115,7 +115,6 @@ on_host() { # <cmd>... : run on the host; from the box through distrobox-host-ex
 refresh_icon_cache() { # Linux only: GNOME misses new hicolor icons until the host's cache is rebuilt
   local dir="$HOME/.local/share/icons/hicolor"
   [ "$os" = linux ] && [ -f "$dir/icon-theme.cache" ] || return 0
-  on_host sh -c 'command -v gtk-update-icon-cache' >/dev/null 2>&1 || return 0
   on_host gtk-update-icon-cache -f -t "$dir" >/dev/null 2>&1 || true
 }
 export_app() { # in the box only: launcher in the host menu, a link handler the app's own rewrite matches

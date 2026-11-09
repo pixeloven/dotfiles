@@ -651,7 +651,7 @@ icon_cache() { # a stub gtk-update-icon-cache and an existing hicolor cache unde
   ! grep -q '^host-exec gtk' "$HOME/calls" || false
 }
 
-@test "a missing icon tool, hicolor dir or cache is a silent no-op" {
+@test "a missing hicolor dir or cache is a silent no-op" {
   run "$MANAGER" install herdr-desktop
   [ "$status" -eq 0 ]
   ! grep -q 'gtk-update-icon-cache' "$HOME/calls" || false
@@ -659,11 +659,32 @@ icon_cache() { # a stub gtk-update-icon-cache and an existing hicolor cache unde
   run "$MANAGER" install herdr-desktop
   [ "$status" -eq 0 ]
   ! grep -q 'gtk-update-icon-cache' "$HOME/calls" || false
-  rm -rf "$HOME/.local/bin/herdr-app"; icon_cache; rm "$HOME/bin/gtk-update-icon-cache"
-  run "$MANAGER" install herdr-desktop
+}
+
+without_icon_tool() { # PATH keeps the system tools but no gtk-update-icon-cache, stub or real
+  icon_cache; rm "$HOME/bin/gtk-update-icon-cache"
+  mkdir -p "$HOME/sys"
+  [ /bin -ef /usr/bin ] || ln -sf /bin/* "$HOME/sys/"
+  ln -sf /usr/bin/* "$HOME/sys/"
+  rm -f "$HOME/sys/gtk-update-icon-cache"
+  NO_ICON_TOOL_PATH="$HOME/bin:$HOME/brew/bin:$HOME/shell:$HOME/sys"
+  ! PATH="$NO_ICON_TOOL_PATH" command -v gtk-update-icon-cache || false
+}
+
+@test "Linux host without gtk-update-icon-cache: the Herdr install succeeds silently" {
+  without_icon_tool
+  run env PATH="$NO_ICON_TOOL_PATH" "$MANAGER" install herdr-desktop
   [ "$status" -eq 0 ]
   [[ "$output" != *gtk-update-icon-cache* ]] || false
-  ! grep -q 'gtk-update-icon-cache' "$HOME/calls" || false
+  [ -x "$HOME/.local/bin/herdr-app" ]
+}
+
+@test "in the box, a host without gtk-update-icon-cache: the export succeeds silently" {
+  in_box; without_icon_tool
+  run env PATH="$NO_ICON_TOOL_PATH" "$MANAGER" install claude-desktop
+  [ "$status" -eq 0 ]
+  [[ "$output" != *gtk-update-icon-cache* ]] || false
+  grep -q '^distrobox-export --app claude-desktop' "$HOME/calls"
 }
 
 @test "a failing icon cache refresh never fails the install" {
