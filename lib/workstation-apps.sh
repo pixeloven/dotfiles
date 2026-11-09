@@ -112,6 +112,11 @@ apt_recipe() { # <package> : the vendor's documented Ubuntu install, plus libsec
 on_host() { # <cmd>... : run on the host; from the box through distrobox-host-exec, from $HOME
   if $in_box; then (cd "$HOME" && distrobox-host-exec "$@"); else "$@"; fi
 }
+refresh_icon_cache() { # Linux only: GNOME misses new hicolor icons until the host's cache is rebuilt
+  local dir="$HOME/.local/share/icons/hicolor"
+  [ "$os" = linux ] && [ -f "$dir/icon-theme.cache" ] || return 0
+  on_host gtk-update-icon-cache -f -t "$dir" >/dev/null 2>&1 || true
+}
 export_app() { # in the box only: launcher in the host menu, a link handler the app's own rewrite matches
   local cmdname desktop scheme apps exported alias default
   $in_box || return 0
@@ -144,6 +149,7 @@ export_app() { # in the box only: launcher in the host menu, a link handler the 
     [ "$(on_host xdg-mime query default "x-scheme-handler/${s%%=*}" 2>/dev/null || true)" = "${s#*=}" ] ||
       on_host xdg-mime default "${s#*=}" "x-scheme-handler/${s%%=*}" || true
   done
+  refresh_icon_cache
 }
 
 # installer: a vendor's official Linux installer into ~/.local (shared with the box), when missing.
@@ -274,6 +280,7 @@ install_one() { # <id> : 0 installed or present, 3 left for you, 1 failed
       [ "$cmd" != preview ] || { say "$id" "not installed (runs ${vendor#installer:})"; return 0; }
       echo "workstation-apps: $id: running the vendor's installer ${vendor#installer:}"
       run_installer "${vendor#installer:}" || { say "$id" "failed: ${vendor#installer:}" >&2; return 1; }
+      refresh_icon_cache
       installer_installed "$package" || { say "$id" "failed: the installer left no $package" >&2; return 1; }
       [ "$cmd" = apply ] || say "$id" "installed (vendor installer; it updates itself)" ;;
     "") say "$id" "no route for $os/$arch"; return 3 ;;
