@@ -4,6 +4,9 @@
 
 SCRIPT="$BATS_TEST_DIRNAME/../lib/distrobox/nvidia-manifests.sh"
 
+# Permission bits of a file, with GNU (Linux) or BSD (macOS) stat.
+mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+
 setup() {
   TMP="$(mktemp -d)"
   export DOTFILES_GPU_HOST_ROOT="$TMP/host" DOTFILES_GPU_BOX_ROOT="$TMP/box" DOTFILES_GPU_CONTAINER_MARKER="$TMP/containerenv"
@@ -70,4 +73,26 @@ teardown() { rm -rf "$TMP"; }
   [ -z "$(render '{"chezmoi":{"os":"darwin"},"installTarget":"distrobox"}')" ]
   [ -z "$(render '{"chezmoi":{"os":"linux"},"installTarget":"host"}')" ]
   [[ "$(render '{"chezmoi":{"os":"linux"},"installTarget":"distrobox"}')" == *'/lib/distrobox/nvidia-manifests.sh"'* ]] || false
+}
+
+@test "every manifest it writes is world-readable (0644), even under umask 077 with a 0600 temp source" {
+  chmod 0600 "$TMP/host/$E/"*.json
+  run sh -c 'umask 077; exec "$1"' sh "$SCRIPT"
+  [ "$status" -eq 0 ]
+  for f in "$TMP"/box/etc/egl/egl_external_platform.d/*.json "$TMP/box/etc/vulkan/icd.d/nvidia_box.json"; do
+    [ "$(mode "$f")" = 644 ]
+  done
+  for d in egl egl/egl_external_platform.d vulkan vulkan/icd.d; do
+    [ "$(mode "$TMP/box/etc/$d")" = 755 ]
+  done
+}
+
+@test "an existing manifest with matching content but mode 0600 is fixed to 0644" {
+  "$SCRIPT"
+  chmod 0600 "$TMP/box/etc/vulkan/icd.d/nvidia_box.json"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(mode "$TMP/box/etc/vulkan/icd.d/nvidia_box.json")" = 644 ]
+  run "$SCRIPT"
+  [ -z "$output" ]
 }
