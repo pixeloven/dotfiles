@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Repair MCP paths left by moving ChatGPT from the Linuxbrew cask to the vendor deb.
+set -euo pipefail
+config="${1:-$HOME/.codex/config.toml}"
+resources=/usr/lib/chatgpt/resources
+[ -f "$config" ] || exit 0
+for executable in "$resources/cua_node/bin/node_repl" "$resources/cua_node/bin/node" "$resources/codex"; do
+  [ -x "$executable" ] || { echo "Missing executable: $executable" >&2; exit 1; }
+done
+service="$resources/plugins/openai-bundled/plugins/browser/scripts/browser-service.mjs"
+[ -f "$service" ] || { echo "Missing browser service: $service" >&2; exit 1; }
+tmp="$(mktemp "$config.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+awk '
+  /^[[:space:]]*\[/ {
+    node = ($0 ~ /^\[mcp_servers\.node_repl(\.env)?\][[:space:]]*$/)
+  }
+  node && /^[[:space:]]*(command|NODE_REPL_NODE_MODULE_DIRS|NODE_REPL_NODE_PATH|NODE_REPL_TRUSTED_CODE_PATHS|CODEX_CLI_PATH)[[:space:]]*=/ {
+    gsub(/\/var\/home\/linuxbrew\/\.linuxbrew\/Caskroom\/chatgpt-linux\/[^/]+\/usr\/lib\/chatgpt/, "/usr/lib/chatgpt")
+  }
+  node && /^[[:space:]]*NODE_REPL_TRUSTED_SERVICES[[:space:]]*=/ {
+    gsub(/\/[^"\047]*\/\.codex\/plugins\/cache\/openai-bundled\/browser\/[^/]+\/scripts\/browser-service\.mjs/, "/usr/lib/chatgpt/resources/plugins/openai-bundled/plugins/browser/scripts/browser-service.mjs")
+  }
+  { print }
+' "$config" > "$tmp"
+cmp -s "$config" "$tmp" && { echo 'No legacy node_repl paths found.'; exit 0; }
+backup="$config.backup-$(date +%Y%m%d-%H%M%S)-$$"
+cp -p "$config" "$backup"
+cat "$tmp" > "$config"
+echo "Repaired node_repl paths. Backup: $backup"
+echo 'Restart Codex to reload the server.'
