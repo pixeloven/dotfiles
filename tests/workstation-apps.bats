@@ -1,8 +1,9 @@
 #!/usr/bin/env bats
 # workstation-apps: the catalog, preview, install, the chezmoi apply step, drift lines and vendor
-# copies. Stub brew, apt-get, dpkg-query, sudo, curl, gpg, distrobox-export, distrobox-host-exec,
-# xdg-mime, update-desktop-database, npm and chezmoi log their calls into a throwaway HOME; PATH
-# leaves out the real ~/.local/bin and Homebrew, so nothing real is found, installed or exported.
+# copies. Stub brew, apt-get, dpkg-query, sudo, curl, gpg, sha256sum, sha512sum, distrobox-export,
+# distrobox-host-exec, xdg-mime, update-desktop-database, npm and chezmoi log their calls into a
+# throwaway HOME; PATH leaves out the real ~/.local/bin and Homebrew, so nothing real is found,
+# downloaded, installed or exported. The stub curl writes a small stand-in for Blender's tarball.
 REPO="$BATS_TEST_DIRNAME/.."
 MANAGER="$REPO/lib/workstation-apps.sh"
 CLI="$REPO/home/dot_local/bin/executable_workstation-apps"
@@ -14,7 +15,7 @@ setup() {
   export DOTFILES_APPS_CONTAINER_MARKER="$HOME/not-a-container"
   export DOTFILES_APPS_APPLICATIONS="$HOME/Applications"
   export DOTFILES_APPS_ROOT="$HOME/root"
-  unset XDG_CONFIG_HOME DOTFILES_APPS_INSTALL_TARGET DOTFILES_APPS_TABLE FAIL_INSTALL BAD_KEY FAIL_CURL CONTAINER_ID
+  unset XDG_CONFIG_HOME DOTFILES_APPS_INSTALL_TARGET DOTFILES_APPS_TABLE FAIL_INSTALL BAD_KEY BAD_SUM FAIL_CURL CONTAINER_ID
   mkdir -p "$HOME/bin" "$HOME/brew/bin" "$HOME/.config/chezmoi" "$HOME/.local/share/applications" \
     "$HOME/root/etc/apt/sources.list.d" "$HOME/root/usr/share/keyrings"
   CONFIG="$HOME/.config/chezmoi/chezmoi.toml"
@@ -64,9 +65,28 @@ for a in "$@"; do
 done
 case "$url" in
   */install.sh) printf 'mkdir -p "$HOME/.local/bin"\nprintf "#!/bin/sh\\n" > "$HOME/.local/bin/herdr-app"\nchmod +x "$HOME/.local/bin/herdr-app"\n' > "$out" ;;
+  *.tar.xz) # a small tarball laid out like Blender's: <top>/blender, blender.desktop and blender.svg
+    top="${url##*/}"; top="${top%.tar.xz}"; d="$(mktemp -d)"; mkdir "$d/$top"
+    printf '#!/bin/sh\n' > "$d/$top/blender"; chmod +x "$d/$top/blender"
+    printf '[Desktop Entry]\nName=Blender\nExec=blender %%f\nIcon=blender\nTerminal=false\nType=Application\nMimeType=application/x-blender;\nStartupWMClass=Blender\n' > "$d/$top/blender.desktop"
+    echo '<svg/>' > "$d/$top/blender.svg"
+    tar -cJf "$out" -C "$d" "$top"; rm -rf "$d" ;;
   *) echo placeholder > "$out" ;;
 esac
 STUB
+  # sha256sum and sha512sum: a download prints its pinned sum (PIN_SHA256 for a tarball, PIN_SHA512
+  # for a .deb), unless BAD_SUM names its extension; anything else gets a sum that matches nothing.
+  for bits in 256 512; do
+    cat > "$HOME/bin/sha${bits}sum" <<STUB
+#!/bin/sh
+case "\$1" in *.tar.xz) s="\$PIN_SHA256" ;; *.deb) s="\$PIN_SHA512" ;; *) s=none ;; esac
+[ "\$s" = "\$PIN_SHA${bits}" ] || s=wrong-algorithm
+[ "\${BAD_SUM:-}" != "\${1##*.}" ] || s=0000
+printf '%s  %s\n' "\$s" "\$1"
+STUB
+  done
+  export PIN_SHA256="$(awk -F '|' '$1 == "blender" && $3 == "tarball" { split($5, v, ":"); print v[2] }' "$REPO/lib/workstation-apps.tsv")"
+  export PIN_SHA512="$(grep -oE '[0-9a-f]{128}' "$MANAGER" | head -1)"
   cat > "$HOME/bin/gpg" <<'STUB'
 #!/bin/sh
 if [ -n "${BAD_KEY:-}" ]; then echo 'fpr:::::::::0000000000000000000000000000000000000000:'; else echo 'fpr:::::::::31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE:'; fi
@@ -75,7 +95,12 @@ STUB
   cat > "$HOME/bin/distrobox-export" <<'STUB'
 #!/bin/sh
 printf 'distrobox-export %s\n' "$*" >> "$HOME/calls"
-case "$2" in chatgpt) id=chatgpt ;; claude-desktop) id=com.anthropic.Claude ;; painter) id=org.example.Painter ;; *) exit 1 ;; esac
+case "$2" in
+  chatgpt) id=chatgpt ;; claude-desktop) id=com.anthropic.Claude ;; painter) id=org.example.Painter ;;
+  comfyui-desktop-2) id=comfyui-desktop-2 ;;
+  /*.desktop) [ -f "$2" ] || exit 1; id="${2##*/}"; id="${id%.desktop}" ;;
+  *) exit 1 ;;
+esac
 printf '[Desktop Entry]\nName=%s\nExec=/usr/bin/distrobox-enter -n ubuntu-dev -- %s %%U\n' "$2" "$2" > "$HOME/.local/share/applications/ubuntu-dev-$id.desktop"
 STUB
   # xdg-mime: defaults live in $HOME/mime/<scheme>. Refreshing the index lets an exported ChatGPT
@@ -130,6 +155,10 @@ TSV
   [ "$status" -eq 0 ]
   [[ "$output" == *"codex            on   Homebrew cask codex"* ]] || false
   [[ "$output" == *"herdr-cli        off  Homebrew formula herdr"* ]] || false
+  [[ "$output" == *"blender          off  official tarball blender (in the box on Bazzite, exported to the host menu)"* ]] || false
+  [[ "$output" == *"comfyui          off  apt comfyui-desktop-2 (in the box on Bazzite, exported to the host menu)"* ]] || false
+  export DOTFILES_APPS_ARCH=arm64
+  run "$CLI"
   [[ "$output" == *"blender          off  manual"* ]] || false
 }
 
@@ -138,8 +167,14 @@ TSV
   [ "$status" -eq 0 ]
   [[ "$output" == *'cask codex'* ]] || false
   [[ "$output" == *'formula herdr'* ]] || false
+  [[ "$output" == *'not installed (official tarball https://mirror.blender.org/release/'* ]] || false
+  [[ "$output" == *'not installed (apt)'* ]] || false
+  export DOTFILES_APPS_ARCH=arm64
+  run "$CLI" preview codex blender comfyui
+  [ "$status" -eq 0 ]
   [[ "$output" == *'some apps are left for you'* ]] || false
   [ "$(installs)" -eq 0 ]
+  [ ! -e "$HOME/.local/opt" ]
 }
 
 @test "install uses explicit brew types and is idempotent" {
@@ -154,9 +189,11 @@ TSV
 }
 
 @test "manual entries return incomplete without vendor installs" {
-  run "$MANAGER" install blender comfyui
+  export DOTFILES_APPS_ARCH=arm64
+  run "$MANAGER" install blender comfyui chatgpt-desktop
   [ "$status" -eq 3 ]
-  [[ "$output" == *'Deferred until the box has the GPU'* ]] || false
+  [[ "$output" == *'Only the x86_64 tarball is automated here'* ]] || false
+  [[ "$output" == *'Only the x86_64 package is automated here'* ]] || false
   [[ "$output" == *'manual: not automated here'* ]] || false
   [ "$(installs)" -eq 0 ]
 }
@@ -288,6 +325,147 @@ TSV
   grep -qx 'host-exec xdg-mime default firefox.desktop x-scheme-handler/https' "$HOME/calls"
   [ "$(cat "$HOME/mime/codex")" = chatgpt.desktop ]
   grep -qx 'NoDisplay=true' "$HOME/.local/share/applications/chatgpt.desktop"
+}
+
+BLENDER_URL=https://mirror.blender.org/release/Blender5.3/blender-5.3.0-linux-x64.tar.xz
+COMFY_URL=https://download.todesktop.com/241130tqe9q3y/comfyui-desktop-2-1.1.9-build-2611063zxyb71c9-amd64.deb
+
+@test "the Blender and Comfy downloads are pinned to their vendors' published checksums" {
+  [ "$PIN_SHA256" = dacb8264197a3f7fda6001285a5a506fc97ee943881261c2c3bd63c882f22e05 ]
+  [ "$PIN_SHA512" = 60fdc25374000d0c26b94257d8907fb5a1aa318df8bbad0c867b6ae0831859eef611d594446d7fcb8db4adac57850c72d4a5bf65159a0de2431e3c35092bb68c ]
+  grep -qF "|tarball:$PIN_SHA256:$BLENDER_URL|" "$REPO/lib/workstation-apps.tsv"
+  grep -qF "$COMFY_URL" "$MANAGER"
+}
+
+@test "in the box: Blender unpacks the pinned official tarball, then exports its launcher" {
+  in_box
+  run "$MANAGER" install blender
+  [ "$status" -eq 0 ]
+  grep -q "^curl -fsSL -o .*/blender-5\.3\.0-linux-x64\.tar\.xz $BLENDER_URL\$" "$HOME/calls"
+  O="$HOME/.local/opt/blender" A="$HOME/.local/share/applications"
+  [ -x "$O/blender-5.3.0-linux-x64/blender" ]
+  [ "$(readlink "$O/current")" = blender-5.3.0-linux-x64 ]
+  # The launcher calls the stable current link, so a pin bump needs no new export.
+  grep -qxF "Exec=\"$O/current/blender\" %f" "$O/blender.desktop"
+  grep -qxF "Icon=$O/current/blender.svg" "$O/blender.desktop"
+  grep -qx 'StartupWMClass=Blender' "$O/blender.desktop"
+  grep -qxF "distrobox-export --app $O/blender.desktop" "$HOME/calls"
+  [ -f "$A/ubuntu-dev-blender.desktop" ]
+  # No link scheme, so no hidden alias and no xdg-mime default; the user's menu has no host copy.
+  [ ! -e "$A/blender.desktop" ]
+  ! grep -q '^host-exec xdg-mime default' "$HOME/calls" || false
+  grep -qx "host-exec update-desktop-database $A" "$HOME/calls"
+  ! grep -q -- '--delete' "$HOME/calls" || false
+  ! ls -A "$O" | grep -q '^\.unpack' || false
+  run "$MANAGER" install blender
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'installed (official tarball)'* ]] || false
+  [ "$(grep -c '^curl ' "$HOME/calls")" -eq 1 ]
+  [ "$(grep -c '^distrobox-export' "$HOME/calls")" -eq 1 ]
+}
+
+@test "in the box: Comfy Desktop installs from Comfy's pinned package, then exports" {
+  in_box
+  run "$MANAGER" install comfyui
+  [ "$status" -eq 0 ]
+  grep -q "^curl -fsSL -o .*/comfyui-desktop-2_amd64\.deb $COMFY_URL\$" "$HOME/calls"
+  grep -q '^sudo apt-get install -y .*/comfyui-desktop-2_amd64\.deb$' "$HOME/calls"
+  grep -qx 'distrobox-export --app comfyui-desktop-2' "$HOME/calls"
+  A="$HOME/.local/share/applications"
+  [ -f "$A/ubuntu-dev-comfyui-desktop-2.desktop" ]
+  [ ! -e "$A/comfyui-desktop-2.desktop" ]
+  ! grep -q '^host-exec xdg-mime default' "$HOME/calls" || false
+  ! grep -q -- '--delete' "$HOME/calls" || false
+  # Nothing about models: no model paths, no extra_model_paths.yaml, no model downloads.
+  ! grep -rqi 'model' "$HOME/calls" || false
+  [ ! -e "$HOME/ComfyUI-Shared" ]
+  run "$MANAGER" install comfyui
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'installed (apt)'* ]] || false
+  [ "$(grep -c '^curl ' "$HOME/calls")" -eq 1 ]
+  [ "$(grep -c '^distrobox-export' "$HOME/calls")" -eq 1 ]
+}
+
+@test "a checksum mismatch stops that app, and the other apps still install" {
+  in_box
+  export BAD_SUM=deb
+  run "$MANAGER" install comfyui blender
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'comfyui-desktop-2_amd64.deb failed its sha512 check'* ]] || false
+  [[ "$output" == *'failed: apt install comfyui-desktop-2'* ]] || false
+  ! grep -q 'apt-get install -y .*comfyui-desktop-2' "$HOME/calls" || false
+  [ ! -e "$HOME/.local/share/applications/ubuntu-dev-comfyui-desktop-2.desktop" ]
+  [ -f "$HOME/.local/share/applications/ubuntu-dev-blender.desktop" ]
+  export BAD_SUM=xz
+  : > "$HOME/calls"
+  rm -rf "$HOME/.local/opt/blender" "$HOME/.local/share/applications/ubuntu-dev-blender.desktop"
+  run "$MANAGER" install blender claude-desktop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'blender-5.3.0-linux-x64.tar.xz failed its sha256 check'* ]] || false
+  [ ! -e "$HOME/.local/opt/blender/blender-5.3.0-linux-x64" ]
+  [ ! -e "$HOME/.local/opt/blender/current" ]
+  ! grep -q '^distrobox-export --app /' "$HOME/calls" || false
+  grep -qx 'sudo apt-get install -y claude-desktop libsecret-1-0' "$HOME/calls"
+}
+
+@test "Bazzite host: Blender and Comfy wait for the box, like the other desktop apps" {
+  export DOTFILES_APPS_INSTALL_TARGET=distrobox
+  run "$MANAGER" install blender comfyui
+  [ "$status" -eq 3 ]
+  [[ "$output" == *'tarball apps install in the box'* ]] || false
+  [[ "$output" == *'apt apps install in the box'* ]] || false
+  [ ! -e "$HOME/calls" ]
+  [ ! -e "$HOME/.local/opt" ]
+  run "$MANAGER" apply blender comfyui
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'blender: skipped'* ]] || false
+}
+
+@test "plain Linux host: Blender's launcher goes in the user's menu, and Comfy installs natively" {
+  A="$HOME/.local/share/applications" O="$HOME/.local/opt/blender"
+  run "$MANAGER" install blender comfyui
+  [ "$status" -eq 0 ]
+  grep -qxF "Exec=\"$O/current/blender\" %f" "$A/blender.desktop"
+  grep -q '^sudo apt-get install -y .*/comfyui-desktop-2_amd64\.deb$' "$HOME/calls"
+  ! grep -q -e '^distrobox-export' -e '^host-exec' -e '^xdg-mime' "$HOME/calls" || false
+  # A blender.desktop from another install is left alone.
+  printf '[Desktop Entry]\nName=distro Blender\n' > "$A/blender.desktop"
+  cp "$A/blender.desktop" "$HOME/other-launcher"
+  run "$MANAGER" install blender
+  [ "$status" -eq 0 ]
+  cmp "$HOME/other-launcher" "$A/blender.desktop"
+  [[ "$output" == *'blender.desktop belongs to another install'* ]] || false
+}
+
+@test "macOS keeps Blender and Comfy on Homebrew; Linux arm64 leaves them manual" {
+  export DOTFILES_APPS_OS=darwin DOTFILES_APPS_ARCH=arm64
+  run "$MANAGER" routes
+  [[ "$output" == *$'blender\tcask\tblender\t-'* ]] || false
+  [[ "$output" == *$'comfyui\tcask\tcomfy\t-'* ]] || false
+  export DOTFILES_APPS_ARCH=x86_64
+  run "$MANAGER" routes
+  [[ "$output" == *$'blender\tcask\tblender\t-'* ]] || false
+  [[ "$output" == *$'comfyui\tmanual\t-\t-'* ]] || false
+  export DOTFILES_APPS_OS=linux DOTFILES_APPS_ARCH=arm64
+  run "$MANAGER" routes
+  [[ "$output" == *$'blender\tmanual\t-\t-'* ]] || false
+  [[ "$output" == *$'comfyui\tmanual\t-\t-'* ]] || false
+}
+
+@test "drift checks the Blender tarball in the box and leaves it alone on the Bazzite host" {
+  mkdir -p "$HOME/.local/opt/blender/blender-5.3.0-linux-x64"
+  printf '#!/bin/sh\n' > "$HOME/.local/opt/blender/blender-5.3.0-linux-x64/blender"
+  chmod +x "$HOME/.local/opt/blender/blender-5.3.0-linux-x64/blender"
+  export DOTFILES_APPS_INSTALL_TARGET=distrobox
+  run "$MANAGER" drift
+  [ "$status" -eq 0 ]
+  [[ "$output" != *blender* ]] || false
+  touch "$DOTFILES_APPS_CONTAINER_MARKER"
+  run "$MANAGER" drift
+  [[ "$output" == *$'app-unselected\tblender\tworkstation-apps enable blender (or /codify)'* ]] || false
+  rm -rf "$HOME/.local/opt/blender"
+  run "$MANAGER" drift blender
+  [[ "$output" == *$'app-missing\tblender\tworkstation-apps install blender'* ]] || false
 }
 
 @test "plain Ubuntu host: apt apps install natively, with no export or host crossing" {
@@ -457,6 +635,7 @@ TSV
 }
 
 @test "apply never fails on manual, host-skipped or retired apps, and is quiet when installed" {
+  export DOTFILES_APPS_ARCH=arm64
   run "$MANAGER" apply codex blender future-app
   [ "$status" -eq 0 ]
   [[ "$output" == *'workstation-apps: future-app is no longer in the catalog; skipped. Remove it from the selection with: workstation-apps disable future-app'* ]] || false

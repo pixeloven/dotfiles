@@ -59,6 +59,7 @@ list() {
       formula|cask) route="Homebrew $method $package" ;;
       apt) route="apt $package (in the box on Bazzite, exported to the host menu)" ;;
       installer) route="vendor installer ($package)" ;;
+      tarball) route="official tarball $package (in the box on Bazzite, exported to the host menu)" ;;
       manual) route="manual" ;;
       *) route="not available here" ;;
     esac

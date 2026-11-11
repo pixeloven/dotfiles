@@ -1,9 +1,12 @@
 # id|platform|method|package|vendor|label|source|note
 # One app per id; a row per platform: all, darwin, linux, or os-arch such as darwin-arm64 (wins over its os).
 # method: formula or cask (Homebrew); apt (a vendor's Ubuntu package: in the box on Bazzite, exported to
-#   the host menu); installer (a vendor's official Linux installer into ~/.local); manual (never automated).
+#   the host menu); installer (a vendor's official Linux installer into ~/.local); tarball (a vendor's
+#   official Linux tarball, unpacked into ~/.local/opt/<package>: in the box on Bazzite, its launcher
+#   exported to the host menu); manual (never automated).
 # vendor: for Homebrew rows, how to find a copy Homebrew doesn't manage: bin:<command>[:<installer dir>] or
-#   app:<bundle>; for apt rows, desktop:<command>:<desktop id>:<link scheme>; for installer rows, installer:<url>.
+#   app:<bundle>; for apt rows, desktop:<command>:<desktop id>:<link scheme> (the scheme may be empty); for
+#   installer rows, installer:<url>; for tarball rows, tarball:<pinned sha256>:<url>.
 # label: community for a package its vendor doesn't publish; it is shown wherever the app is listed.
 herdr-cli|all|formula|herdr|bin:herdr|-|https://formulae.brew.sh/formula/herdr|Herdr terminal workspace (CLI); config stays in ~/.config/herdr
 herdr-desktop|darwin|manual|-|-|-|https://herdr.dev/download/|The desktop app needs Apple silicon
@@ -17,7 +20,9 @@ chatgpt-desktop|darwin|cask|chatgpt|app:ChatGPT.app|-|https://formulae.brew.sh/c
 chatgpt-desktop|linux-x86_64|apt|chatgpt|desktop:chatgpt:chatgpt:codex|-|https://learn.chatgpt.com/docs/linux/linux-app|OpenAI's Ubuntu package and apt repository (preview), with the Codex desktop experience; in the box on Bazzite, exported to the host menu
 chatgpt-desktop|linux|manual|-|-|-|https://learn.chatgpt.com/docs/linux/linux-app|Only the x86_64 package is automated here
 blender|darwin|cask|blender|app:Blender.app|-|https://formulae.brew.sh/cask/blender|Preferences, add-ons and projects are not copied
-blender|linux|manual|-|-|-|https://www.blender.org/download/|Deferred until the box has the GPU; then the official tarball
+blender|linux-x86_64|tarball|blender|tarball:dacb8264197a3f7fda6001285a5a506fc97ee943881261c2c3bd63c882f22e05:https://mirror.blender.org/release/Blender5.3/blender-5.3.0-linux-x64.tar.xz|-|https://www.blender.org/download/|Blender's official tarball, pinned to 5.3.0 and its published sha256; in the box on Bazzite, exported to the host menu. Preferences, add-ons and projects are not copied
+blender|linux|manual|-|-|-|https://www.blender.org/download/|Only the x86_64 tarball is automated here
 comfyui|darwin|manual|-|-|-|https://docs.comfy.org/installation/desktop/macos|The desktop app needs Apple silicon
 comfyui|darwin-arm64|cask|comfy|app:Comfy Desktop.app|-|https://formulae.brew.sh/cask/comfy|Comfy Desktop; choose the models and output folders at first launch
-comfyui|linux|manual|-|-|-|https://docs.comfy.org/installation/desktop/linux|Deferred until the box has the GPU; then the vendor's deb
+comfyui|linux-x86_64|apt|comfyui-desktop-2|desktop:comfyui-desktop-2:comfyui-desktop-2:|-|https://docs.comfy.org/installation/desktop/linux|Comfy Desktop's official Ubuntu package, pinned to 1.1.9 and its published sha512; it adds Comfy's apt source for updates. In the box on Bazzite, exported to the host menu. No models are set up
+comfyui|linux|manual|-|-|-|https://docs.comfy.org/installation/desktop/linux|Only the x86_64 package is automated here
