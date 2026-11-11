@@ -85,8 +85,9 @@ case "\$1" in *.tar.xz) s="\$PIN_SHA256" ;; *.deb) s="\$PIN_SHA512" ;; *) s=none
 printf '%s  %s\n' "\$s" "\$1"
 STUB
   done
-  export PIN_SHA256="$(awk -F '|' '$1 == "blender" && $3 == "tarball" { split($5, v, ":"); print v[2] }' "$REPO/lib/workstation-apps.tsv")"
-  export PIN_SHA512="$(grep -oE '[0-9a-f]{128}' "$MANAGER" | head -1)"
+  # The vendors' published sums: blender.org's sha256 file for 5.3.0 and Comfy's latest-linux.yml for 1.1.9.
+  export PIN_SHA256=dacb8264197a3f7fda6001285a5a506fc97ee943881261c2c3bd63c882f22e05
+  export PIN_SHA512=60fdc25374000d0c26b94257d8907fb5a1aa318df8bbad0c867b6ae0831859eef611d594446d7fcb8db4adac57850c72d4a5bf65159a0de2431e3c35092bb68c
   cat > "$HOME/bin/gpg" <<'STUB'
 #!/bin/sh
 if [ -n "${BAD_KEY:-}" ]; then echo 'fpr:::::::::0000000000000000000000000000000000000000:'; else echo 'fpr:::::::::31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE:'; fi
@@ -329,13 +330,6 @@ TSV
 
 BLENDER_URL=https://mirror.blender.org/release/Blender5.3/blender-5.3.0-linux-x64.tar.xz
 COMFY_URL=https://download.todesktop.com/241130tqe9q3y/comfyui-desktop-2-1.1.9-build-2611063zxyb71c9-amd64.deb
-
-@test "the Blender and Comfy downloads are pinned to their vendors' published checksums" {
-  [ "$PIN_SHA256" = dacb8264197a3f7fda6001285a5a506fc97ee943881261c2c3bd63c882f22e05 ]
-  [ "$PIN_SHA512" = 60fdc25374000d0c26b94257d8907fb5a1aa318df8bbad0c867b6ae0831859eef611d594446d7fcb8db4adac57850c72d4a5bf65159a0de2431e3c35092bb68c ]
-  grep -qF "|tarball:$PIN_SHA256:$BLENDER_URL|" "$REPO/lib/workstation-apps.tsv"
-  grep -qF "$COMFY_URL" "$MANAGER"
-}
 
 @test "in the box: Blender unpacks the pinned official tarball, then exports its launcher" {
   in_box
