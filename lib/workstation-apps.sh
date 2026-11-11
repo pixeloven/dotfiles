@@ -201,6 +201,13 @@ tarball_paths() { # sets sum url opt top from $vendor (tarball:<sha256>:<url>) a
   top="${top%.tar.*}"
 }
 tarball_installed() { tarball_paths; [ -x "$opt/$top/$package" ]; }
+tarball_libs() { # the shared libraries $package's official build loads; apt installs the missing ones where it can
+  local libs=() missing=() l
+  case "$package" in blender) libs=(libxi6 libsm6 libxkbcommon0 libxrender1 libxxf86vm1 libxfixes3 libgl1) ;; esac
+  [ "${#libs[@]}" -gt 0 ] && [ -z "$(apt_skip)" ] || return 0
+  for l in "${libs[@]}"; do apt_installed "$l" || missing+=("$l"); done
+  [ "${#missing[@]}" -eq 0 ] || as_root apt-get install -y "${missing[@]}"
+}
 unpack_tarball() { # download and check the pinned tarball, then move it into place; a failure leaves none
   local tmp stage rc=0
   [ -n "$sum" ] && [ -n "$top" ] || { echo "workstation-apps: the $package row needs tarball:<sha256>:<url>" >&2; return 1; }
@@ -351,12 +358,14 @@ install_one() { # <id> : 0 installed or present, 3 left for you, 1 failed
       local why; why="$(tarball_skip)"
       [ -z "$why" ] || { say "$id" "skipped: $why"; return 3; }
       if tarball_installed; then
+        [ "$cmd" = preview ] || tarball_libs || { say "$id" "failed: apt install of $package's libraries" >&2; return 1; }
         [ "$cmd" = preview ] || tarball_launcher || { say "$id" "failed: the $package launcher" >&2; return 1; }
         say "$id" "installed (official tarball)"; return 0
       fi
       [ "$cmd" != preview ] || { say "$id" "not installed (official tarball $url$($in_box && echo ', in the box, exported to the host menu'))"; return 0; }
       [ "$cmd" != apply ] || echo "workstation-apps: $id: downloading $url (sha256 checked)"
       unpack_tarball || { say "$id" "failed: $url" >&2; return 1; }
+      tarball_libs || { say "$id" "failed: apt install of $package's libraries" >&2; return 1; }
       tarball_launcher || { say "$id" "failed: the $package launcher" >&2; return 1; }
       [ "$cmd" = apply ] || say "$id" "installed (official tarball)" ;;
     installer)

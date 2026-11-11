@@ -358,6 +358,50 @@ COMFY_URL=https://download.todesktop.com/241130tqe9q3y/comfyui-desktop-2-1.1.9-b
   [ "$(grep -c '^distrobox-export' "$HOME/calls")" -eq 1 ]
 }
 
+BLENDER_LIBS="libxi6 libsm6 libxkbcommon0 libxrender1 libxxf86vm1 libxfixes3 libgl1"
+
+@test "in the box: Blender's missing runtime libraries are installed with apt, once" {
+  in_box
+  echo libgl1 >> "$HOME/debs"
+  run "$MANAGER" install blender
+  [ "$status" -eq 0 ]
+  grep -qx 'sudo apt-get install -y libxi6 libsm6 libxkbcommon0 libxrender1 libxxf86vm1 libxfixes3' "$HOME/calls"
+  for l in $BLENDER_LIBS; do grep -qx "$l" "$HOME/debs"; done
+  # A rebuilt box keeps the tarball in the shared home but loses its libraries.
+  : > "$HOME/debs"
+  run "$MANAGER" apply blender
+  [ "$status" -eq 0 ]
+  grep -qx "sudo apt-get install -y $BLENDER_LIBS" "$HOME/calls"
+  [ "$(grep -c '^curl ' "$HOME/calls")" -eq 1 ]
+  : > "$HOME/calls"
+  run "$MANAGER" apply blender
+  [ "$status" -eq 0 ]
+  ! grep -q '^apt-get' "$HOME/calls" || false
+}
+
+@test "Blender's libraries already present: no apt call" {
+  in_box
+  for l in $BLENDER_LIBS; do echo "$l" >> "$HOME/debs"; done
+  run "$MANAGER" install blender
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'installed (official tarball)'* ]] || false
+  ! grep -q '^apt-get' "$HOME/calls" || false
+}
+
+@test "a Linux host without apt still installs the Blender tarball, without its libraries" {
+  rm "$HOME/bin/apt-get" "$HOME/bin/dpkg-query" "$HOME/bin/sudo"
+  mkdir -p "$HOME/sys"
+  for t in awk sed grep tr uname dirname readlink cat id mktemp mkdir rm mv ln cp chmod tar xz; do
+    ln -s "$(command -v "$t")" "$HOME/sys/$t"
+  done
+  run env PATH="$HOME/bin:$HOME/sys" "$BASH" "$MANAGER" install blender
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'installed (official tarball)'* ]] || false
+  [ -x "$HOME/.local/opt/blender/current/blender" ]
+  [ -f "$HOME/.local/share/applications/blender.desktop" ]
+  ! grep -q 'apt-get' "$HOME/calls" || false
+}
+
 @test "in the box: Comfy Desktop installs from Comfy's pinned package, then exports" {
   in_box
   run "$MANAGER" install comfyui
