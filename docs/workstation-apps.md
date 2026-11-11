@@ -23,7 +23,7 @@ workstation-apps enable blender comfyui   # saves the choice, then chezmoi apply
 workstation-apps preview blender comfyui  # each shows installed
 ```
 
-Both then appear in the host's app menu as "Blender (on ubuntu-dev)" and "Comfy Desktop (on ubuntu-dev)"
+Both then appear in the host's app menu as "Blender (on ubuntu-dev)" and "Comfy Desktop (on ubuntu-dev)".
 
 ## Platforms
 
