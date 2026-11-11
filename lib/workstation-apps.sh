@@ -8,7 +8,10 @@
 # Routes: formula and cask install with Homebrew (inside the box when installTarget = distrobox).
 # apt installs a vendor's Ubuntu package (inside the box on Bazzite, where distrobox-export then
 # puts it in the host menu; natively on an apt-based host). installer runs a vendor's official
-# Linux installer into ~/.local when the app is missing. manual is never automated. An app named on the command line must be in the catalog; with --saved (and
+# Linux installer into ~/.local when the app is missing. tarball unpacks a vendor's official Linux
+# tarball, checked against its pinned sha256, into ~/.local/opt/<package> (in the box on Bazzite, where
+# distrobox-export puts its launcher in the host menu). manual is never automated.
+# An app named on the command line must be in the catalog; with --saved (and
 # for apply and drift) an ID the catalog no longer has is a retired app: warned about and skipped.
 # Copies of a Homebrew-routed app that Homebrew doesn't manage are left alone and reported; only
 # `vendor remove`, after you confirm, uninstalls them. Never execute this output as shell code.
@@ -82,6 +85,16 @@ apt_skip() { # prints why apt apps can't install here; nothing when they can
 }
 apt_installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'; }
 as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
+fetch_verified() { # <url> <256|512> <pinned sum> <file> : download, then keep the file only if its sum matches
+  local got
+  curl -fsSL -o "$4" "$1" || return 1
+  got="$("sha$2sum" "$4" 2>/dev/null)" || got=""
+  got="${got%% *}"
+  if [ -z "$3" ] || [ "$got" != "$3" ]; then
+    echo "workstation-apps: ${4##*/} failed its sha$2 check (expected ${3:-a pinned sum}, got ${got:-none}); not installing it" >&2
+    rm -f "$4"; return 1
+  fi
+}
 apt_recipe() { # <package> : the vendor's documented Ubuntu install, plus libsecret for the keyring
   local key list tmp fpr
   case "$1" in
@@ -101,6 +114,14 @@ apt_recipe() { # <package> : the vendor's documented Ubuntu install, plus libsec
         as_root apt-get update || return 1
       fi
       as_root apt-get install -y claude-desktop libsecret-1-0 ;;
+    comfyui-desktop-2) # Comfy's Ubuntu package, pinned with the sha512 from Comfy's latest-linux.yml;
+      # its postinst adds Comfy's apt source, so apt updates it from then on. No models are set up.
+      tmp="$(mktemp -d)"
+      fetch_verified https://download.todesktop.com/241130tqe9q3y/comfyui-desktop-2-1.1.9-build-2611063zxyb71c9-amd64.deb 512 \
+        60fdc25374000d0c26b94257d8907fb5a1aa318df8bbad0c867b6ae0831859eef611d594446d7fcb8db4adac57850c72d4a5bf65159a0de2431e3c35092bb68c \
+        "$tmp/comfyui-desktop-2_amd64.deb" &&
+        as_root apt-get install -y "$tmp/comfyui-desktop-2_amd64.deb"
+      local rc=$?; rm -rf "$tmp"; return "$rc" ;;
     chatgpt) # OpenAI's Ubuntu package; its postinst adds OpenAI's apt repository for updates
       tmp="$(mktemp -d)"
       curl -fsSL -o "$tmp/chatgpt_amd64.deb" https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb &&
@@ -117,11 +138,16 @@ refresh_icon_cache() { # Linux only: GNOME misses new hicolor icons until the ho
   [ "$os" = linux ] && [ -f "$dir/icon-theme.cache" ] || return 0
   on_host gtk-update-icon-cache -f -t "$dir" >/dev/null 2>&1 || true
 }
-export_app() { # in the box only: launcher in the host menu, a link handler the app's own rewrite matches
-  local cmdname desktop scheme apps exported alias default
-  $in_box || return 0
+export_vendor() { # an apt row's desktop:<command>:<desktop id>:<link scheme>, exported from the box
+  local cmdname desktop scheme
   IFS=: read -r _ cmdname desktop scheme <<<"$vendor"
   [ -n "$desktop" ] || return 0
+  export_app "$cmdname" "$desktop" "$scheme"
+}
+export_app() { # <command or .desktop file> <desktop id> [link scheme] : in the box only: launcher in the
+  # host menu and, for an app with a link scheme, a link handler the app's own rewrite matches
+  local cmdname="$1" desktop="$2" scheme="${3:-}" apps exported alias default
+  $in_box || return 0
   apps="$HOME/.local/share/applications" exported="$apps/$box-$desktop.desktop" alias="$apps/$desktop.desktop"
   # ChatGPT, for one, registers for http and https; keep the host's browser as their default.
   local s web=""
@@ -130,10 +156,12 @@ export_app() { # in the box only: launcher in the host menu, a link handler the 
     distrobox-export --app "$cmdname" >/dev/null || { echo "workstation-apps: distrobox-export --app $cmdname failed" >&2; return 1; }
     [ -f "$exported" ] || { echo "workstation-apps: distrobox-export wrote no $exported" >&2; return 1; }
   fi
-  # Each app rewrites its link default to <desktop>.desktop on every start. A hidden alias with that
-  # name opens the box's copy, unless another install already owns the name (then it wins for now).
+  # Each app with a link scheme rewrites its link default to <desktop>.desktop on every start. A hidden
+  # alias with that name opens the box's copy, unless another install already owns the name (then it
+  # wins for now). An app without a scheme gets no alias.
   default="$box-$desktop.desktop"
-  if [ ! -e "$alias" ] || grep -q '^X-Dotfiles-Alias-Of=' "$alias"; then
+  if [ -z "$scheme" ]; then :
+  elif [ ! -e "$alias" ] || grep -q '^X-Dotfiles-Alias-Of=' "$alias"; then
     { sed '/^NoDisplay=/d; /^X-Dotfiles-Alias-Of=/d' "$exported" | awk -v of="$box-$desktop.desktop" '
         { print } /^\[Desktop Entry\]/ && !done { print "NoDisplay=true"; print "X-Dotfiles-Alias-Of=" of; done = 1 }'; } > "$alias.tmp" &&
       mv "$alias.tmp" "$alias"
@@ -159,6 +187,58 @@ run_installer() { # <url>
   tmp="$(mktemp -d)"
   curl -fsSL -o "$tmp/install.sh" "$1" && sh "$tmp/install.sh"
   rc=$?; rm -rf "$tmp"; return "$rc"
+}
+
+# tarball: a vendor's official Linux tarball, pinned by sha256, unpacked into ~/.local/opt/<package>
+# (the shared home, so it survives a box rebuild). Its launcher calls the stable current link.
+tarball_skip() { # prints why tarball apps can't install here; nothing when they can
+  [ "$os" = linux ] || { echo "tarball apps are Linux only"; return 0; }
+  if [ "$target" = distrobox ] && ! $in_box; then echo "installTarget is distrobox and this is the host; tarball apps install in the box"; fi
+}
+tarball_paths() { # sets sum url opt top from $vendor (tarball:<sha256>:<url>) and $package
+  IFS=: read -r _ sum url <<<"$vendor"
+  opt="$HOME/.local/opt/$package" top="${url##*/}"
+  top="${top%.tar.*}"
+}
+tarball_installed() { tarball_paths; [ -x "$opt/$top/$package" ]; }
+tarball_libs() { # the shared libraries $package's official build loads; apt installs the missing ones where it can
+  local libs=() missing=() l
+  case "$package" in blender) libs=(libxi6 libsm6 libxkbcommon0 libxrender1 libxxf86vm1 libxfixes3 libgl1) ;; esac
+  [ "${#libs[@]}" -gt 0 ] && [ -z "$(apt_skip)" ] || return 0
+  for l in "${libs[@]}"; do apt_installed "$l" || missing+=("$l"); done
+  [ "${#missing[@]}" -eq 0 ] || as_root apt-get install -y "${missing[@]}"
+}
+unpack_tarball() { # download and check the pinned tarball, then move it into place; a failure leaves none
+  local tmp stage rc=0
+  [ -n "$sum" ] && [ -n "$top" ] || { echo "workstation-apps: the $package row needs tarball:<sha256>:<url>" >&2; return 1; }
+  tmp="$(mktemp -d)"
+  if ! { mkdir -p "$opt" && stage="$(mktemp -d "$opt/.unpack.XXXXXX")"; }; then rm -rf "$tmp"; return 1; fi
+  if fetch_verified "$url" 256 "$sum" "$tmp/${url##*/}" && tar -xf "$tmp/${url##*/}" -C "$stage" &&
+    [ -x "$stage/$top/$package" ]; then
+    rm -rf "${opt:?}/$top" && mv "$stage/$top" "$opt/$top" || rc=1
+  else
+    rc=1
+  fi
+  rm -rf "$tmp" "$stage"
+  return "$rc"
+}
+tarball_launcher() { # current -> this version; <package>.desktop from the tarball's own entry, with full paths
+  local own="$HOME/.local/share/applications/$package.desktop"
+  [ -f "$opt/$top/$package.desktop" ] || { echo "workstation-apps: $top has no $package.desktop" >&2; return 1; }
+  ln -sfn "$top" "$opt/current" &&
+    sed -e "s|^Exec=[^ ]*|Exec=\"$opt/current/$package\"|" -e "s|^Icon=\(.*\)\$|Icon=$opt/current/\1.svg|" \
+      -e '/^TryExec=/d' -e '/^X-Dotfiles-Tarball=/d' "$opt/$top/$package.desktop" > "$opt/$package.desktop.tmp" &&
+    echo "X-Dotfiles-Tarball=$package" >> "$opt/$package.desktop.tmp" &&
+    mv "$opt/$package.desktop.tmp" "$opt/$package.desktop" || return 1
+  if $in_box; then export_app "$opt/$package.desktop" "$package"; return; fi
+  # Natively, the launcher goes in the user's menu, unless another install already owns the name.
+  if [ -e "$own" ] && ! grep -q '^X-Dotfiles-Tarball=' "$own"; then
+    echo "workstation-apps: $own belongs to another install; left alone" >&2
+  else
+    mkdir -p "${own%/*}" && cp "$opt/$package.desktop" "$own" || return 1
+    update-desktop-database "${own%/*}" >/dev/null 2>&1 || true
+  fi
+  refresh_icon_cache
 }
 
 resolve() { # <path> : follow symlinks with plain readlink (no -f on older macOS)
@@ -266,14 +346,28 @@ install_one() { # <id> : 0 installed or present, 3 left for you, 1 failed
       local why; why="$(apt_skip)"
       [ -z "$why" ] || { say "$id" "skipped: $why"; return 3; }
       if apt_installed "$package"; then
-        [ "$cmd" = preview ] || export_app || { say "$id" "failed: exporting $package to the host menu" >&2; return 1; }
+        [ "$cmd" = preview ] || export_vendor || { say "$id" "failed: exporting $package to the host menu" >&2; return 1; }
         say "$id" "installed (apt)"; return 0
       fi
       [ "$cmd" != preview ] || { say "$id" "not installed (apt$($in_box && echo ' in the box, exported to the host menu'))"; return 0; }
       [ "$cmd" != apply ] || echo "workstation-apps: $id: apt install $package"
       apt_recipe "$package" || { say "$id" "failed: apt install $package" >&2; return 1; }
-      export_app || { say "$id" "failed: exporting $package to the host menu" >&2; return 1; }
+      export_vendor || { say "$id" "failed: exporting $package to the host menu" >&2; return 1; }
       [ "$cmd" = apply ] || say "$id" "installed (apt)" ;;
+    tarball)
+      local why; why="$(tarball_skip)"
+      [ -z "$why" ] || { say "$id" "skipped: $why"; return 3; }
+      if tarball_installed; then
+        [ "$cmd" = preview ] || tarball_libs || { say "$id" "failed: apt install of $package's libraries" >&2; return 1; }
+        [ "$cmd" = preview ] || tarball_launcher || { say "$id" "failed: the $package launcher" >&2; return 1; }
+        say "$id" "installed (official tarball)"; return 0
+      fi
+      [ "$cmd" != preview ] || { say "$id" "not installed (official tarball $url$($in_box && echo ', in the box, exported to the host menu'))"; return 0; }
+      [ "$cmd" != apply ] || echo "workstation-apps: $id: downloading $url (sha256 checked)"
+      unpack_tarball || { say "$id" "failed: $url" >&2; return 1; }
+      tarball_libs || { say "$id" "failed: apt install of $package's libraries" >&2; return 1; }
+      tarball_launcher || { say "$id" "failed: the $package launcher" >&2; return 1; }
+      [ "$cmd" = apply ] || say "$id" "installed (official tarball)" ;;
     installer)
       [ "$os" = linux ] || { say "$id" "skipped: the installer route is Linux only"; return 3; }
       if installer_installed "$package"; then say "$id" "installed (vendor installer; it updates itself)"; return 0; fi
@@ -317,6 +411,9 @@ drift() { # selected IDs : what differs from the selection, for apps routed on t
       apt)
         [ -z "$(apt_skip)" ] || continue
         ! apt_installed "$package" || have=true ;;
+      tarball)
+        [ -z "$(tarball_skip)" ] || continue
+        ! tarball_installed || have=true ;;
       installer)
         [ "$os" = linux ] || continue
         ! installer_installed "$package" || have=true ;;
