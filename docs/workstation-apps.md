@@ -107,3 +107,46 @@ Settings, sign-ins and data (`~/.claude`, `~/.codex`, `~/.config/herdr`) stay. O
 - GPU drivers. `lib/distrobox/ubuntu-dev.ini` sets `nvidia=true`, and every apply in the box adds the NVIDIA EGL and Vulkan manifests that distrobox doesn't map (`lib/distrobox/nvidia-manifests.sh`). Without them, native Wayland and Vulkan apps silently render on the CPU. Rebuilding an existing box to get the GPU is RUNBOOK §9c.
 
 The tests use stub `brew`, `apt-get`, `curl`, `sha256sum`, `sha512sum`, `distrobox-export`, `xdg-mime` and `npm` in a throwaway home. They show the routing and guard logic, not that a real app installs, launches or uses the GPU.
+
+## Repairing ChatGPT MCP paths after a Linux migration
+
+Moving ChatGPT from the experimental Linuxbrew cask to the vendor deb can leave
+`node_repl` configured with a removed, version-specific Homebrew path. Its browser
+service can also refer to a plugin cache file that no longer exists. The symptom
+is a Codex startup warning: `node_repl: No such file or directory`.
+
+After installing the vendor package, quit Codex and run from this repository:
+
+```sh
+bin/repair-codex-linux-paths
+```
+
+The command verifies the installed executables and browser service, backs up
+`~/.codex/config.toml`, and replaces the recognized legacy paths inside the
+`node_repl` tables. It leaves custom commands and other MCP servers alone. It is
+an explicit migration command rather than an automatic overwrite on each apply.
+Restart Codex afterwards. To restore the previous settings, copy the printed
+backup over the config.
+
+## Updating installed apps
+
+The catalog selects installation routes; it does not pin app versions. Updating
+installed binaries happens on the machine, separately from merging a dotfiles PR.
+For Homebrew-owned apps and vendor apt packages, refresh the package indexes first:
+
+```sh
+brew update
+brew outdated --greedy
+brew upgrade --greedy
+sudo apt-get update
+sudo apt-get install --only-upgrade chatgpt claude-desktop
+```
+
+Run those inside `ubuntu-dev` on Bazzite. Only include installed packages in the
+apt command. Homebrew upgrades all its installed packages here, including casks
+that can update themselves. Herdr desktop uses its own updater. Vendor-installed
+Claude Code and Codex copies must be updated by their original installers, or
+explicitly handed over to Homebrew as described above; Homebrew does not update
+those copies. Host apps outside this catalog use their host package managers.
+An empty outdated list from cached indexes does not establish that the installed
+versions are current.
