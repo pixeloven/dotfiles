@@ -38,7 +38,7 @@ distrobox assemble create --file ~/Development/dotfiles/lib/distrobox/ubuntu-dev
 distrobox enter ubuntu-dev
 ```
 
-On Bazzite the box is the Linux workstation and the host is the display. Tools and desktop apps install in the box, which gets the host's NVIDIA GPU (`nvidia=true`). With Ptyxis, its default profile opens the box's zsh, and a separate Host profile opens the host.
+On Bazzite the box is the Linux workstation and the host is the display. Tools and desktop apps install in the box, which gets the host's NVIDIA GPU (`nvidia=true`). With Ptyxis, the default profile (labelled Host) opens the host, and a separate profile labelled `ubuntu-dev` opens the box's zsh.
 
 Then, on the Linux host or inside the box (on a host, use its own package manager for the first line):
 

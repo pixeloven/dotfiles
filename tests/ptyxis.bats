@@ -104,6 +104,12 @@ setting() { # <schema> <key> : the stored value
   [ ! -s "$GS_LOG" ]
 }
 
+drift_bazzite() { # drift's findings on Bazzite (installTarget distrobox), in the box
+  config ptyxis true distrobox
+  DRIFT_CHEZMOI_ARGS="--source $REAL_REPO --config $TMP/chezmoi.toml --persistent-state $TMP/state.boltdb --override-data {\"chezmoi\":{\"os\":\"linux\"}}" \
+    "$REAL_REPO/bin/drift"
+}
+
 drift() { # <terminal> : drift's findings on Linux with these answers, in a distrobox
   config "$1" true
   DRIFT_CHEZMOI_ARGS="--source $REAL_REPO --config $TMP/chezmoi.toml --persistent-state $TMP/state.boltdb --override-data {\"chezmoi\":{\"os\":\"linux\"}}" \
@@ -131,35 +137,119 @@ drift() { # <terminal> : drift's findings on Linux with these answers, in a dist
 ID1=2af5000000000000000000000000000000000000000000000000000000000001
 ID2=2af5000000000000000000000000000000000000000000000000000000000002
 
-@test "on Bazzite the default profile opens the box's zsh by box ID, and a Host profile is added once" {
+prof() { echo "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$1/"; }
+
+labelled() { # <label> : the uuids of the listed profiles with this label, one per line
+  local u
+  for u in $(setting org.gnome.Ptyxis profile-uuids | sed 's/^@as //' | tr -d "[]',"); do
+    [ "$(setting "$(prof "$u")" label)" = "'$1'" ] && echo "$u"
+  done
+  return 0
+}
+
+assert_layout() { # <box id> : the default profile is the Host, and one separate profile labelled ubuntu-dev is the box
+  local def box
+  def="$(setting org.gnome.Ptyxis default-profile-uuid | tr -d "'")"
+  [ "$(setting "$(prof "$def")" label)" = "'Host'" ]
+  [ "$(setting "$(prof "$def")" default-container)" = "'session'" ]
+  [ "$(setting "$(prof "$def")" palette)" = "'catppuccin-mocha'" ]
+  [ "$(labelled ubuntu-dev | wc -l)" -eq 1 ]
+  [ "$(labelled Host | wc -l)" -eq 1 ]
+  box="$(labelled ubuntu-dev)"
+  [ "$box" != "$def" ]
+  [ "${#box}" -ge 16 ]
+  [ "$(setting "$(prof "$box")" default-container)" = "'$1'" ]
+  [ "$(setting "$(prof "$box")" use-custom-command)" = true ]
+  [ "$(setting "$(prof "$box")" custom-command)" = "'/usr/bin/zsh -l'" ]
+  [ "$(setting "$(prof "$box")" palette)" = "'catppuccin-mocha'" ]
+  ! grep -q -e font -e use-system-font "$GS_LOG" || false
+}
+
+@test "on Bazzite a fresh home keeps the default profile on the host and adds the box profile labelled ubuntu-dev" {
   export BOX_ID=$ID1
   run ptyxis_script ptyxis true distrobox
   [ "$status" -eq 0 ]
-  [ "$(setting "$PROFILE" default-container)" = "'$ID1'" ]
-  [ "$(setting "$PROFILE" label)" = "'ubuntu-dev'" ]
-  [ "$(setting "$PROFILE" use-custom-command)" = true ]
-  [ "$(setting "$PROFILE" custom-command)" = "'/usr/bin/zsh -l'" ]
-  [ "$(setting "$PROFILE" palette)" = "'catppuccin-mocha'" ]
-  uuids="$(setting org.gnome.Ptyxis profile-uuids)"
-  host="$(sed "s/.*'$UUID', '\([0-9a-f]*\)'.*/\1/" <<<"$uuids")"
-  [ "${#host}" -eq 32 ]
-  [ "$(setting "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$host/" label)" = "'Host'" ]
-  [ "$(setting "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$host/" default-container)" = "'session'" ]
-  ! grep -q -e font -e palette.*Host "$GS_LOG" || false
-  # A rerun reuses the Host profile.
+  assert_layout "$ID1"
+  [ "$(setting org.gnome.Ptyxis default-profile-uuid)" = "'$UUID'" ]
+  [ "$(setting "$PROFILE" use-custom-command)" = "" ]
+}
+
+@test "on Bazzite the earlier layout (default profile is the box, plus a Host profile) migrates to default = Host" {
+  export BOX_ID=$ID1
+  HOST=feedfacefeedfacefeedfacefeedface
+  {
+    printf 'org.gnome.Ptyxis\tprofile-uuids\t%s\n' "['$UUID', '$HOST']"
+    printf '%s\tlabel\t%s\n' "$PROFILE" "'ubuntu-dev'"
+    printf '%s\tdefault-container\t%s\n' "$PROFILE" "'$ID1'"
+    printf '%s\tuse-custom-command\t%s\n' "$PROFILE" true
+    printf '%s\tcustom-command\t%s\n' "$PROFILE" "'/usr/bin/zsh -l'"
+    printf '%s\tlabel\t%s\n' "$(prof $HOST)" "'Host'"
+    printf '%s\tdefault-container\t%s\n' "$(prof $HOST)" "'session'"
+  } >> "$GS_DB"
   run ptyxis_script ptyxis true distrobox
   [ "$status" -eq 0 ]
+  assert_layout "$ID1"
+  [ "$(setting org.gnome.Ptyxis default-profile-uuid)" = "'$HOST'" ]
+  [ "$(labelled ubuntu-dev)" = "$UUID" ]
+  ! grep -q 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG" || false
+}
+
+@test "on Bazzite the earlier layout without a Host profile gets a new Host profile as the default" {
+  export BOX_ID=$ID1
+  printf 'org.gnome.Ptyxis\tprofile-uuids\t%s\n' "['$UUID']" >> "$GS_DB"
+  printf '%s\tlabel\t%s\n' "$PROFILE" "'ubuntu-dev'" >> "$GS_DB"
+  run ptyxis_script ptyxis true distrobox
+  [ "$status" -eq 0 ]
+  assert_layout "$ID1"
+  [ "$(labelled ubuntu-dev)" = "$UUID" ]
+}
+
+@test "on Bazzite a default already flipped to Host by hand stays the host, and the box stays the box" {
+  export BOX_ID=$ID1
+  HOST=feedfacefeedfacefeedfacefeedface
+  {
+    printf 'org.gnome.Ptyxis\tdefault-profile-uuid\t%s\n' "'$HOST'"
+    printf 'org.gnome.Ptyxis\tprofile-uuids\t%s\n' "['$UUID', '$HOST']"
+    printf '%s\tlabel\t%s\n' "$PROFILE" "'ubuntu-dev'"
+    printf '%s\tdefault-container\t%s\n' "$PROFILE" "'$ID1'"
+    printf '%s\tlabel\t%s\n' "$(prof $HOST)" "'Host'"
+    printf '%s\tdefault-container\t%s\n' "$(prof $HOST)" "'session'"
+  } >> "$GS_DB"
+  run ptyxis_script ptyxis true distrobox
+  [ "$status" -eq 0 ]
+  assert_layout "$ID1"
+  [ "$(setting org.gnome.Ptyxis default-profile-uuid)" = "'$HOST'" ]
+  [ "$(labelled ubuntu-dev)" = "$UUID" ]
+  ! grep -q -e "set $(prof $HOST) default-container '$ID1'" -e "set $(prof $HOST) use-custom-command true" "$GS_LOG" || false
+  ! grep -q 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG" || false
+}
+
+@test "on Bazzite reruns never duplicate profiles, from a fresh home or the earlier layout" {
+  export BOX_ID=$ID1
+  ptyxis_script ptyxis true distrobox
+  ptyxis_script ptyxis true distrobox
+  ptyxis_script ptyxis true distrobox
+  assert_layout "$ID1"
+  [ "$(setting org.gnome.Ptyxis profile-uuids | tr ',' '\n' | wc -l)" -eq 2 ]
+  [ "$(grep -c 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG")" -eq 1 ]
+  [ "$(grep -c 'set org.gnome.Ptyxis default-profile-uuid' "$GS_LOG")" -eq 0 ]
+  # A rebuilt box moves the same box profile to the new ID.
+  export BOX_ID=$ID2
+  ptyxis_script ptyxis true distrobox
+  assert_layout "$ID2"
   [ "$(grep -c 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG")" -eq 1 ]
 }
 
-@test "on Bazzite a Host profile made by hand is reused, not duplicated" {
+@test "on Bazzite a rerun after migrating the earlier layout changes nothing about the profiles" {
   export BOX_ID=$ID1
-  printf 'org.gnome.Ptyxis\tprofile-uuids\t%s\n' "['$UUID', 'feedfacefeedfacefeedfacefeedface']" >> "$GS_DB"
-  printf 'org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/feedfacefeedfacefeedfacefeedface/\tlabel\t%s\n' "'Host'" >> "$GS_DB"
-  run ptyxis_script ptyxis true distrobox
-  [ "$status" -eq 0 ]
-  ! grep -q 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG" || false
-  [ "$(setting "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/feedfacefeedfacefeedfacefeedface/" default-container)" = "'session'" ]
+  printf 'org.gnome.Ptyxis\tprofile-uuids\t%s\n' "['$UUID']" >> "$GS_DB"
+  printf '%s\tlabel\t%s\n' "$PROFILE" "'ubuntu-dev'" >> "$GS_DB"
+  ptyxis_script ptyxis true distrobox
+  ptyxis_script ptyxis true distrobox
+  assert_layout "$ID1"
+  [ "$(setting org.gnome.Ptyxis profile-uuids | tr ',' '\n' | wc -l)" -eq 2 ]
+  [ "$(grep -c 'set org.gnome.Ptyxis profile-uuids' "$GS_LOG")" -eq 1 ]
+  [ "$(grep -c 'set org.gnome.Ptyxis default-profile-uuid' "$GS_LOG")" -eq 1 ]
 }
 
 @test "on Bazzite without the box, the default profile stays on the host" {
@@ -177,7 +267,7 @@ ID2=2af5000000000000000000000000000000000000000000000000000000000002
   export BOX_ID=$ID2
   ptyxis_script ptyxis true distrobox
   ! cmp -s "$TMP/first.sh" "$TMP/ptyxis.sh" || false
-  [ "$(setting "$PROFILE" default-container)" = "'$ID2'" ]
+  [ "$(setting "$(prof "$(labelled ubuntu-dev)")" default-container)" = "'$ID2'" ]
 }
 
 @test "a plain Linux host with Ptyxis never gets a box profile" {
@@ -191,12 +281,36 @@ ID2=2af5000000000000000000000000000000000000000000000000000000000002
 @test "drift reports a changed box profile key as owned-key, but not the per-rebuild container ID" {
   export BOX_ID=$ID1
   ptyxis_script ptyxis true distrobox
-  printf 'sourceDir = "%s"\n\n[data]\nterminal = "ptyxis"\ncontainer = true\ninstallTarget = "distrobox"\n' "$REAL_REPO" > "$TMP/chezmoi.toml"
-  drift_bazzite() { DRIFT_CHEZMOI_ARGS="--source $REAL_REPO --config $TMP/chezmoi.toml --persistent-state $TMP/state.boltdb --override-data {\"chezmoi\":{\"os\":\"linux\"}}" "$REAL_REPO/bin/drift"; }
   run drift_bazzite
   [[ "$output" != *org.gnome.Ptyxis* ]] || false
-  printf '%s\tcustom-command\t%s\n' "$PROFILE" "'/bin/bash'" >> "$GS_DB"
+  printf '%s\tcustom-command\t%s\n' "$(prof "$(labelled ubuntu-dev)")" "'/bin/bash'" >> "$GS_DB"
   run drift_bazzite
   [[ "$output" == *$'owned-key\torg.gnome.Ptyxis.Profile custom-command'* ]] || false
   [[ "$output" != *default-container* ]] || false
+}
+
+@test "drift reports a default profile that opens the box (the earlier layout)" {
+  export BOX_ID=$ID1
+  config ptyxis true distrobox
+  printf 'org.gnome.Ptyxis\tprofile-uuids\t%s\n' "['$UUID']" >> "$GS_DB"
+  printf '%s\tlabel\t%s\n' "$PROFILE" "'ubuntu-dev'" >> "$GS_DB"
+  printf '%s\tdefault-container\t%s\n' "$PROFILE" "'$ID1'" >> "$GS_DB"
+  run drift_bazzite
+  [[ "$output" == *$'owned-key\torg.gnome.Ptyxis default profile opens the box'* ]] || false
+}
+
+@test "drift reports a missing box profile on Bazzite" {
+  export BOX_ID=$ID1
+  ptyxis_script ptyxis true distrobox
+  box="$(labelled ubuntu-dev)"
+  printf '%s\tlabel\t%s\n' "$(prof "$box")" "'renamed'" >> "$GS_DB"
+  run drift_bazzite
+  [[ "$output" == *$'owned-key\torg.gnome.Ptyxis ubuntu-dev profile'* ]] || false
+}
+
+@test "on macOS the script is empty even with Ptyxis chosen" {
+  config ptyxis false
+  chezmoi --source "$REAL_REPO" --config "$TMP/chezmoi.toml" execute-template \
+    --override-data '{"chezmoi":{"os":"darwin"}}' < "$REAL_REPO/$SCRIPT" > "$TMP/ptyxis.sh"
+  [ ! -s "$TMP/ptyxis.sh" ]
 }

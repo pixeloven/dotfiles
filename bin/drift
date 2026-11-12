@@ -102,7 +102,8 @@ owned_keys() {
 }
 
 ptyxis_keys() { # the Ptyxis settings the ptyxis script owns, only where it renders (terminal = ptyxis)
-  local script line schema key want have uuid parts PROFILE
+  local script line schema key want have uuid box box_label parts PROFILE BOX_PROFILE
+  local act="edit home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl then chezmoi apply"
   script="$("${CZ[@]}" execute-template < "$REPO/home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl" 2>/dev/null)"
   grep -q '^own ' <<<"$script" || return 0
   eval "$(grep '^gs() ' <<<"$script")" # gsettings here, or on the host from a distrobox
@@ -110,13 +111,30 @@ ptyxis_keys() { # the Ptyxis settings the ptyxis script owns, only where it rend
   uuid="$(gs get org.gnome.Ptyxis default-profile-uuid 2>/dev/null | tr -d "'")"
   # shellcheck disable=SC2034  # read by the eval of the own lines
   PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$uuid/"
+  # On Bazzite: the default profile is the host, and the box profile is the one with the box's label.
+  box="" box_label=""
+  if grep -q '^box_label=' <<<"$script"; then
+    eval "$(grep -e '^box_label=' -e '^by_label() ' <<<"$script")"
+    box="$(by_label "$box_label" 2>/dev/null)"
+    if [ -z "$box" ]; then
+      emit owned-key "org.gnome.Ptyxis $box_label profile" "missing; chezmoi apply adds it"
+    elif [ "$box" = "$uuid" ]; then
+      emit owned-key "org.gnome.Ptyxis default profile opens the box" "chezmoi apply makes the Host profile the default"
+      box=""
+    fi
+  fi
+  # shellcheck disable=SC2034  # read by the eval of the own lines
+  BOX_PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$box/"
   grep '^own ' <<<"$script" | while IFS= read -r line; do
+    # shellcheck disable=SC2016  # the literal variable name in the own line
+    [ -z "$uuid" ] && [[ "$line" == *'"$PROFILE"'* ]] && continue
+    # shellcheck disable=SC2016
+    [ -z "$box" ] && [[ "$line" == *'"$BOX_PROFILE"'* ]] && continue
     eval "parts=(${line#own })"
     schema="${parts[0]}" key="${parts[1]}" want="${parts[2]}"
-    [ -z "$uuid" ] && [[ "$schema" == *.Profile:* ]] && continue
     have="$(gs get "$schema" "$key" 2>/dev/null || true)"
     [ "$have" = "$want" ] && continue
-    emit owned-key "${schema%%:*} $key" "edit home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl then chezmoi apply"
+    emit owned-key "${schema%%:*} $key" "$act"
   done
 }
 

@@ -10,8 +10,9 @@
 #!/bin/sh
 # The Ptyxis settings we own. Everywhere: the default profile's palette (the catppuccin-mocha.palette
 # chezmoi puts in ~/.local/share/org.gnome.Ptyxis/palettes). On Bazzite (installTarget = distrobox)
-# also: the default profile opens the box's zsh login shell, and a profile labelled Host opens the
-# host. Every other Ptyxis setting, the font included, is left alone. bin/drift reads the `own` lines.
+# also: the default profile is labelled Host and opens the host, and a separate profile labelled
+# {{ $box }}, found by that label, opens the box's zsh login shell. Every other Ptyxis setting, the
+# font included, is left alone. bin/drift reads the `own` lines and the `box_label=` and `by_label()` lines.
 # Ptyxis and its GSettings schema exist only on the host, so in a distrobox gsettings runs there.
 set -eu
 {{ if get . "container" -}}
@@ -31,37 +32,50 @@ if [ -z "$uuid" ]; then
   echo "ptyxis: no default profile yet; open Ptyxis once, then run: chezmoi state delete-bucket --bucket=entryState && chezmoi apply" >&2
   exit 0
 fi
+{{- if and $bazzite $id }}
+box_label='{{ $box }}'
+by_label() { for u in $(gs get org.gnome.Ptyxis profile-uuids | sed 's/^@as //' | tr -d "[]',"); do if [ "$(gs get "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$u/" label)" = "'$1'" ]; then echo "$u"; return 0; fi; done; return 0; }
+
+new_profile() { # a new profile's uuid, added to profile-uuids (with the default, if that was missing)
+  new="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  uuids="$(gs get org.gnome.Ptyxis profile-uuids | sed 's/^@as //')"
+  case "$uuids" in
+    "[]"|"") uuids="['$uuid', '$new']" ;;
+    *"'$uuid'"*) uuids="${uuids%]}, '$new']" ;;
+    *) uuids="${uuids%]}, '$uuid', '$new']" ;;
+  esac
+  gs set org.gnome.Ptyxis profile-uuids "$uuids"
+  echo "$new"
+}
+
+# The box profile is found by its label, never by being the default. Before this layout the default
+# profile was the box and a separate Host profile opened the host; there the Host profile (or a new
+# one) becomes the default, and the old default stays the box profile.
+box="$(by_label "$box_label")"
+if [ "$box" = "$uuid" ]; then
+  host="$(by_label Host)"
+  [ -n "$host" ] || host="$(new_profile)"
+  gs set org.gnome.Ptyxis default-profile-uuid "'$host'"
+  uuid="$host"
+fi
+[ -n "$box" ] || box="$(new_profile)"
+{{- end }}
 PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$uuid/"
 own "$PROFILE" palette "'catppuccin-mocha'"
 {{- if $bazzite }}
 {{-   if $id }}
+own "$PROFILE" label "'Host'"
+own "$PROFILE" default-container "'session'"
 
 # Box {{ $box }}, podman ID {{ $id }}, looked up when this rendered. Ptyxis needs the ID, not the
 # name; a rebuild changes it, which changes this script, so the next apply runs it again.
-gs set "$PROFILE" default-container "'{{ $id }}'"
-own "$PROFILE" label "'{{ $box }}'"
+BOX_PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$box/"
+gs set "$BOX_PROFILE" default-container "'{{ $id }}'"
+own "$BOX_PROFILE" label "'{{ $box }}'"
+own "$BOX_PROFILE" palette "'catppuccin-mocha'"
 # Ptyxis would run the host user's bash in the box; this is the box's zsh login shell.
-own "$PROFILE" use-custom-command true
-own "$PROFILE" custom-command "'/usr/bin/zsh -l'"
-
-# The Host profile, found by its label so a rerun (or one made by hand) reuses it.
-host=""
-for u in $(gs get org.gnome.Ptyxis profile-uuids | sed 's/^@as //' | tr -d "[]',"); do
-  if [ "$(gs get "org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$u/" label)" = "'Host'" ]; then host="$u"; fi
-done
-if [ -z "$host" ]; then
-  host="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
-  uuids="$(gs get org.gnome.Ptyxis profile-uuids | sed 's/^@as //')"
-  case "$uuids" in
-    "[]"|"") uuids="['$uuid', '$host']" ;;
-    *"'$uuid'"*) uuids="${uuids%]}, '$host']" ;;
-    *) uuids="${uuids%]}, '$uuid', '$host']" ;;
-  esac
-  gs set org.gnome.Ptyxis profile-uuids "$uuids"
-fi
-HOST_PROFILE="org.gnome.Ptyxis.Profile:/org/gnome/Ptyxis/Profiles/$host/"
-gs set "$HOST_PROFILE" label "'Host'"
-gs set "$HOST_PROFILE" default-container "'session'"
+own "$BOX_PROFILE" use-custom-command true
+own "$BOX_PROFILE" custom-command "'/usr/bin/zsh -l'"
 {{-   else }}
 
 echo "ptyxis: box {{ $box }} not found; the default profile still opens the host. Once the box exists, run chezmoi apply again" >&2
