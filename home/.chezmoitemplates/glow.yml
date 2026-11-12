@@ -2,6 +2,6 @@
 # Catppuccin Mocha style from ~/.config/glow (dark only)
 style: "{{ .chezmoi.homeDir }}/.config/glow/catppuccin-mocha.json"
 mouse: false
-pager: true
+pager: false
 width: 100
 all: false
