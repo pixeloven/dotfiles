@@ -106,6 +106,18 @@ Library/Preferences/glow/glow.yml"
   [ "$(sed "s#$TMP/darwin#H#" "$mac")" = "$(sed "s#$TMP/linux#H#" "$linux")" ]
 }
 
+@test "glow config turns the pager off, so piped glow (ublue-motd) never opens one" {
+  render linux > /dev/null
+  cfg="$TMP/linux/.config/glow/glow.yml"
+  grep -qxF "pager: false" "$cfg"
+  command -v glow > /dev/null || skip "glow not installed"
+  printf '#!/bin/sh\ntouch "%s/paged"; cat\n' "$TMP" > "$TMP/pager"; chmod +x "$TMP/pager"
+  # As ublue-motd runs it; HOME, not --config, because glow still merges the real config
+  printf '# Hi\n' | HOME="$TMP/linux" XDG_CONFIG_HOME="$TMP/linux/.config" PAGER="$TMP/pager" \
+    TERM=dumb timeout 20 glow -s dark -w 80 - > /dev/null
+  [ ! -e "$TMP/paged" ]
+}
+
 TOOLSETS_PROMPT="Ops tool sets to install (lib/toolsets.txt; none by default)"
 
 @test "macOS init asks only about the tool sets, and picks Ghostty and the host" {

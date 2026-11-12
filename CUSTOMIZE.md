@@ -117,6 +117,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Side-by-side diffs: in the gitconfig script, `git config --global delta.side-by-side true`.
   - delta theme: `git config --global delta.syntax-theme "Dracula"` (list: `delta --list-syntax-themes`).
   - glow width: `width: 120`.
+  - glow pager: off in the config, so piped output (such as the Bazzite login MOTD) never waits on `less`; use `glow -p README.md` to page a file.
   - glow colours: edit `catppuccin-mocha.json`, e.g. inline code `"code": {"color": "#a6e3a1"}` for green. `lastreply` uses the same style.
 - **Try it:** run `chezmoi apply`, then `bat README.md`, `git diff` or `glow README.md`.
 - **Keep it:** `/codify`. A git key changed by hand shows up as owned-key drift; put the new value in the script.

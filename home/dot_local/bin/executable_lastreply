@@ -286,7 +286,7 @@ render() { # <cols> : the reply in view as screen lines, in $tmp/card; skipped w
   elif [ -n "$raw" ]; then
     jq -r --argjson i "$cur" "$COMMON_JQ"' .turns[$i] | card' "$cache" > "$tmp/card"
   else
-    # Pipe the output so glow can never open its pager (the config turns it on), which
+    # Pipe the output so glow can never open a pager (even if the config turned it on), which
     # would stall the reader. An explicit style keeps the colours. TERM=dumb stops glow 3
     # asking the terminal for its colours and cursor on every render: the answers arrive on
     # stdin after glow has gone, where they were read as keys.
