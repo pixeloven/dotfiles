@@ -37,7 +37,7 @@ GITCONFIG_SCRIPT="$REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh"
   f="$HOME/.config/glow/glow.yml"
   [ "$(uname -s)" = Darwin ] && f="$HOME/Library/Preferences/glow/glow.yml"
   grep -q "^style: \"$HOME/.config/glow/catppuccin-mocha.json\"" "$f"
-  grep -q "^pager: true" "$f"
+  grep -q "^pager: false" "$f"
 }
 
 @test "glow style is Catppuccin with peach inline code" {
