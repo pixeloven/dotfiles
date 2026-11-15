@@ -276,15 +276,26 @@ STORAGE_MODELS_PROMPT="Mount the models share read-write or read-only"
   [[ "$output" != *storage-shares* ]] || false
 }
 
-@test "the storage-shares apply step renders only with a storageServer, and touches Comfy only when it is selected" {
+@test "the storage-shares apply step runs only with a storageServer, touches Comfy only when it is selected, and never fails apply" {
   step() { chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template --override-data "$1" < "$REPO/home/.chezmoiscripts/run_after_46-storage-shares.sh.tmpl"; }
   run step '{"chezmoi":{"os":"linux"},"storageServer":""}'
   [ -z "$output" ]
   run step '{"chezmoi":{"os":"darwin"},"storageServer":"192.0.2.10"}'
   [ -z "$output" ]
-  run step '{"chezmoi":{"os":"linux"},"storageServer":"192.0.2.10","workstationApps":["blender"]}'
-  [[ "$output" == *'storage-shares" status --quiet || true'* ]] || false
-  [[ "$output" != *comfy* ]] || false
-  run step '{"chezmoi":{"os":"linux"},"storageServer":"192.0.2.10","workstationApps":["comfyui"]}'
-  [[ "$output" == *'storage-shares" comfy --quiet || true'* ]] || false
+  mkdir -p "$TMP/run/.local/bin"
+  printf '#!/bin/sh\necho "$*" >> "$HOME/calls"\nexit "${STUB_EXIT:-0}"\n' > "$TMP/run/.local/bin/storage-shares"
+  chmod +x "$TMP/run/.local/bin/storage-shares"
+  apply_step() { # <data> <stub exit> : run the rendered step as apply would, with a stub storage-shares
+    step "$1" > "$TMP/step.sh"
+    : > "$TMP/run/calls"
+    HOME="$TMP/run" STUB_EXIT="$2" sh "$TMP/step.sh"
+  }
+  for rc in 0 1; do
+    run apply_step '{"chezmoi":{"os":"linux"},"storageServer":"192.0.2.10","workstationApps":["blender"]}' "$rc"
+    [ "$status" -eq 0 ]
+    [ "$(cat "$TMP/run/calls")" = 'status --quiet' ]
+    run apply_step '{"chezmoi":{"os":"linux"},"storageServer":"192.0.2.10","workstationApps":["comfyui"]}' "$rc"
+    [ "$status" -eq 0 ]
+    [ "$(cat "$TMP/run/calls")" = $'status --quiet\ncomfy --quiet' ]
+  done
 }

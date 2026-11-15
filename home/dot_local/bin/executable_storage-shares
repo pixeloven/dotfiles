@@ -270,7 +270,8 @@ check() { # bounded by timeout, so an unreachable server fails the check instead
 
 comfy() { # Comfy Desktop (comfyui-desktop-2) keeps its shared model folders in settings.json's
   # modelsDirs; the first is the primary, where downloads go. It builds the --extra-model-paths-config
-  # file it passes ComfyUI from that list at each launch. Adds the models share once; never reorders.
+  # file it passes ComfyUI from that list at each launch. Adds the models share once, after the folders
+  # already listed; never reorders.
   local quiet="" models mode="" i tmp
   [ "${1:-}" = --quiet ] && quiet=1
   load
@@ -297,20 +298,14 @@ comfy() { # Comfy Desktop (comfyui-desktop-2) keeps its shared model folders in 
     return 0
   fi
   tmp="$comfy_settings.storage-shares.tmp"
-  # Read-write: the share becomes the primary, so downloads land where every machine can use them.
-  # Read-only: it is added after the local folder (Comfy's default when the list is empty), which
-  # stays the primary, since downloads can't go to a read-only share.
-  if ! jq --arg m "$models" --arg mode "$mode" --arg local "$HOME/ComfyUI-Shared/models" '
+  # The local folder (Comfy's default when the list is empty) stays the primary, so downloads stay local.
+  if ! jq --arg m "$models" --arg local "$HOME/ComfyUI-Shared/models" '
       (.modelsDirs // []) as $d
-      | .modelsDirs = (if $mode == "rw" then [$m] + $d elif ($d | length) == 0 then [$local, $m] else $d + [$m] end)
+      | .modelsDirs = (if ($d | length) == 0 then [$local] else $d end) + [$m]
     ' "$comfy_settings" > "$tmp" || ! chmod "$(stat -c %a "$comfy_settings")" "$tmp" || ! mv "$tmp" "$comfy_settings"; then
     rm -f "$tmp"; echo "storage-shares: could not update $comfy_settings" >&2; return 1
   fi
-  if [ "$mode" = rw ]; then
-    echo "storage-shares: Comfy Desktop now uses $models as its primary models folder (downloads go there); its earlier folders stay as extra ones"
-  else
-    echo "storage-shares: Comfy Desktop now also reads models from $models (read-only); downloads still go to its local folder"
-  fi
+  echo "storage-shares: Comfy Desktop now also reads models from $models; downloads still go to its first folder (Settings > Shared Models > Make primary changes that)"
 }
 
 cmd="${1:-status}"

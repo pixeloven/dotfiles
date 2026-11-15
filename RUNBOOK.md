@@ -343,4 +343,4 @@ Off unless `chezmoi init` got an NFS server address (`storageServer`; [docs/stor
 3. *Both Linux setups.* `storage-shares check`; with a box, run it there too.
    **Done when:** each share prints `ok`: your own share and `common` say you can write, and a read-only `models` says read-only. `storage-shares` then shows them mounted.
 4. *With Comfy Desktop.* Open Comfy once to finish its first run, quit it, then `chezmoi apply` (or `storage-shares comfy`). On Bazzite, in the box.
-   **Done when:** Comfy's Settings, Shared Models, lists `/var/mnt/storage-01/models`, first if it is read-write.
+   **Done when:** Comfy's Settings, Shared Models, lists `/var/mnt/storage-01/models` after the local folder (`~/ComfyUI-Shared/models` unless you changed it), read-write or read-only. To have downloads land on storage-01, use Settings > Shared Models > Make primary on the share.

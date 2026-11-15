@@ -176,28 +176,39 @@ comfy_root() { # <models rw|ro> : shares under a scratch root, with the models m
   mkdir -p "$M"
 }
 
-@test "comfy makes a read-write models share Comfy's primary folder, keeping the rest" {
+@test "comfy adds a read-write models share after the folders already listed, keeping the rest of the file" {
   comfy_root rw
-  comfy_settings '{"cacheDir":"/c","modelsDirs":["/home/u/ComfyUI-Shared/models"],"installDir":"/i"}'
+  comfy_settings '{"cacheDir":"/c","modelsDirs":["/home/u/ComfyUI-Shared/models","/extra"],"installDir":"/i"}'
   run "$CMD" comfy
   [ "$status" -eq 0 ]
-  [[ "$output" == *"primary models folder"* ]] || false
-  [ "$(jq -c .modelsDirs "$STORAGE_SHARES_COMFY_SETTINGS")" = "[\"$M\",\"/home/u/ComfyUI-Shared/models\"]" ]
+  [[ "$output" == *"also reads models from $M"* ]] || false
+  [[ "$output" != *"primary models folder"* ]] || false
+  [ "$(jq -c .modelsDirs "$STORAGE_SHARES_COMFY_SETTINGS")" = "[\"/home/u/ComfyUI-Shared/models\",\"/extra\",\"$M\"]" ]
   [ "$(jq -c 'del(.modelsDirs)' "$STORAGE_SHARES_COMFY_SETTINGS")" = '{"cacheDir":"/c","installDir":"/i"}' ]
   run "$CMD" comfy --quiet
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ "$(jq '.modelsDirs | length' "$STORAGE_SHARES_COMFY_SETTINGS")" -eq 2 ]
+  [ "$(jq '.modelsDirs | length' "$STORAGE_SHARES_COMFY_SETTINGS")" -eq 3 ]
 }
 
-@test "comfy adds a read-only models share after the local folder, which stays primary" {
+@test "comfy keeps Comfy's local default first when the list is missing or empty, read-write or read-only" {
+  for mode in rw ro; do
+    comfy_root "$mode"
+    for settings in '{"onAppClose":"quit"}' '{"modelsDirs":[]}'; do
+      comfy_settings "$settings"
+      run "$CMD" comfy
+      [ "$status" -eq 0 ]
+      [ "$(jq -c .modelsDirs "$STORAGE_SHARES_COMFY_SETTINGS")" = "[\"$HOME/ComfyUI-Shared/models\",\"$M\"]" ]
+    done
+  done
+}
+
+@test "comfy adds a read-only models share after the local folder" {
   comfy_root ro
   comfy_settings '{"modelsDirs":["/home/u/ComfyUI-Shared/models"]}'
-  "$CMD" comfy
+  run "$CMD" comfy
+  [ "$status" -eq 0 ]
   [ "$(jq -c .modelsDirs "$STORAGE_SHARES_COMFY_SETTINGS")" = "[\"/home/u/ComfyUI-Shared/models\",\"$M\"]" ]
-  comfy_settings '{"onAppClose":"quit"}'
-  "$CMD" comfy
-  [ "$(jq -c .modelsDirs "$STORAGE_SHARES_COMFY_SETTINGS")" = "[\"$HOME/ComfyUI-Shared/models\",\"$M\"]" ]
 }
 
 @test "comfy never reorders a folder already listed" {
