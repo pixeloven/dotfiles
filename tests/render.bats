@@ -232,3 +232,59 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
   [ "$status" -eq 0 ]
   [[ "$output" == *"workstationApps = [$want]"* ]] || false
 }
+
+STORAGE_PROMPT="NFS server for the homelab shares under /var/mnt/storage-01 (blank: none)"
+STORAGE_MODELS_PROMPT="Mount the models share read-write or read-only"
+
+@test "the homelab NFS shares are off by default: Linux init asks for a server, blank by default, and macOS never does" {
+  run init_config linux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\nstorageServer = ""\n'* ]] || false
+  [[ "$output" != *storageModels* ]] || false
+  run init_config darwin --promptString "$STORAGE_PROMPT=192.0.2.10"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *storage* ]] || false
+}
+
+@test "with a server, the models share defaults to read-write in a distrobox setup and read-only on a host" {
+  run init_config linux --promptString "$STORAGE_PROMPT= 192.0.2.10 " \
+    --promptChoice "Install tools on this host, or only inside a distrobox=distrobox"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\nstorageServer = "192.0.2.10"\nstorageModels = "rw"\n'* ]] || false
+  run init_config linux --promptString "$STORAGE_PROMPT=192.0.2.10" \
+    --promptChoice "Install tools on this host, or only inside a distrobox=host"
+  [[ "$output" == *$'\nstorageModels = "ro"\n'* ]] || false
+  run re_init linux $'installTarget = "host"\nstorageServer = "192.0.2.10"\nstorageModels = "rw"'
+  [[ "$output" == *$'\nstorageServer = "192.0.2.10"\nstorageModels = "rw"\n'* ]] || false
+}
+
+@test "only Linux with a storageServer gets storage-shares and its shares.conf" {
+  printf 'sourceDir = "%s"\n\n[data]\nterminal = "other"\ncontainer = false\nstorageServer = "192.0.2.10"\nstorageModels = "ro"\n' "$REPO" > "$TMP/chezmoi.toml"
+  run render darwin
+  [[ "$output" != *storage-shares* ]] || false
+  run render linux
+  [[ "$output" == *.config/storage-shares/shares.conf* ]] || false
+  [[ "$output" == *.local/bin/storage-shares* ]] || false
+  user="$(id -un)"
+  grep -qx 'server 192.0.2.10' "$TMP/linux/.config/storage-shares/shares.conf"
+  grep -qx "share $user /bulk/shares/$user rw" "$TMP/linux/.config/storage-shares/shares.conf"
+  grep -qx 'share models /bulk/models ro' "$TMP/linux/.config/storage-shares/shares.conf"
+  config other
+  printf 'storageServer = ""\n' >> "$TMP/chezmoi.toml"
+  rm -rf "$TMP/linux" "$TMP/linux.boltdb"
+  run render linux
+  [[ "$output" != *storage-shares* ]] || false
+}
+
+@test "the storage-shares apply step renders only with a storageServer, and touches Comfy only when it is selected" {
+  step() { chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template --override-data "$1" < "$REPO/home/.chezmoiscripts/run_after_46-storage-shares.sh.tmpl"; }
+  run step '{"chezmoi":{"os":"linux"},"storageServer":""}'
+  [ -z "$output" ]
+  run step '{"chezmoi":{"os":"darwin"},"storageServer":"192.0.2.10"}'
+  [ -z "$output" ]
+  run step '{"chezmoi":{"os":"linux"},"storageServer":"192.0.2.10","workstationApps":["blender"]}'
+  [[ "$output" == *'storage-shares" status --quiet || true'* ]] || false
+  [[ "$output" != *comfy* ]] || false
+  run step '{"chezmoi":{"os":"linux"},"storageServer":"192.0.2.10","workstationApps":["comfyui"]}'
+  [[ "$output" == *'storage-shares" comfy --quiet || true'* ]] || false
+}

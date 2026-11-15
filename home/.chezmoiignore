@@ -30,3 +30,8 @@ Library
 # herdr-core's shell points into the ubuntu-dev box only on Bazzite (installTarget = distrobox)
 .config/herdr-core
 {{- end }}
+{{- if not (and (eq .chezmoi.os "linux") (get . "storageServer" | toString | trim)) }}
+# The homelab NFS shares only where chezmoi init got a storageServer (Linux)
+.config/storage-shares
+.local/bin/storage-shares
+{{- end }}

@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+# storage-shares: the homelab NFS shares (storageServer in chezmoi init), mounted on first use.
+# Usage: storage-shares [status [--quiet]] | units | install | remove | check | comfy [--quiet]
+#   status   each share: whether its units are installed and current, and whether it is mounted
+#            (--quiet: nothing when all are installed, else one line saying what to run)
+#   units    print the systemd units install writes
+#   install  write a .mount and an .automount unit per share to /etc/systemd/system with sudo,
+#            then enable and start the automounts. A share mounts when something first uses it.
+#   remove   stop and disable the automounts and delete the units this command wrote (sudo); the
+#            shares' contents are never touched
+#   check    use each share (which mounts it), show its mount, test a write to each read-write
+#            share and that a read-only share refuses one
+#   comfy    add the models share to Comfy Desktop's models folders (--quiet: say only changes)
+# The shares come from ~/.config/storage-shares/shares.conf, which chezmoi writes from storageServer
+# and storageModels. Mounts live on the host: in a distrobox, status, install and remove run on the
+# host through distrobox-host-exec (the box shares $HOME, so this file is there too), while check and
+# comfy run where you are, so check in the box shows what the box sees.
+# Test seams: STORAGE_SHARES_CONF, _UNIT_DIR, _CONTAINER_MARKER, _COMFY_SETTINGS.
+
+set -uo pipefail
+
+conf="${STORAGE_SHARES_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/storage-shares/shares.conf}"
+unit_dir="${STORAGE_SHARES_UNIT_DIR:-/etc/systemd/system}"
+marker="${STORAGE_SHARES_CONTAINER_MARKER:-/run/.containerenv}"
+comfy_settings="${STORAGE_SHARES_COMFY_SETTINGS:-${XDG_CONFIG_HOME:-$HOME/.config}/comfyui-desktop-2/settings.json}"
+owned='# Managed by dotfiles storage-shares'
+docs='https://github.com/pixeloven/dotfiles/blob/main/docs/storage-shares.md'
+
+die() { echo "storage-shares: $*" >&2; exit 1; }
+in_box() { [ -e "$marker" ]; }
+
+server="" root="" names=() remotes=() modes=()
+load() { # parse and validate shares.conf; every value ends up in unit files, so each is checked
+  local kind a b c
+  [ -f "$conf" ] || die "no $conf; set storageServer with chezmoi init (docs/storage-shares.md)"
+  while read -r kind a b c; do
+    case "$kind" in
+      ''|'#'*) ;;
+      server) server="$a" ;;
+      root) root="$a" ;;
+      share)
+        [[ "$a" =~ ^[a-z0-9_][a-z0-9_-]*$ ]] || die "$conf: bad share name '$a'"
+        [[ "$b" =~ ^/[A-Za-z0-9/_.-]+$ ]] || die "$conf: bad remote path '$b' for $a"
+        case "$c" in rw|ro) ;; *) die "$conf: share $a must be rw or ro, not '$c'" ;; esac
+        names+=("$a") remotes+=("$b") modes+=("$c") ;;
+      *) die "$conf: unknown line '$kind'" ;;
+    esac
+  done < "$conf"
+  [[ "$server" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "$conf: bad or missing server '$server'"
+  [[ "$root" =~ ^/[A-Za-z0-9][A-Za-z0-9/_-]*[A-Za-z0-9]$ ]] && [[ "$root" != *//* ]] || die "$conf: bad or missing root '$root'"
+  [ "${#names[@]}" -gt 0 ] || die "$conf: no shares"
+}
+
+unit_name() { # <mount point> <suffix> : systemd's escaped unit name (systemd-escape --path), for [A-Za-z0-9/_-] paths
+  local p="${1#/}"
+  p="${p//-/\\x2d}"
+  printf '%s.%s\n' "${p//\//-}" "$2"
+}
+
+mount_unit() { # <i>
+  cat <<EOF
+$owned: storage-shares install writes it, storage-shares remove deletes it.
+# Nothing requires this mount, so it can never hold up boot: its .automount mounts it on first use.
+[Unit]
+Description=NFS share ${names[$1]} from $server (dotfiles storage-shares)
+Documentation=$docs
+Wants=network-online.target
+After=network-online.target
+
+[Mount]
+What=$server:${remotes[$1]}
+Where=$root/${names[$1]}
+Type=nfs
+Options=${modes[$1]},_netdev,hard,timeo=100,retrans=3,noatime
+TimeoutSec=30
+EOF
+}
+
+automount_unit() { # <i>
+  cat <<EOF
+$owned: storage-shares install writes it, storage-shares remove deletes it.
+# Mounts the share on first use, and unmounts it after 10 idle minutes.
+[Unit]
+Description=Mount NFS share ${names[$1]} from $server on first use (dotfiles storage-shares)
+Documentation=$docs
+
+[Automount]
+Where=$root/${names[$1]}
+TimeoutIdleSec=10min
+
+[Install]
+WantedBy=remote-fs.target
+EOF
+}
+
+render() { # <i> <mount|automount>
+  if [ "$2" = mount ]; then mount_unit "$1"; else automount_unit "$1"; fi
+}
+
+current() { # <i> : 0 when both installed units match what install writes
+  local kind
+  for kind in mount automount; do
+    [ "$(cat "$unit_dir/$(unit_name "$root/${names[$1]}" "$kind")" 2>/dev/null)" = "$(render "$1" "$kind")" ] || return 1
+  done
+}
+
+owned_units() { # unit files in unit_dir this command wrote, one name per line
+  local f
+  for f in "$unit_dir"/*.mount "$unit_dir"/*.automount; do
+    [ -f "$f" ] && head -n 1 "$f" | grep -qF "$owned" && basename "$f"
+  done
+  return 0
+}
+
+on_host() { # re-run this command on the host when called inside a distrobox
+  in_box || return 0
+  command -v distrobox-host-exec >/dev/null 2>&1 || die "in a container without distrobox-host-exec; run storage-shares $* on the host"
+  local self
+  self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  # distrobox-host-exec drops the environment, so the resolved paths go along explicitly.
+  cd "$HOME" && exec distrobox-host-exec env STORAGE_SHARES_CONF="$conf" STORAGE_SHARES_UNIT_DIR="$unit_dir" bash "$self" "$@"
+}
+
+need_linux() { [ "$(uname -s)" = Linux ] || die "Linux only"; }
+
+status() {
+  local quiet="" i a m state stale=() u
+  [ "${1:-}" = --quiet ] && quiet=1
+  on_host status "$@"
+  load
+  if [ -n "$quiet" ]; then
+    for i in "${!names[@]}"; do current "$i" || { echo "storage-shares: the $root share mounts are not installed or are out of date; on the host run: storage-shares install (needs sudo)"; return 1; }; done
+    return 0
+  fi
+  for i in "${!names[@]}"; do
+    a="$(unit_name "$root/${names[$i]}" automount)" m="$root/${names[$i]}"
+    if [ ! -f "$unit_dir/$a" ]; then state="not installed (storage-shares install)"
+    elif ! current "$i"; then state="out of date (storage-shares install)"
+    else
+      state="automount $(systemctl is-active "$a" 2>/dev/null || true)"
+      if findmnt -n -t nfs,nfs4 "$m" >/dev/null 2>&1; then state="$state, mounted"; else state="$state, mounts on first use"; fi
+    fi
+    printf '%-8s %s %s:%s -> %s: %s\n' "${names[$i]}" "${modes[$i]}" "$server" "${remotes[$i]}" "$m" "$state"
+  done
+  while read -r u; do
+    [ -n "$u" ] || continue
+    for i in "${!names[@]}"; do
+      case "$u" in "$(unit_name "$root/${names[$i]}" mount)"|"$(unit_name "$root/${names[$i]}" automount)") continue 2 ;; esac
+    done
+    stale+=("$u")
+  done <<<"$(owned_units)"
+  [ "${#stale[@]}" -eq 0 ] || echo "storage-shares: no longer in $conf: ${stale[*]} (storage-shares install removes them)"
+}
+
+units() {
+  local i kind
+  load
+  for i in "${!names[@]}"; do
+    for kind in mount automount; do
+      echo "### $unit_dir/$(unit_name "$root/${names[$i]}" "$kind")"
+      render "$i" "$kind"
+      echo
+    done
+  done
+}
+
+do_install() {
+  local i kind u tmp changed=() wanted=() automounts=() stale=()
+  need_linux
+  on_host install
+  load
+  if ! command -v mount.nfs >/dev/null 2>&1 && [ ! -x /usr/sbin/mount.nfs ] && [ ! -x /sbin/mount.nfs ]; then
+    if command -v apt-get >/dev/null 2>&1; then
+      echo "storage-shares: installing nfs-common (the NFS client)"
+      sudo apt-get install -y nfs-common || die "apt-get install nfs-common failed"
+    else
+      die "no NFS client (mount.nfs); install nfs-utils with this system's package manager, then run storage-shares install again"
+    fi
+  fi
+  tmp="$(mktemp -d)" || die "mktemp failed"
+  trap 'rm -rf "$tmp"' EXIT
+  for i in "${!names[@]}"; do
+    current "$i" || changed+=("$i")
+    for kind in mount automount; do
+      u="$(unit_name "$root/${names[$i]}" "$kind")"
+      wanted+=("$u")
+      render "$i" "$kind" > "$tmp/$u"
+    done
+    automounts+=("$(unit_name "$root/${names[$i]}" automount)")
+  done
+  while read -r u; do
+    [ -n "$u" ] || continue
+    printf '%s\n' "${wanted[@]}" | grep -qxF "$u" || stale+=("$u")
+  done <<<"$(owned_units)"
+  if [ "${#stale[@]}" -gt 0 ]; then
+    echo "storage-shares: removing units no longer in $conf: ${stale[*]}"
+    for u in "${stale[@]}"; do case "$u" in *.automount) sudo systemctl disable --now "$u" || true ;; esac; done
+    for u in "${stale[@]}"; do case "$u" in *.mount) sudo systemctl stop "$u" 2>/dev/null || true ;; esac; done
+    for u in "${stale[@]}"; do sudo rm -f "$unit_dir/$u" || die "could not remove $unit_dir/$u"; done
+  fi
+  for i in "${changed[@]+"${changed[@]}"}"; do
+    echo "storage-shares: writing the ${names[$i]} share's units ($server:${remotes[$i]} -> $root/${names[$i]}, ${modes[$i]})"
+    for kind in mount automount; do
+      u="$(unit_name "$root/${names[$i]}" "$kind")"
+      sudo install -D -m 0644 "$tmp/$u" "$unit_dir/$u" || die "could not write $unit_dir/$u"
+    done
+  done
+  sudo systemctl daemon-reload || die "systemctl daemon-reload failed"
+  # A share already mounted keeps its old options until it is unmounted; stop it so the next use
+  # mounts it with the new ones. A busy share stays as it is until it goes idle or the next boot.
+  for i in "${changed[@]+"${changed[@]}"}"; do
+    u="$(unit_name "$root/${names[$i]}" mount)"
+    if systemctl is-active --quiet "$u" 2>/dev/null; then
+      sudo systemctl stop "$u" 2>/dev/null || echo "storage-shares: $root/${names[$i]} is busy; it picks up the change once it is unmounted"
+    fi
+  done
+  sudo systemctl enable --now "${automounts[@]}" || die "enabling the automounts failed; see: systemctl status ${automounts[*]}"
+  echo "storage-shares: installed; the shares mount on first use. Next: storage-shares check"
+}
+
+do_remove() {
+  local u units=()
+  need_linux
+  on_host remove
+  while read -r u; do [ -n "$u" ] && units+=("$u"); done <<<"$(owned_units)"
+  [ "${#units[@]}" -gt 0 ] || { echo "storage-shares: no units from storage-shares in $unit_dir"; return 0; }
+  for u in "${units[@]}"; do case "$u" in *.automount) sudo systemctl disable --now "$u" || true ;; esac; done
+  for u in "${units[@]}"; do case "$u" in *.mount) sudo systemctl stop "$u" 2>/dev/null || echo "storage-shares: ${u%.mount} is busy; it unmounts at the next boot" ;; esac; done
+  for u in "${units[@]}"; do sudo rm -f "$unit_dir/$u" || die "could not remove $unit_dir/$u"; done
+  sudo systemctl daemon-reload || true
+  echo "storage-shares: removed ${units[*]}; the shares' contents are untouched"
+}
+
+check() { # bounded by timeout, so an unreachable server fails the check instead of hanging it
+  local i m f type failed=0
+  load
+  for i in "${!names[@]}"; do
+    m="$root/${names[$i]}"
+    if [ ! -e "$m" ]; then
+      echo "${names[$i]}: FAIL: no $m; on the host run: storage-shares install"
+      failed=1; continue
+    fi
+    if ! timeout -k 5 45 ls -d "$m/." >/dev/null 2>&1; then
+      echo "${names[$i]}: FAIL: $m did not mount (is $server up and exporting ${remotes[$i]} to this machine? systemctl status $(unit_name "$m" mount))"
+      failed=1; continue
+    fi
+    type="$(findmnt -n -o FSTYPE,SOURCE -T "$m" 2>/dev/null | tr -s ' ')"
+    case "$type" in
+      nfs*) ;;
+      *) echo "${names[$i]}: FAIL: $m is not an NFS mount (${type:-nothing mounted}); run storage-shares install"; failed=1; continue ;;
+    esac
+    f="$m/.storage-shares-check.$$"
+    # shellcheck disable=SC2016 # $1 expands in the sh -c child, which gets the path as an argument
+    if [ "${modes[$i]}" = rw ]; then
+      if timeout -k 5 30 sh -c 'echo ok > "$1" && [ "$(cat "$1")" = ok ] && rm -f "$1"' sh "$f" 2>/dev/null; then
+        echo "${names[$i]}: ok: $type, $(id -un) can write"
+      else
+        timeout -k 5 10 rm -f "$f" 2>/dev/null
+        echo "${names[$i]}: FAIL: $type mounted, but $(id -un) (uid $(id -u)) cannot write to $m"; failed=1
+      fi
+    elif timeout -k 5 30 sh -c ': > "$1"' sh "$f" 2>/dev/null; then
+      timeout -k 5 10 rm -f "$f" 2>/dev/null
+      echo "${names[$i]}: FAIL: $m should be read-only but accepted a write"; failed=1
+    else
+      echo "${names[$i]}: ok: $type, read-only"
+    fi
+  done
+  return "$failed"
+}
+
+comfy() { # Comfy Desktop (comfyui-desktop-2) keeps its shared model folders in settings.json's
+  # modelsDirs; the first is the primary, where downloads go. It builds the --extra-model-paths-config
+  # file it passes ComfyUI from that list at each launch. Adds the models share once; never reorders.
+  local quiet="" models mode="" i tmp
+  [ "${1:-}" = --quiet ] && quiet=1
+  load
+  for i in "${!names[@]}"; do [ "${names[$i]}" = models ] && mode="${modes[$i]}"; done
+  [ -n "$mode" ] || { [ -n "$quiet" ] || echo "storage-shares: no models share in $conf"; return 0; }
+  models="$root/models"
+  # Until the units are installed there is no mount point, and Comfy would get a folder that isn't
+  # there. Testing for it doesn't mount the share (stat never triggers an automount), so it can't hang.
+  if [ ! -d "$models" ]; then
+    [ -n "$quiet" ] || echo "storage-shares: no $models yet; on the host run storage-shares install, then storage-shares comfy"
+    return 0
+  fi
+  if [ ! -f "$comfy_settings" ]; then
+    [ -n "$quiet" ] || echo "storage-shares: no $comfy_settings yet; open Comfy Desktop once, finish its first-run setup and quit it, then run: storage-shares comfy"
+    return 0
+  fi
+  command -v jq >/dev/null 2>&1 || { echo "storage-shares: jq not found; Comfy Desktop's models folders not set" >&2; return 1; }
+  jq -e 'type == "object" and ((.modelsDirs // []) | type == "array")' "$comfy_settings" >/dev/null 2>&1 ||
+    { echo "storage-shares: $comfy_settings is not the settings file expected; left alone" >&2; return 1; }
+  jq -e --arg m "$models" '(.modelsDirs // []) | index($m)' "$comfy_settings" >/dev/null && return 0
+  # comfyui-desktop-2, as the kernel's 15-character process name
+  if pgrep -x comfyui-desktop >/dev/null 2>&1; then
+    echo "storage-shares: Comfy Desktop is running and rewrites its settings; quit it, then run: storage-shares comfy"
+    return 0
+  fi
+  tmp="$comfy_settings.storage-shares.tmp"
+  # Read-write: the share becomes the primary, so downloads land where every machine can use them.
+  # Read-only: it is added after the local folder (Comfy's default when the list is empty), which
+  # stays the primary, since downloads can't go to a read-only share.
+  if ! jq --arg m "$models" --arg mode "$mode" --arg local "$HOME/ComfyUI-Shared/models" '
+      (.modelsDirs // []) as $d
+      | .modelsDirs = (if $mode == "rw" then [$m] + $d elif ($d | length) == 0 then [$local, $m] else $d + [$m] end)
+    ' "$comfy_settings" > "$tmp" || ! chmod "$(stat -c %a "$comfy_settings")" "$tmp" || ! mv "$tmp" "$comfy_settings"; then
+    rm -f "$tmp"; echo "storage-shares: could not update $comfy_settings" >&2; return 1
+  fi
+  if [ "$mode" = rw ]; then
+    echo "storage-shares: Comfy Desktop now uses $models as its primary models folder (downloads go there); its earlier folders stay as extra ones"
+  else
+    echo "storage-shares: Comfy Desktop now also reads models from $models (read-only); downloads still go to its local folder"
+  fi
+}
+
+cmd="${1:-status}"
+[ "$#" -gt 0 ] && shift
+case "$cmd" in
+  status) status "$@" ;;
+  units) units ;;
+  install) do_install ;;
+  remove) do_remove ;;
+  check) check ;;
+  comfy) comfy "$@" ;;
+  -h|--help) sed -n '2,19s/^# \{0,1\}//p' "$0" ;;
+  *) echo "storage-shares: unknown command '$cmd' (try --help)" >&2; exit 2 ;;
+esac

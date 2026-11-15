@@ -187,7 +187,7 @@ On Linux, `chezmoi init` asks once where tools install (`installTarget`). Each s
 
 On both OSes `chezmoi init` also asks which ops tool sets to install (`toolsets`, none by default): `kubernetes` (kubectl, helm, argocd), `talos` (talosctl, omnictl), `terraform` (HashiCorp's tap), `ansible` and `containers` (the docker CLI); `toolsets on|off` changes them later. A machine that answered the older yes/no ops tools question (`opsTools`) keeps that answer until `chezmoi init` turns it into sets without asking: yes is every set, no is none. Each answer is asked once and kept in `~/.config/chezmoi/chezmoi.toml`; to change one, delete its line there and run `chezmoi init` again (keys you set by hand, such as `agentPlugins` and `operatorPersona`, stay). `chezmoi apply` never asks, so a machine set up before these questions keeps the defaults until you run `chezmoi init --source ~/Development/dotfiles pixeloven` once (in a box, from inside it); 9b step 1 does this for an existing box.
 
-With `distrobox`: the box shares the host's `$HOME` (distrobox mounts it even with `--home`), so `~/.zshrc`, `~/.gitconfig`, `~/.oh-my-zsh`, `~/.local/bin`, fnm's Node, `~/Development`, `~/.no-mistakes`, chezmoi's config and the agents' sign-ins are the same files on both sides and survive a rebuild. Each side has its own Homebrew at `/home/linuxbrew/.linuxbrew`; the box's lives in the container and goes with it. Tools go in the box only: don't install anything with the host's `brew`, and use `distrobox-host-exec` only for the Ptyxis settings, the host's link handlers for exported box apps (section 12), and read-only checks. On the host, chezmoi's Brewfile step skips itself (outside a container). The validation pipeline (no-mistakes) runs inside the box too (9b). Run every distrobox step inside the box unless it says host.
+With `distrobox`: the box shares the host's `$HOME` (distrobox mounts it even with `--home`), so `~/.zshrc`, `~/.gitconfig`, `~/.oh-my-zsh`, `~/.local/bin`, fnm's Node, `~/Development`, `~/.no-mistakes`, chezmoi's config and the agents' sign-ins are the same files on both sides and survive a rebuild. Each side has its own Homebrew at `/home/linuxbrew/.linuxbrew`; the box's lives in the container and goes with it. Tools go in the box only: don't install anything with the host's `brew`, and use `distrobox-host-exec` only for the Ptyxis settings, the host's link handlers for exported box apps (section 12), the homelab NFS share units (section 13), and read-only checks. On the host, chezmoi's Brewfile step skips itself (outside a container). The validation pipeline (no-mistakes) runs inside the box too (9b). Run every distrobox step inside the box unless it says host.
 
 ### 9a. Build the machine or the box
 
@@ -323,6 +323,7 @@ For a machine whose shells should reach 1Password without the desktop app, as on
 Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop, each selected on its own. [docs/workstation-apps.md](docs/workstation-apps.md) has the per-platform table.
 
 1. Pick the apps when `chezmoi init` asks (section 1 step 1, or 9a step 3), or later with `workstation-apps enable <app>...`, which saves the choice and runs `chezmoi apply --include scripts`. Every `chezmoi apply` installs selected apps that are missing: Homebrew formulae and casks on macOS and, on Linux, in the box with `distrobox`. Linux desktop apps install with apt: in the box on Bazzite, exported to the host's menu, or natively on an Ubuntu host. Herdr desktop uses Herdr's official installer. On Bazzite, Herdr's terminals open in the box. Comfy Desktop installs from its vendor's apt package, and Blender from its official tarball into `~/.local/opt/blender`. On x86_64 both are checksum-checked, installed in the box and exported to the host's menu: `workstation-apps enable blender comfyui` in the box. No models are set up.
+   With the homelab NFS shares (section 13), apply also adds the models share to Comfy Desktop's models folders.
    **Done when:** `workstation-apps preview` shows each selected app installed or manual, and `bin/drift` (or `/codify`) reports no `app-` findings.
 2. If an app was installed another way first (a vendor installer in `~/.local/bin`, `npm install -g`, or a macOS app from a download), installs skip it so there is only one copy. Run `workstation-apps vendor` to list such copies. Then run `workstation-apps vendor remove <app>`, which shows what it removes and asks first; settings and sign-ins stay. Then run `workstation-apps install <app>`.
    **Done when:** `workstation-apps vendor` reports no copies outside Homebrew, and `type -a herdr claude codex` lists one path for each.
@@ -330,3 +331,16 @@ Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps
    **Done when:** each selected app starts signed in.
 
 `workstation-apps disable <app>` deselects an app without uninstalling it; `bin/drift` then lists it as `app-unselected` until you uninstall it or select it again.
+
+## 13. Homelab NFS shares (Linux, optional)
+
+Off unless `chezmoi init` got an NFS server address (`storageServer`; [docs/storage-shares.md](docs/storage-shares.md)). The server must already export the shares to this machine's address, which is set up on the server, not here.
+
+1. *Both Linux setups.* Answer the server question at `chezmoi init` with the server's address, and the models question with `rw` (Bazzite) or `ro` (a machine that only reads models). On a machine set up before the question, run `chezmoi init --source ~/Development/dotfiles pixeloven` once (in a box, from inside it).
+   **Done when:** `storage-shares` lists three shares, each `not installed`.
+2. *Both Linux setups.* Install the mount units: `storage-shares install`. It asks for your password: `sudo` on the host (from a box it runs there through `distrobox-host-exec`). On an apt host it adds `nfs-common` if the NFS client is missing.
+   **Done when:** `storage-shares` shows each share as `automount active`.
+3. *Both Linux setups.* `storage-shares check`; with a box, run it there too.
+   **Done when:** each share prints `ok`: your own share and `common` say you can write, and a read-only `models` says read-only. `storage-shares` then shows them mounted.
+4. *With Comfy Desktop.* Open Comfy once to finish its first run, quit it, then `chezmoi apply` (or `storage-shares comfy`). On Bazzite, in the box.
+   **Done when:** Comfy's Settings, Shared Models, lists `/var/mnt/storage-01/models`, first if it is read-write.

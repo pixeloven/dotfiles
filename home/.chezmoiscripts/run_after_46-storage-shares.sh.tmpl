@@ -1,0 +1,15 @@
+{{ if and (eq .chezmoi.os "linux") (get . "storageServer" | toString | trim) -}}
+#!/bin/sh
+# storageServer is set (chezmoi init): the homelab NFS shares under /var/mnt/storage-01. Installing
+# their automount units needs sudo on the host, which apply never runs unattended, so this only says
+# when `storage-shares install` is still needed.
+{{- if has "comfyui" (get . "workstationApps" | default list) }}
+# With Comfy Desktop selected it also adds the models share to Comfy's models folders.
+{{- end }}
+# Runs on every apply and never fails it (docs/storage-shares.md).
+set -u
+"$HOME/.local/bin/storage-shares" status --quiet || true
+{{- if has "comfyui" (get . "workstationApps" | default list) }}
+"$HOME/.local/bin/storage-shares" comfy --quiet || true
+{{- end }}
+{{ end -}}

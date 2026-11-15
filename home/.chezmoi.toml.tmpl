@@ -6,6 +6,15 @@
 {{-   if or (stat "/run/ostree-booted") (stat "/run/host/run/ostree-booted") -}}{{ $suggested = "distrobox" }}{{- end -}}
 {{-   $installTarget = promptChoiceOnce . "installTarget" "Install tools on this host, or only inside a distrobox" (list "host" "distrobox") $suggested -}}
 {{- end -}}
+{{- $storageServer := "" -}}
+{{- $storageModels := "" -}}
+{{- if eq .chezmoi.os "linux" -}}
+{{-   $storageServer = promptStringOnce . "storageServer" "NFS server for the homelab shares under /var/mnt/storage-01 (blank: none)" "" | trim -}}
+{{-   if $storageServer -}}
+{{-     $modelsDefault := "ro" }}{{ if eq $installTarget "distrobox" }}{{ $modelsDefault = "rw" }}{{ end -}}
+{{-     $storageModels = promptChoiceOnce . "storageModels" "Mount the models share read-write or read-only" (list "rw" "ro") $modelsDefault -}}
+{{-   end -}}
+{{- end -}}
 {{- $sets := list -}}
 {{- range include "../lib/toolsets.txt" | splitList "\n" -}}
 {{-   if and (trim .) (not (hasPrefix "#" .)) }}{{ $sets = append $sets (regexFind "^\\S+" .) }}{{ end -}}
@@ -22,7 +31,8 @@
 {{- end -}}
 {{- $workstationApps := promptMultichoiceOnce . "workstationApps" "Workstation apps to install (lib/workstation-apps.tsv; none by default)" $apps (get . "workstationApps" | default list) -}}
 {{- $container := or (env "CONTAINER_ID") (stat "/run/.containerenv") (stat "/.dockerenv") | not | not -}}
-# Linux asks the terminal and where tools install; both OSes ask which ops tool sets and workstation apps to install
+# Linux asks the terminal, where tools install and the homelab NFS server (blank: none; with one, also
+# whether the models share is read-write); both OSes ask which ops tool sets and workstation apps to install
 # (a machine from before that question keeps its old opsTools answer: yes is every set, no is none).
 # Each is asked once. Keys set by hand are kept. This repo holds no names, emails, or other personal data.
 sourceDir = "~/Development/dotfiles"
@@ -32,6 +42,12 @@ terminal = {{ $terminal | quote }}
 installTarget = {{ $installTarget | quote }}
 toolsets = {{ $toolsets | toToml }}
 workstationApps = {{ $workstationApps | toToml }}
+{{- if eq .chezmoi.os "linux" }}
+storageServer = {{ $storageServer | quote }}
+{{-   if $storageServer }}
+storageModels = {{ $storageModels | quote }}
+{{-   end }}
+{{- end }}
 container = {{ $container }}
 {{- range list "agentPlugins" "operatorPersona" "operatorHome" }}
 {{-   if hasKey $ . }}

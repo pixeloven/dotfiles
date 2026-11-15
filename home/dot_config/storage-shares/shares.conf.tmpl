@@ -1,0 +1,9 @@
+# storage-shares: the NFS shares this machine mounts under root, read by `storage-shares`
+# (docs/storage-shares.md). chezmoi writes this file from storageServer and storageModels in
+# ~/.config/chezmoi/chezmoi.toml, so change those (and run chezmoi apply), not this file.
+# share lines: <name, mounted at root/name> <path on the server> <rw|ro>
+server {{ get . "storageServer" | toString | trim }}
+root /var/mnt/storage-01
+share {{ .chezmoi.username }} /bulk/shares/{{ .chezmoi.username }} rw
+share common /bulk/shares/common rw
+share models /bulk/models {{ if eq (toString (get . "storageModels")) "rw" }}rw{{ else }}ro{{ end }}

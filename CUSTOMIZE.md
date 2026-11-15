@@ -159,6 +159,15 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 - **Try it:** `workstation-apps`.
 - **Keep it:** the selection lives only in your local chezmoi config. `/codify` reports `app-missing`, `app-unselected`, `app-retired`, `app-vendor` and `app-unselected-vendor`, never `pkg-extra`, for catalog apps.
 
+## Homelab NFS shares (Linux, off by default)
+
+- **Where it lives:** the chezmoi data keys `storageServer` (blank: off) and `storageModels` (`rw` or `ro`) in your untracked `~/.config/chezmoi/chezmoi.toml`, asked once by `chezmoi init` on Linux. `home/dot_config/storage-shares/shares.conf.tmpl` is the share layout, `home/dot_local/bin/executable_storage-shares` is the command, and `home/.chezmoiscripts/run_after_46-storage-shares.sh.tmpl` runs its status and Comfy steps on every apply. [docs/storage-shares.md](docs/storage-shares.md) has the details.
+- **Common changes:**
+  - See the shares: `storage-shares`; `storage-shares check` mounts them and tests a write.
+  - Change the server or the models mode: edit the key, `chezmoi apply`, then `storage-shares install`.
+  - Turn it off: `storage-shares remove`, then `storageServer = ""` and `chezmoi apply`.
+- **Try it:** `storage-shares units` prints the units without installing anything.
+
 ## Packages
 
 - **Where they live:** `Brewfile`; the optional ops tools are in `lib/toolsets.txt` (Optional tool sets, above)

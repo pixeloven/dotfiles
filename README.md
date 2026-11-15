@@ -15,6 +15,7 @@ Terminal setup as code for macOS and Linux: Ghostty, herdr, zsh with Starship, C
 | `~/.config/zsh/`, `~/.config/starship.toml` | |
 | Linux with Ptyxis: `~/.local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` | Ptyxis GSettings: only the default profile's palette in `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl` |
 | | Claude Code, Codex and pi plugin registries (`~/.claude/plugins/`, `~/.codex/config.toml`, `~/.pi/agent/settings.json`): only the plugins in `lib/agent-plugins.txt`, installed when missing and never re-installed |
+| Linux with a homelab NFS server (opt-in): `~/.config/storage-shares/shares.conf` and `~/.local/bin/storage-shares` | `/etc/systemd/system`: only the share units `storage-shares install` writes (with sudo, never from an apply); Comfy Desktop's `settings.json`: only the models share in `modelsDirs` |
 | | The Impeccable design skill (`~/.claude/skills/impeccable/`, `~/.agents/skills/impeccable/`, `~/.pi/agent/skills/impeccable/`): kept at the version in `lib/impeccable.txt` by its own installer |
 
 Files that can hold secrets (`lib/denylist.txt`) are blocked by a pre-commit hook and by CI.
@@ -58,6 +59,10 @@ Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the gl
 ## Workstation apps
 
 `chezmoi init` also asks which workstation apps to install, none by default: Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop. Every `chezmoi apply` installs the selected ones, so a rebuild is `chezmoi init --apply` plus that saved selection. `workstation-apps` lists, previews, enables and disables them. Homebrew installs the CLIs and the macOS apps. On Linux, the Claude and ChatGPT desktop apps install from their vendors' apt packages: on Bazzite inside the `ubuntu-dev` box, where `distrobox-export` puts them in the host's menu. Comfy Desktop also installs from its vendor's apt package, and Blender from its official tarball. Both are pinned and checksum-checked, in the box on Bazzite, and exported to the host menu. Herdr desktop uses Herdr's official installer. See [workstation apps](docs/workstation-apps.md) and RUNBOOK.md section 12.
+
+## Homelab NFS shares (Linux, opt-in)
+
+On Linux, `chezmoi init` also asks for a homelab NFS server, blank (none) by default. With one, `storage-shares install` (sudo, on the host) mounts its shares under `/var/mnt/storage-01`, each on first use, so a down server never holds up boot. The `ubuntu-dev` box sees them at the same paths. With Comfy Desktop selected, apply adds the models share to Comfy's models folders. See [storage shares](docs/storage-shares.md) and RUNBOOK.md section 13.
 
 ## Day to day
 
