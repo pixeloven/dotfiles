@@ -4,7 +4,7 @@ REAL_REPO="$BATS_TEST_DIRNAME/.."
 
 setup() {
   TMP="$(mktemp -d)"
-  export HOME="$TMP/home"
+  export HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config"
   R="$TMP/repo"
   mkdir -p "$HOME" "$R/bin" "$R/lib" "$R/home/dot_config/ghostty" "$R/home/.chezmoiscripts" "$TMP/stub"
   cp "$REAL_REPO/bin/drift" "$R/bin/drift"
@@ -12,6 +12,9 @@ setup() {
   : > "$R/lib/drift-ignore.txt"
   cp "$REAL_REPO/.chezmoiroot" "$REAL_REPO/home/.chezmoiignore" "$R/" 2>/dev/null || true
   mv "$R/.chezmoiignore" "$R/home/.chezmoiignore"
+  # .chezmoiignore reads the settings file through these partials (docs/settings.md)
+  mkdir -p "$R/home/.chezmoitemplates"
+  cp "$REAL_REPO"/home/.chezmoitemplates/dotfiles-settings* "$R/home/.chezmoitemplates/"
   cp "$REAL_REPO/home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh" "$R/home/.chezmoiscripts/"
   echo 'theme = x' > "$R/home/dot_config/ghostty/config.ghostty"
   printf 'brew "bat"\ncask "ghostty"\n' > "$R/Brewfile"
@@ -377,4 +380,19 @@ workstation_repo() { # the app catalog and its manager, as in the real repo, wit
   run "$R/bin/drift"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+@test "an invalid settings file is the one finding, instead of findings from chezmoi calls that failed" {
+  mkdir -p "$HOME/.config/dotfiles"
+  cp "$REAL_REPO/tests/fixtures/settings/bad-mode.toml" "$HOME/.config/dotfiles/settings.toml"
+  echo 'font-size = 20' >> "$HOME/.config/ghostty/config.ghostty"
+  run "$R/bin/drift"
+  [ "$status" -eq 0 ]
+  [ "$output" = "settings-invalid	dotfiles settings ($HOME/.config/dotfiles/settings.toml): nfsShares[0].mode must be rw or ro, not rx	fix the settings file, then dotfiles-settings check" ]
+  run "$R/bin/drift" --summary
+  [ "$output" = "dotfiles: 1 changes not codified - run /codify" ]
+  rm "$HOME/.config/dotfiles/settings.toml"
+  run "$R/bin/drift"
+  [[ "$output" == *$'edited\t.config/ghostty/config.ghostty'* ]] || false
+  [[ "$output" != *settings-invalid* ]] || false
 }

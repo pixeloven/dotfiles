@@ -14,6 +14,7 @@ Repo: `~/Development/dotfiles` (chezmoi source, `.chezmoiroot` = `home`). Run ev
 2. Show the findings grouped by kind in one short table (kind, target, what keeping it means). For `edited` findings, include the relevant lines of `chezmoi diff ~/<target>`; that diff runs repo → machine, so read it in reverse. Ask once which findings to **keep** (record in repo), **revert** (`chezmoi apply ~/<target>` overwrites the local change), or **skip** (leave as is).
 
 3. Apply each kept finding:
+   - `settings-invalid`: the machine's settings file (`~/.config/dotfiles/settings.toml`, docs/settings.md) fails validation, so chezmoi can't apply and drift reports nothing else. It holds machine values, never repo content: fix the key the message names in that file (or ask the user to), check it with `dotfiles-settings check`, then run drift again.
    - `edited`: run the action drift printed: `chezmoi re-add ~/<target>`, or for a template source `chezmoi edit ~/<target>` and make the same change there.
    - `untracked-config`: `chezmoi add ~/<target>`.
    - `pkg-extra`: append `brew "<name>"` or `cask "<name>"` to `Brewfile` in its section. Run `brew info --cask <name>` to tell which. For a **skipped** package, append its name to `lib/drift-ignore.txt` so it stops being reported.

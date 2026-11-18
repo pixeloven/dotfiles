@@ -1,0 +1,4 @@
+# expect: comfyui.modelsDirs: models must be an absolute or ~/ folder path
+schemaVersion = 1
+[comfyui]
+modelsDirs = ["models"]

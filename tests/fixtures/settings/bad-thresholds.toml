@@ -1,0 +1,4 @@
+# expect: fscache needs bstop < bcull < brun, not 20, 35 and 30
+schemaVersion = 1
+[fscache]
+bcull = 35

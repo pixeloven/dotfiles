@@ -1,0 +1,3 @@
+# expect: schemaVersion is missing; this dotfiles version reads schemaVersion = 1
+[comfyui]
+modelsDirs = ["/srv/models"]

@@ -11,10 +11,11 @@ Terminal setup as code for macOS and Linux: Ghostty, herdr, zsh with Starship, C
 | `~/.config/ghostty/config.ghostty` | `~/.claude/settings.json`: only the hooks in `lib/claude-hooks.fragment.json` |
 | `~/.config/herdr/config.toml` | `~/.gitconfig`: only the delta/merge keys in `home/.chezmoiscripts/run_onchange_after_20-gitconfig.sh` |
 | `~/.config/bat/config`, glow's `glow.yml` (`~/Library/Preferences/glow/` on macOS, `~/.config/glow/` on Linux) | |
-| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/`, the voice helpers `~/.local/bin/voice`, `speak-kokoro`, `voice-cloud` and (Linux) `dictate`, and `~/.local/bin/toolsets` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
+| `~/.claude/hooks/speak-alert.sh`, `~/.claude/skills/codify/`, the voice helpers `~/.local/bin/voice`, `speak-kokoro`, `voice-cloud` and (Linux) `dictate`, `~/.local/bin/toolsets` and `~/.local/bin/dotfiles-settings` | `~/.zshrc`: only the source line in its `# >>> dotfiles >>>` block |
 | `~/.config/zsh/`, `~/.config/starship.toml` | |
 | Linux with Ptyxis: `~/.local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` | Ptyxis GSettings: only the default profile's palette in `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl` |
 | | Claude Code, Codex and pi plugin registries (`~/.claude/plugins/`, `~/.codex/config.toml`, `~/.pi/agent/settings.json`): only the plugins in `lib/agent-plugins.txt`, installed when missing and never re-installed |
+| Linux with `nfsShares` in the settings file (opt-in): `~/.config/network-shares/shares.conf` and `~/.local/bin/network-shares` | `/etc/systemd/system`: only the share units `network-shares install` writes, and with a cached share `/etc/cachefilesd.conf` (with sudo, never from an apply); Comfy Desktop's `settings.json`: only the `comfyui.modelsDirs` folders in `modelsDirs` |
 | | The Impeccable design skill (`~/.claude/skills/impeccable/`, `~/.agents/skills/impeccable/`, `~/.pi/agent/skills/impeccable/`): kept at the version in `lib/impeccable.txt` by its own installer |
 
 Files that can hold secrets (`lib/denylist.txt`) are blocked by a pre-commit hook and by CI.
@@ -58,6 +59,13 @@ Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the gl
 ## Workstation apps
 
 `chezmoi init` also asks which workstation apps to install, none by default: Herdr (CLI and desktop), Claude Code, Codex, the Claude and ChatGPT desktop apps, Blender and Comfy Desktop. Every `chezmoi apply` installs the selected ones, so a rebuild is `chezmoi init --apply` plus that saved selection. `workstation-apps` lists, previews, enables and disables them. Homebrew installs the CLIs and the macOS apps. On Linux, the Claude and ChatGPT desktop apps install from their vendors' apt packages: on Bazzite inside the `ubuntu-dev` box, where `distrobox-export` puts them in the host's menu. Comfy Desktop also installs from its vendor's apt package, and Blender from its official tarball. Both are pinned and checksum-checked, in the box on Bazzite, and exported to the host menu. Herdr desktop uses Herdr's official installer. See [workstation apps](docs/workstation-apps.md) and RUNBOOK.md section 12.
+
+## Machine settings (optional)
+
+A few features are per machine and off unless you turn them on in one settings file, `~/.config/dotfiles/settings.toml` (schema v1, [docs/settings.md](docs/settings.md)). With no file, nothing changes. `chezmoi apply` validates it first and fails with one message, changing nothing, if it is wrong; `dotfiles-settings check` runs the same check.
+
+- **Network shares** (Linux): NFS shares mounted on first use, so a down server never holds up boot, optionally cached on local disk with FS-Cache. `network-shares install` (sudo, on the host) sets them up; network-shares never runs sudo from an apply. See [network shares](docs/network-shares.md) and RUNBOOK.md section 13.
+- **Comfy Desktop model folders** (Linux): folders added to Comfy's Shared Models. See [workstation apps](docs/workstation-apps.md#comfy-desktop-model-folders).
 
 ## Day to day
 

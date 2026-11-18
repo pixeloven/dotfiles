@@ -1,0 +1,12 @@
+{{- /*
+  dotfiles-settings-path: where the settings file is read from (docs/settings.md):
+  ${XDG_CONFIG_HOME:-~/.config}/dotfiles/settings.toml. The data key dotfilesSettingsFile replaces it,
+  as a test seam: CI renders fixtures through it.
+*/ -}}
+{{- if hasKey . "dotfilesSettingsFile" -}}
+{{-   toString .dotfilesSettingsFile -}}
+{{- else -}}
+{{-   $xdg := env "XDG_CONFIG_HOME" -}}
+{{-   if not (hasPrefix "/" $xdg) }}{{ $xdg = joinPath .chezmoi.homeDir ".config" }}{{ end -}}
+{{-   joinPath $xdg "dotfiles" "settings.toml" -}}
+{{- end -}}

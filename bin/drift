@@ -8,7 +8,9 @@
 #   --json     findings as a JSON array of {kind, target, action}
 #
 # Kinds: edited, owned-key, pkg-extra, pkg-missing, plugin-missing, plugin-behind, skill-missing, skill-behind,
-# skill-ahead, untracked-config.
+# skill-ahead, untracked-config, settings-invalid.
+# settings-invalid: the settings file (docs/settings.md) fails validation, so every chezmoi call fails; it is
+# then the only finding, since the others would come from failed calls.
 # plugin-behind: an installed plugin differs from this machine's local catalogue copy. The check is offline,
 # so a newly published marketplace re-pin is found by the operator's crew check and lib/agent-plugins.sh update.
 # skill-*: the Impeccable skill against the version in lib/impeccable.txt (lib/impeccable.sh check).
@@ -33,6 +35,16 @@ denylisted() { # a glob without / matches the file name, one with / the end of t
     esac
   done < "$REPO/lib/denylist.txt"
   return 1
+}
+
+settings_problem() { # the one-sentence validation error for the settings file, or nothing when it is valid
+  local err
+  err="$("${CZ[@]}" execute-template '{{ includeTemplate "dotfiles-settings" . }}' 2>&1 >/dev/null)" && return 0
+  case "$err" in
+    *"error calling fail: "*) printf '%s\n' "${err##*error calling fail: }" ;;
+    *"error calling fromToml: "*) printf 'dotfiles settings: %s\n' "${err##*error calling fromToml: }" ;;
+    *) printf '%s\n' "${err:-dotfiles settings: chezmoi could not read them}" ;;
+  esac | tail -n 1
 }
 
 # .chezmoiignore is a template with per-OS blocks, so chezmoi renders it for this machine.
@@ -240,7 +252,12 @@ untracked() {
   done
 }
 
-findings="$({ edited; owned_keys; ptyxis_keys; zshrc_line; codex_keys; operator_persona; agent_plugins; impeccable; packages; workstation_apps; untracked; } 2>/dev/null)"
+problem="$(settings_problem)"
+if [ -n "$problem" ]; then
+  findings="$(emit settings-invalid "$problem" "fix the settings file, then dotfiles-settings check")"
+else
+  findings="$({ edited; owned_keys; ptyxis_keys; zshrc_line; codex_keys; operator_persona; agent_plugins; impeccable; packages; workstation_apps; untracked; } 2>/dev/null)"
+fi
 
 case "${1:-}" in
   --summary)

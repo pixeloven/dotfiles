@@ -1,4 +1,7 @@
 # Repo-only files never applied to $HOME live outside home/ (see .chezmoiroot).
+{{- /* The settings file gate (docs/settings.md): chezmoi renders this file before it writes anything,
+       so a bad settings file fails the whole apply here with one message and changes nothing. */}}
+{{- $settings := includeTemplate "dotfiles-settings" . | fromJson }}
 # herdr runtime files are never managed
 .config/herdr/*.sock
 .config/herdr/*.sock.agent
@@ -29,4 +32,9 @@ Library
 {{- if not (and (eq .chezmoi.os "linux") (eq (toString (get . "installTarget")) "distrobox")) }}
 # herdr-core's shell points into the ubuntu-dev box only on Bazzite (installTarget = distrobox)
 .config/herdr-core
+{{- end }}
+{{- if not (and (eq .chezmoi.os "linux") $settings.nfsShares) }}
+# network-shares only where the settings file lists nfsShares (Linux)
+.config/network-shares
+.local/bin/network-shares
 {{- end }}

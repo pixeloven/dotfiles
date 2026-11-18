@@ -1,0 +1,432 @@
+#!/usr/bin/env bash
+# network-shares: the NFS shares in the settings file's nfsShares, mounted on first use, with FS-Cache
+# for the shares that set cache = true.
+# Usage: network-shares [status [--quiet]] | units | install | remove | check
+#   status   each share: whether its units are installed and current, and whether it is mounted;
+#            with a cached share, whether cachefilesd runs and has a cache bound
+#            (--quiet: nothing when all is set up, else one line saying what to run)
+#   units    print the systemd units (and the cachefilesd.conf) install writes
+#   install  with sudo: write a .mount and an .automount unit per share to /etc/systemd/system, then
+#            enable and start the automounts, so a share mounts when something first uses it. With a
+#            cached share, also install cachefilesd (apt or dnf; on an image-based host it prints the
+#            rpm-ostree command instead and never layers a package), write /etc/cachefilesd.conf from
+#            the fscache settings and enable cachefilesd
+#   remove   stop and disable the automounts and delete the units this command wrote (sudo); the
+#            shares' contents, cachefilesd, its config and the cache are left alone
+#   check    use each share (which mounts it), show its mount, test a write to each read-write
+#            share and that a read-only share refuses one
+# The shares come from ~/.config/network-shares/shares.conf, which chezmoi writes from the settings file
+# (docs/settings.md, docs/network-shares.md). Mounts live on the host: in a distrobox, status, units,
+# install and remove run on the host through distrobox-host-exec (the box shares $HOME, so this file is
+# there too), while check runs where you are, so check in the box shows what the box sees.
+# Test seams: NETWORK_SHARES_CONF, _UNIT_DIR, _CONTAINER_MARKER, _OSTREE_MARKER, _CACHEFILESD_CONF,
+# _CACHEFILESD_DEFAULT, _FSCACHE_PROC.
+
+set -uo pipefail
+
+conf="${NETWORK_SHARES_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/network-shares/shares.conf}"
+unit_dir="${NETWORK_SHARES_UNIT_DIR:-/etc/systemd/system}"
+marker="${NETWORK_SHARES_CONTAINER_MARKER:-/run/.containerenv}"
+ostree="${NETWORK_SHARES_OSTREE_MARKER:-/run/ostree-booted}"
+cfd_conf="${NETWORK_SHARES_CACHEFILESD_CONF:-/etc/cachefilesd.conf}"
+cfd_default="${NETWORK_SHARES_CACHEFILESD_DEFAULT:-/etc/default/cachefilesd}"
+fscache_proc="${NETWORK_SHARES_FSCACHE_PROC:-/proc/fs/fscache/caches}"
+owned='# Managed by dotfiles network-shares'
+docs='https://github.com/pixeloven/dotfiles/blob/main/docs/network-shares.md'
+path_re='^(/[A-Za-z0-9_][A-Za-z0-9_.-]*){2,}$'
+
+die() { echo "network-shares: $*" >&2; exit 1; }
+in_box() { [ -e "$marker" ]; }
+
+# Parsed shares.conf: one entry per share in each array; options is "-" or a comma-separated list.
+servers=() exports=() points=() modes=() caches=() options=()
+fs_dir="" fs_limits=()
+cached=0
+load() { # parse and validate shares.conf; every value ends up in a unit or config file, so each is checked again
+  local kind a b c d e f g
+  [ -f "$conf" ] || die "no $conf; add nfsShares to the settings file and run chezmoi apply (docs/network-shares.md)"
+  while read -r kind a b c d e f g; do
+    case "$kind" in
+      ''|'#'*) ;;
+      fscache)
+        [[ "$a" =~ $path_re ]] || die "$conf: bad fscache dir '$a'"
+        for v in "$b" "$c" "$d" "$e" "$f" "$g"; do [[ "$v" =~ ^[0-9]{1,2}$ ]] || die "$conf: bad fscache limit '$v'"; done
+        [ "$d" -lt "$c" ] && [ "$c" -lt "$b" ] && [ "$g" -lt "$f" ] && [ "$f" -lt "$e" ] || die "$conf: fscache limits out of order"
+        fs_dir="$a" fs_limits=("$b" "$c" "$d" "$e" "$f" "$g") ;;
+      share)
+        [[ "$a" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "$conf: bad server '$a'"
+        [[ "$b" =~ ^/[A-Za-z0-9/_.-]*$ ]] || die "$conf: bad export '$b' on $a"
+        [[ "$c" =~ $path_re ]] || die "$conf: bad mount point '$c'"
+        case "$d" in rw|ro) ;; *) die "$conf: $c must be rw or ro, not '$d'" ;; esac
+        case "$e" in 0|1) ;; *) die "$conf: $c: cache must be 0 or 1, not '$e'" ;; esac
+        [[ "$f" = - || "$f" =~ ^[a-z0-9_]+(=[A-Za-z0-9._:-]+)?(,[a-z0-9_]+(=[A-Za-z0-9._:-]+)?)*$ ]] || die "$conf: bad options '$f' for $c"
+        servers+=("$a") exports+=("$b") points+=("$c") modes+=("$d") caches+=("$e") options+=("$f")
+        [ "$e" = 1 ] && cached=1 ;;
+      *) die "$conf: unknown line '$kind'" ;;
+    esac
+  done < "$conf"
+  [ "${#points[@]}" -gt 0 ] || die "$conf: no shares"
+  [ "$cached" = 0 ] || [ -n "$fs_dir" ] || die "$conf: a share is cached but there is no fscache line"
+}
+
+where=() # the mount points as systemd sees them: symlinks resolved (e.g. /mnt -> /var/mnt on Bazzite)
+resolve() { # run on the host: systemd refuses a Where= that goes through a symlink
+  local i p
+  where=()
+  for i in "${!points[@]}"; do
+    p="$(realpath -m -- "${points[$i]}" 2>/dev/null)" || p="${points[$i]}"
+    [[ "$p" =~ $path_re ]] || die "${points[$i]} resolves to '$p', which a unit can't use"
+    where+=("$p")
+  done
+}
+
+unit_name() { # <mount point> <suffix> : systemd's escaped unit name (systemd-escape --path), for [A-Za-z0-9/_.-] paths
+  local p="${1#/}"
+  p="${p//-/\\x2d}"
+  printf '%s.%s\n' "${p//\//-}" "$2"
+}
+
+mount_options() { # <i> : the tool's own options, then fsc for a cached share, then the share's options
+  local o="${modes[$1]},_netdev,hard,timeo=100,retrans=3,noatime"
+  if [ "${caches[$1]}" = 1 ] && [[ ",${options[$1]}," != *,fsc=* ]]; then o="$o,fsc"; fi
+  [ "${options[$1]}" = - ] || o="$o,${options[$1]}"
+  printf '%s\n' "$o"
+}
+
+mount_unit() { # <i>
+  cat <<EOF
+$owned: network-shares install writes it, network-shares remove deletes it.
+# Nothing requires this mount, so it can never hold up boot: its .automount mounts it on first use.
+[Unit]
+Description=NFS share ${servers[$1]}:${exports[$1]} (dotfiles network-shares)
+Documentation=$docs
+Wants=network-online.target
+After=network-online.target
+
+[Mount]
+What=${servers[$1]}:${exports[$1]}
+Where=${where[$1]}
+Type=nfs
+Options=$(mount_options "$1")
+TimeoutSec=30
+EOF
+}
+
+automount_unit() { # <i>
+  cat <<EOF
+$owned: network-shares install writes it, network-shares remove deletes it.
+# Mounts the share on first use, and unmounts it after 10 idle minutes.
+[Unit]
+Description=Mount NFS share ${servers[$1]}:${exports[$1]} on first use (dotfiles network-shares)
+Documentation=$docs
+
+[Automount]
+Where=${where[$1]}
+TimeoutIdleSec=10min
+
+[Install]
+WantedBy=remote-fs.target
+EOF
+}
+
+render() { # <i> <mount|automount>
+  if [ "$2" = mount ]; then mount_unit "$1"; else automount_unit "$1"; fi
+}
+
+current() { # <i> : 0 when both installed units match what install writes
+  local kind
+  for kind in mount automount; do
+    [ "$(cat "$unit_dir/$(unit_name "${where[$1]}" "$kind")" 2>/dev/null)" = "$(render "$1" "$kind")" ] || return 1
+  done
+}
+
+owned_units() { # unit files in unit_dir this command wrote, one name per line
+  local f
+  for f in "$unit_dir"/*.mount "$unit_dir"/*.automount; do
+    [ -f "$f" ] && head -n 1 "$f" | grep -qF "$owned" && basename "$f"
+  done
+  return 0
+}
+
+stale_units() { # owned units for mount points no longer in shares.conf, one per line
+  local u i
+  while read -r u; do
+    [ -n "$u" ] || continue
+    for i in "${!where[@]}"; do
+      case "$u" in "$(unit_name "${where[$i]}" mount)"|"$(unit_name "${where[$i]}" automount)") continue 2 ;; esac
+    done
+    echo "$u"
+  done <<<"$(owned_units)"
+}
+
+# --- FS-Cache (cachefilesd) ---
+
+have_cachefilesd() { command -v cachefilesd >/dev/null 2>&1 || [ -x /usr/sbin/cachefilesd ] || [ -x /sbin/cachefilesd ]; }
+
+cfd_render() { # the cachefilesd.conf install writes; keeps the distro's SELinux secctx line
+  local secctx
+  secctx="$(grep -m 1 -E '^[[:space:]]*secctx[[:space:]]' "$cfd_conf" 2>/dev/null)"
+  cat <<EOF
+$owned: network-shares install writes it from the fscache settings (docs/network-shares.md).
+# Limits are percentages of free space (b) and free files (f) on the cache directory's filesystem:
+# culling starts below *cull, stops above *run, and the cache stops growing below *stop.
+dir $fs_dir
+brun ${fs_limits[0]}%
+bcull ${fs_limits[1]}%
+bstop ${fs_limits[2]}%
+frun ${fs_limits[3]}%
+fcull ${fs_limits[4]}%
+fstop ${fs_limits[5]}%
+EOF
+  [ -z "$secctx" ] || printf '%s\n' "$secctx"
+}
+
+cfd_current() { [ "$(cat "$cfd_conf" 2>/dev/null)" = "$(cfd_render)" ]; }
+
+cache_bound() { [ -r "$fscache_proc" ] && [ "$(sed 1d "$fscache_proc" 2>/dev/null | grep -c .)" -gt 0 ]; }
+
+pkg_install() { # <package> : install a package with the host's package manager; 1 when it is left to you
+  if [ -e "$ostree" ]; then
+    echo "network-shares: $1 is not in this image-based system. Layer it yourself, then run network-shares install again:"
+    echo "  sudo rpm-ostree install --apply-live $1"
+    echo "If an update is already staged (rpm-ostree status shows one), --apply-live may refuse or apply only"
+    echo "at the next boot; then layer it for the next boot instead:"
+    echo "  sudo rpm-ostree install $1 && systemctl reboot"
+    return 1
+  elif command -v apt-get >/dev/null 2>&1; then
+    echo "network-shares: installing $1"
+    sudo apt-get install -y "$1" || die "apt-get install $1 failed"
+  elif command -v dnf >/dev/null 2>&1; then
+    echo "network-shares: installing $1"
+    sudo dnf install -y "$1" || die "dnf install $1 failed"
+  else
+    echo "network-shares: install $1 with this system's package manager, then run network-shares install again"
+    return 1
+  fi
+}
+
+setup_fscache() { # cachefilesd for the cached shares; until it runs they mount uncached
+  local tmp="$1" changed=0 label
+  if ! have_cachefilesd; then
+    pkg_install cachefilesd || { echo "network-shares: the cached shares mount without FS-Cache until cachefilesd is installed"; return 0; }
+  fi
+  if [ -f "$cfd_default" ] && ! grep -qx 'RUN=yes' "$cfd_default"; then # Debian and Ubuntu start it only with RUN=yes
+    echo "network-shares: setting RUN=yes in $cfd_default"
+    { grep -v -E '^[[:space:]]*#?[[:space:]]*RUN=' "$cfd_default"; echo RUN=yes; } > "$tmp/cachefilesd.default"
+    sudo install -m 0644 "$tmp/cachefilesd.default" "$cfd_default" || die "could not write $cfd_default"
+  fi
+  if ! cfd_current; then
+    if [ -f "$cfd_conf" ] && ! head -n 1 "$cfd_conf" | grep -qF "$owned" && [ ! -e "$cfd_conf.dotfiles-orig" ]; then
+      sudo cp -p "$cfd_conf" "$cfd_conf.dotfiles-orig" || die "could not keep a copy of $cfd_conf"
+      echo "network-shares: kept the original $cfd_conf as $cfd_conf.dotfiles-orig"
+    fi
+    echo "network-shares: writing $cfd_conf (cache in $fs_dir, culling below ${fs_limits[1]}% free space)"
+    cfd_render > "$tmp/cachefilesd.conf"
+    sudo install -D -m 0644 "$tmp/cachefilesd.conf" "$cfd_conf" || die "could not write $cfd_conf"
+    changed=1
+  fi
+  [ -d "$fs_dir" ] || sudo install -d -m 0700 "$fs_dir" || die "could not create $fs_dir"
+  if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then
+    label="$(matchpathcon -n "$fs_dir" 2>/dev/null || true)"
+    if [[ "$label" != *cachefiles_var_t* ]]; then
+      echo "network-shares: labelling $fs_dir for cachefilesd (SELinux cachefiles_var_t)"
+      sudo semanage fcontext -a -t cachefiles_var_t "$fs_dir(/.*)?" || die "semanage fcontext for $fs_dir failed"
+    fi
+    sudo restorecon -R "$fs_dir" || die "restorecon $fs_dir failed"
+  fi
+  if [ "$changed" = 1 ] && systemctl is-active --quiet cachefilesd 2>/dev/null; then
+    sudo systemctl restart cachefilesd || die "restarting cachefilesd failed; see: systemctl status cachefilesd"
+  fi
+  sudo systemctl enable --now cachefilesd || die "enabling cachefilesd failed; see: systemctl status cachefilesd"
+}
+
+fscache_state() { # one line for status
+  local s
+  if ! have_cachefilesd; then s="cachefilesd not installed (network-shares install)"
+  elif ! cfd_current; then s="$cfd_conf out of date (network-shares install)"
+  else
+    s="cachefilesd $(systemctl is-active cachefilesd 2>/dev/null || true)"
+    if cache_bound; then s="$s, cache bound"; else s="$s, no cache bound"; fi
+  fi
+  printf 'fs-cache %s: %s\n' "$fs_dir" "$s"
+}
+
+# --- commands ---
+
+on_host() { # re-run this command on the host when called inside a distrobox
+  in_box || return 0
+  command -v distrobox-host-exec >/dev/null 2>&1 || die "in a container without distrobox-host-exec; run network-shares $* on the host"
+  local self
+  self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  # distrobox-host-exec drops the environment, so the resolved paths go along explicitly.
+  cd "$HOME" && exec distrobox-host-exec env NETWORK_SHARES_CONF="$conf" NETWORK_SHARES_UNIT_DIR="$unit_dir" \
+    NETWORK_SHARES_OSTREE_MARKER="$ostree" NETWORK_SHARES_CACHEFILESD_CONF="$cfd_conf" \
+    NETWORK_SHARES_CACHEFILESD_DEFAULT="$cfd_default" NETWORK_SHARES_FSCACHE_PROC="$fscache_proc" bash "$self" "$@"
+}
+
+need_linux() { [ "$(uname -s)" = Linux ] || die "Linux only"; }
+
+status() {
+  local quiet="" i a m state stale=()
+  [ "${1:-}" = --quiet ] && quiet=1
+  on_host status "$@"
+  load
+  resolve
+  if [ -n "$quiet" ]; then
+    for i in "${!points[@]}"; do current "$i" || { echo "network-shares: the share mounts are not installed or are out of date; on the host run: network-shares install (needs sudo)"; return 1; }; done
+    if [ "$cached" = 1 ] && ! { have_cachefilesd && cfd_current && systemctl is-active --quiet cachefilesd 2>/dev/null; }; then
+      echo "network-shares: FS-Cache for the cached shares is not set up; on the host run: network-shares install"
+      return 1
+    fi
+    return 0
+  fi
+  for i in "${!points[@]}"; do
+    a="$(unit_name "${where[$i]}" automount)" m="${where[$i]}"
+    if [ ! -f "$unit_dir/$a" ]; then state="not installed (network-shares install)"
+    elif ! current "$i"; then state="out of date (network-shares install)"
+    else
+      state="automount $(systemctl is-active "$a" 2>/dev/null || true)"
+      if findmnt -n -t nfs,nfs4 "$m" >/dev/null 2>&1; then state="$state, mounted"; else state="$state, mounts on first use"; fi
+    fi
+    printf '%s %s %s:%s%s: %s\n' "${points[$i]}" "${modes[$i]}" "${servers[$i]}" "${exports[$i]}" "$([ "${caches[$i]}" = 1 ] && echo ' cached')" "$state"
+  done
+  [ "$cached" = 0 ] || fscache_state
+  while read -r a; do [ -n "$a" ] && stale+=("$a"); done <<<"$(stale_units)"
+  [ "${#stale[@]}" -eq 0 ] || echo "network-shares: no longer in $conf: ${stale[*]} (network-shares install removes them)"
+}
+
+units() {
+  local i kind
+  on_host units
+  load
+  resolve
+  for i in "${!points[@]}"; do
+    for kind in mount automount; do
+      echo "### $unit_dir/$(unit_name "${where[$i]}" "$kind")"
+      render "$i" "$kind"
+      echo
+    done
+  done
+  if [ "$cached" = 1 ]; then
+    echo "### $cfd_conf"
+    cfd_render
+  fi
+}
+
+do_install() {
+  local i kind u changed=() wanted=() automounts=() stale=()
+  need_linux
+  on_host install
+  load
+  resolve
+  if ! command -v mount.nfs >/dev/null 2>&1 && [ ! -x /usr/sbin/mount.nfs ] && [ ! -x /sbin/mount.nfs ]; then
+    if command -v apt-get >/dev/null 2>&1; then pkg_install nfs-common; else pkg_install nfs-utils; fi ||
+      die "no NFS client (mount.nfs) yet; install it, then run network-shares install again"
+  fi
+  tmp="$(mktemp -d)" || die "mktemp failed" # global: the EXIT trap runs after this function returns
+  trap 'rm -rf "$tmp"' EXIT
+  [ "$cached" = 0 ] || setup_fscache "$tmp"
+  for i in "${!points[@]}"; do
+    current "$i" || changed+=("$i")
+    for kind in mount automount; do
+      u="$(unit_name "${where[$i]}" "$kind")"
+      wanted+=("$u")
+      render "$i" "$kind" > "$tmp/$u"
+    done
+    automounts+=("$(unit_name "${where[$i]}" automount)")
+  done
+  while read -r u; do [ -n "$u" ] && stale+=("$u"); done <<<"$(stale_units)"
+  if [ "${#stale[@]}" -gt 0 ]; then
+    echo "network-shares: removing units no longer in $conf: ${stale[*]}"
+    for u in "${stale[@]}"; do case "$u" in *.automount) sudo systemctl disable --now "$u" || true ;; esac; done
+    for u in "${stale[@]}"; do case "$u" in *.mount) sudo systemctl stop "$u" 2>/dev/null || true ;; esac; done
+    for u in "${stale[@]}"; do sudo rm -f "$unit_dir/$u" || die "could not remove $unit_dir/$u"; done
+  fi
+  for i in "${changed[@]+"${changed[@]}"}"; do
+    echo "network-shares: writing the units for ${where[$i]} (${servers[$i]}:${exports[$i]}, $(mount_options "$i"))"
+    for kind in mount automount; do
+      u="$(unit_name "${where[$i]}" "$kind")"
+      sudo install -D -m 0644 "$tmp/$u" "$unit_dir/$u" || die "could not write $unit_dir/$u"
+    done
+  done
+  sudo systemctl daemon-reload || die "systemctl daemon-reload failed"
+  # A share already mounted keeps its old options until it is unmounted; stop it so the next use
+  # mounts it with the new ones. A busy share stays as it is until it goes idle or the next boot.
+  for i in "${changed[@]+"${changed[@]}"}"; do
+    u="$(unit_name "${where[$i]}" mount)"
+    if systemctl is-active --quiet "$u" 2>/dev/null; then
+      sudo systemctl stop "$u" 2>/dev/null || echo "network-shares: ${where[$i]} is busy; it picks up the change once it is unmounted"
+    fi
+  done
+  sudo systemctl enable --now "${automounts[@]}" || die "enabling the automounts failed; see: systemctl status ${automounts[*]}"
+  echo "network-shares: installed; the shares mount on first use. Next: network-shares check"
+}
+
+do_remove() {
+  local u units=()
+  need_linux
+  on_host remove
+  while read -r u; do [ -n "$u" ] && units+=("$u"); done <<<"$(owned_units)"
+  [ "${#units[@]}" -gt 0 ] || { echo "network-shares: no units from network-shares in $unit_dir"; return 0; }
+  for u in "${units[@]}"; do case "$u" in *.automount) sudo systemctl disable --now "$u" || true ;; esac; done
+  for u in "${units[@]}"; do case "$u" in *.mount) sudo systemctl stop "$u" 2>/dev/null || echo "network-shares: ${u%.mount} is busy; it unmounts at the next boot" ;; esac; done
+  for u in "${units[@]}"; do sudo rm -f "$unit_dir/$u" || die "could not remove $unit_dir/$u"; done
+  sudo systemctl daemon-reload || true
+  echo "network-shares: removed ${units[*]}; the shares' contents are untouched"
+  if head -n 1 "$cfd_conf" 2>/dev/null | grep -qF "$owned"; then
+    echo "network-shares: cachefilesd, $cfd_conf and its cache are left as they are (sudo systemctl disable --now cachefilesd stops it)"
+  fi
+}
+
+check() { # bounded by timeout, so an unreachable server fails the check instead of hanging it
+  local i m f type opts failed=0
+  load
+  for i in "${!points[@]}"; do
+    m="${points[$i]}"
+    if [ ! -e "$m" ]; then
+      echo "$m: FAIL: not there; on the host run: network-shares install"
+      failed=1; continue
+    fi
+    if ! timeout -k 5 45 ls -d "$m/." >/dev/null 2>&1; then
+      echo "$m: FAIL: did not mount (is ${servers[$i]} up and exporting ${exports[$i]} to this machine? systemctl status $(unit_name "$m" mount))"
+      failed=1; continue
+    fi
+    type="$(findmnt -n -o FSTYPE,SOURCE -T "$m" 2>/dev/null | tr -s ' ')"
+    case "$type" in
+      nfs*) ;;
+      *) echo "$m: FAIL: not an NFS mount (${type:-nothing mounted}); run network-shares install"; failed=1; continue ;;
+    esac
+    opts=""
+    if [ "${caches[$i]}" = 1 ]; then
+      if [[ ",$(findmnt -n -o OPTIONS -T "$m" 2>/dev/null)," == *,fsc[,=]* ]]; then opts=", fsc"; else opts=", no fsc yet (it mounted before the units changed)"; fi
+    fi
+    f="$m/.network-shares-check.$$"
+    # shellcheck disable=SC2016 # $1 expands in the sh -c child, which gets the path as an argument
+    if [ "${modes[$i]}" = rw ]; then
+      if timeout -k 5 30 sh -c 'echo ok > "$1" && [ "$(cat "$1")" = ok ] && rm -f "$1"' sh "$f" 2>/dev/null; then
+        echo "$m: ok: $type, $(id -un) can write$opts"
+      else
+        timeout -k 5 10 rm -f "$f" 2>/dev/null
+        echo "$m: FAIL: $type mounted, but $(id -un) (uid $(id -u)) cannot write to it"; failed=1
+      fi
+    elif timeout -k 5 30 sh -c ': > "$1"' sh "$f" 2>/dev/null; then
+      timeout -k 5 10 rm -f "$f" 2>/dev/null
+      echo "$m: FAIL: should be read-only but accepted a write"; failed=1
+    else
+      echo "$m: ok: $type, read-only$opts"
+    fi
+  done
+  return "$failed"
+}
+
+cmd="${1:-status}"
+[ "$#" -gt 0 ] && shift
+case "$cmd" in
+  status) status "$@" ;;
+  units) units ;;
+  install) do_install ;;
+  remove) do_remove ;;
+  check) check ;;
+  -h|--help) sed -n '2,23s/^# \{0,1\}//p' "$0" ;;
+  *) echo "network-shares: unknown command '$cmd' (try --help)" >&2; exit 2 ;;
+esac

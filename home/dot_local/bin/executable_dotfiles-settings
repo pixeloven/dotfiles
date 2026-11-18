@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# dotfiles-settings: this machine's dotfiles settings file (schema v1, docs/settings.md).
+# Usage: dotfiles-settings [check [FILE] | show [FILE] | path]
+#   check  validate the settings file (or FILE) exactly as chezmoi apply does, and print one line:
+#          what it turns on, or the one problem found. Exit 0 when valid or absent, 1 when not.
+#   show   print the settings as apply reads them, defaults filled in, as JSON
+#   path   print where the settings file is read from
+# No settings file means every feature is off. A bad one fails chezmoi apply before anything is
+# written, so check it first after editing it, or before writing a new one in place.
+
+set -uo pipefail
+
+die() { echo "dotfiles-settings: $*" >&2; exit "${2:-1}"; }
+command -v chezmoi >/dev/null 2>&1 || die "chezmoi not found"
+
+render() { # [absolute FILE] : the dotfiles-settings partial's JSON; on failure (exit 1), chezmoi's errors
+  local data=() err rc
+  [ -z "${1:-}" ] || data=(--override-data "{\"dotfilesSettingsFile\":\"$1\"}")
+  err="$(mktemp)" || die "mktemp failed"
+  # stderr apart, so a chezmoi warning can't end up in the JSON
+  chezmoi execute-template "${data[@]+"${data[@]}"}" '{{ includeTemplate "dotfiles-settings" . }}' 2>"$err"
+  rc=$?
+  [ "$rc" -eq 0 ] || cat "$err"
+  rm -f "$err"
+  return "$rc"
+}
+
+problem() { # chezmoi's template trace -> the one sentence that matters
+  local out="$1" file="$2"
+  case "$out" in
+    *"error calling fail: "*) printf '%s\n' "${out##*error calling fail: }" ;;
+    *"error calling fromToml: "*) printf 'dotfiles settings (%s): %s\n' "$file" "${out##*error calling fromToml: }" ;;
+    *) printf '%s\n' "$out" ;;
+  esac
+}
+
+settings_path() { chezmoi execute-template '{{ includeTemplate "dotfiles-settings-path" . }}{{ "\n" }}'; }
+
+file_of() { # <json> : the settings path, without needing jq
+  local f="${1#*\"file\":\"}"
+  printf '%s\n' "${f%%\"*}"
+}
+
+cmd="${1:-check}"
+[ "$#" -gt 0 ] && shift
+case "$cmd" in
+  check|show)
+    [ "$#" -le 1 ] || die "usage: dotfiles-settings $cmd [FILE]" 2
+    file="${1:-}"
+    if [ -n "$file" ]; then
+      case "$file" in /*) ;; *) file="$PWD/$file" ;; esac
+      [[ "$file" != *[\"\\]* ]] || die "the path can't contain \" or \\" 2
+      [ -f "$file" ] || die "no such file: $file" 2
+    fi
+    if ! out="$(render "$file")"; then
+      [ -n "$file" ] || file="$(settings_path 2>/dev/null || echo 'the settings file')"
+      problem "$out" "$file" >&2
+      exit 1
+    fi
+    if [ "$cmd" = show ]; then
+      if command -v jq >/dev/null 2>&1; then jq . <<<"$out"; else printf '%s\n' "$out"; fi
+      exit 0
+    fi
+    file="$(file_of "$out")"
+    if [[ "$out" == *'"present":false'* ]]; then
+      echo "dotfiles-settings: no settings file at $file; every feature is off"
+    elif command -v jq >/dev/null 2>&1; then
+      jq -r '"dotfiles-settings: \(.file) is valid (schema v\(.schemaVersion)): \(.nfsShares | length) NFS share(s)\(if .cache then ", FS-Cache on" else "" end), \(.comfyui.modelsDirs | length) Comfy models folder(s)"' <<<"$out"
+    else
+      echo "dotfiles-settings: $file is valid (schema v1)"
+    fi ;;
+  path)
+    [ "$#" -eq 0 ] || die "usage: dotfiles-settings path" 2
+    settings_path ;;
+  -h|--help) sed -n '2,9s/^# \{0,1\}//p' "$0" ;;
+  *) die "unknown command '$cmd' (try --help)" 2 ;;
+esac

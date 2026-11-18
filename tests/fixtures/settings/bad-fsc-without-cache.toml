@@ -1,0 +1,7 @@
+# expect: nfsShares[0].options: "fsc=media" turns on FS-Cache; set cache = true as well
+schemaVersion = 1
+[[nfsShares]]
+server = "nas.example.lan"
+export = "/export/media"
+mountPoint = "/var/mnt/nas/media"
+options = ["fsc=media"]

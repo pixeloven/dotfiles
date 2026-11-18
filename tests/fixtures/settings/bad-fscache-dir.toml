@@ -1,0 +1,4 @@
+# expect: fscache.dir must be an absolute path of at least two parts
+schemaVersion = 1
+[fscache]
+dir = "cache"
