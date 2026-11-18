@@ -9,7 +9,9 @@ FIXTURES="$BATS_TEST_DIRNAME/fixtures/settings"
 CMD="$REPO/home/dot_local/bin/executable_dotfiles-settings"
 
 setup() {
-  export HOME="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-settings-XXXXXXXX")"
+  local tmp="${TMPDIR:-/tmp}"
+  # no trailing slash (macOS's TMPDIR has one): chezmoi cleans paths, so a // in HOME never matches
+  export HOME="$(mktemp -d "${tmp%/}/dotfiles-settings-XXXXXXXX")"
   export XDG_CONFIG_HOME="$HOME/.config"
   REAL_CHEZMOI="$(command -v chezmoi)"
   mkdir -p "$HOME/bin"
