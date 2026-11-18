@@ -11,7 +11,8 @@
 {{- $e := printf "dotfiles settings (%s): " $path -}}
 {{- /* Mount points and the cache directory: absolute, at least two plain components, no . or .. */ -}}
 {{- $pathRe := "^(/[A-Za-z0-9_][A-Za-z0-9_.-]*){2,}$" -}}
-{{- $system := list "/boot" "/dev" "/etc" "/proc" "/run" "/sys" "/usr" -}}
+{{- $system := list "/bin" "/boot" "/dev" "/etc" "/lib" "/lib64" "/proc" "/run" "/sbin" "/sys" "/usr" -}}
+{{- $systemDirs := list "/var/cache" "/var/lib" "/var/log" "/var/tmp" -}}
 {{- $fscache := dict "dir" "/var/cache/fscache" "brun" 30 "bcull" 25 "bstop" 20 "frun" 30 "fcull" 25 "fstop" 20 -}}
 {{- $shares := list -}}
 {{- $dirs := list -}}
@@ -33,9 +34,7 @@
 
 {{-   if hasKey $d "nfsShares" -}}
 {{-     if not (kindIs "slice" $d.nfsShares) }}{{ fail (printf "%snfsShares must be a list of [[nfsShares]] tables" $e) }}{{ end -}}
-{{-     $shareKeys := list "server" "export" "mountPoint" "mode" "cache" "options" -}}
-{{- /* Options network-shares sets itself; fsc=<id> is allowed (with cache = true) to separate cache keys */ -}}
-{{-     $own := list "rw" "ro" "_netdev" "hard" "soft" "timeo" "retrans" "noatime" "fsc" "nofsc" -}}
+{{-     $shareKeys := list "server" "export" "mountPoint" "mode" "cache" -}}
 {{-     range $i, $s := $d.nfsShares -}}
 {{-       $k := printf "%snfsShares[%d]" $e $i -}}
 {{-       if not (kindIs "map" $s) }}{{ fail (printf "%s must be a table" $k) }}{{ end -}}
@@ -53,6 +52,7 @@
 {{-       range $system -}}
 {{-         if hasPrefix (printf "%s/" .) $mp }}{{ fail (printf "%s.mountPoint %q is inside the system directory %s" $k $mp .) }}{{ end -}}
 {{-       end -}}
+{{-       if has $mp $systemDirs }}{{ fail (printf "%s.mountPoint %q is the system directory itself" $k $mp) }}{{ end -}}
 {{-       $mode := "rw" -}}
 {{-       if hasKey $s "mode" -}}
 {{-         $mode = $s.mode -}}
@@ -65,22 +65,7 @@
 {{-         $c = $s.cache -}}
 {{-       end -}}
 {{-       if $c }}{{ $cache = true }}{{ end -}}
-{{-       $opts := list -}}
-{{-       if hasKey $s "options" -}}
-{{-         if not (kindIs "slice" $s.options) }}{{ fail (printf "%s.options must be a list of strings" $k) }}{{ end -}}
-{{-         range $s.options -}}
-{{-           if not (kindIs "string" .) }}{{ fail (printf "%s.options must be a list of strings, not %v" $k .) }}{{ end -}}
-{{-           if not (regexMatch "^[a-z0-9_]+(=[A-Za-z0-9._:-]+)?$" .) }}{{ fail (printf "%s.options: %q is not an NFS option of the form name or name=value" $k .) }}{{ end -}}
-{{-           $name := regexFind "^[a-z0-9_]+" . -}}
-{{-           if and (eq $name "fsc") (ne . "fsc") -}}
-{{-             if not $c }}{{ fail (printf "%s.options: %q turns on FS-Cache; set cache = true as well" $k .) }}{{ end -}}
-{{-           else if has $name $own -}}
-{{-             fail (printf "%s.options: %q is set by network-shares itself (use mode and cache instead)" $k .) -}}
-{{-           end -}}
-{{-           $opts = append $opts . -}}
-{{-         end -}}
-{{-       end -}}
-{{-       $shares = append $shares (dict "server" $s.server "export" $s.export "mountPoint" $mp "mode" $mode "cache" $c "options" $opts) -}}
+{{-       $shares = append $shares (dict "server" $s.server "export" $s.export "mountPoint" $mp "mode" $mode "cache" $c) -}}
 {{-     end -}}
 {{-     range $i, $a := $shares -}}
 {{-       range $j, $b := $shares -}}
@@ -104,6 +89,7 @@
 {{-         range $system -}}
 {{-           if hasPrefix (printf "%s/" .) $v }}{{ fail (printf "%sfscache.dir %q is inside the system directory %s" $e $v .) }}{{ end -}}
 {{-         end -}}
+{{-         if has $v $systemDirs }}{{ fail (printf "%sfscache.dir %q is the system directory itself" $e $v) }}{{ end -}}
 {{-       else if not (kindIs "int64" $v) -}}
 {{-         fail (printf "%sfscache.%s must be a whole percentage from 0 to 99, not %v" $e $key $v) -}}
 {{-       else if or (lt $v 0) (gt $v 99) -}}

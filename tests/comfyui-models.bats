@@ -50,6 +50,18 @@ dirs() { jq -c .modelsDirs "$DOTFILES_COMFY_SETTINGS"; }
   [ "$(dirs)" = "[\"$M\",\"/a\"]" ]
 }
 
+@test "a folder whose share does not answer is skipped after 5 s instead of stalling apply" {
+  comfy_settings '{"modelsDirs":["/a"]}'
+  printf '#!/bin/sh\nsleep 60\n' > "$HOME/bin/test"
+  chmod +x "$HOME/bin/test"
+  start=$SECONDS
+  run "$CMD" "$M"
+  [ "$status" -eq 0 ]
+  [ $((SECONDS - start)) -lt 20 ]
+  [[ "$output" == *"no $M yet (or its share did not answer in 5 s)"* ]] || false
+  [ "$(dirs)" = '["/a"]' ]
+}
+
 @test "waits for each folder, for Comfy's first run and for it to quit, and leaves a file it doesn't expect alone" {
   comfy_settings '{"modelsDirs":["/a"]}'
   run "$CMD" "$HOME/not-mounted-yet" "$M"

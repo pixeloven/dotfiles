@@ -34,12 +34,13 @@ fscache_proc="${NETWORK_SHARES_FSCACHE_PROC:-/proc/fs/fscache/caches}"
 owned='# Managed by dotfiles network-shares'
 docs='https://github.com/pixeloven/dotfiles/blob/main/docs/network-shares.md'
 path_re='^(/[A-Za-z0-9_][A-Za-z0-9_.-]*){2,}$'
+system_re='^/(bin|boot|dev|etc|lib|lib64|proc|run|sbin|sys|usr)/|^/var/(cache|lib|log|tmp)$' # as the settings validation
 
 die() { echo "network-shares: $*" >&2; exit 1; }
 in_box() { [ -e "$marker" ]; }
 
-# Parsed shares.conf: one entry per share in each array; options is "-" or a comma-separated list.
-servers=() exports=() points=() modes=() caches=() options=()
+# Parsed shares.conf: one entry per share in each array.
+servers=() exports=() points=() modes=() caches=()
 fs_dir="" fs_limits=()
 cached=0
 load() { # parse and validate shares.conf; every value ends up in a unit or config file, so each is checked again
@@ -59,8 +60,8 @@ load() { # parse and validate shares.conf; every value ends up in a unit or conf
         [[ "$c" =~ $path_re ]] || die "$conf: bad mount point '$c'"
         case "$d" in rw|ro) ;; *) die "$conf: $c must be rw or ro, not '$d'" ;; esac
         case "$e" in 0|1) ;; *) die "$conf: $c: cache must be 0 or 1, not '$e'" ;; esac
-        [[ "$f" = - || "$f" =~ ^[a-z0-9_]+(=[A-Za-z0-9._:-]+)?(,[a-z0-9_]+(=[A-Za-z0-9._:-]+)?)*$ ]] || die "$conf: bad options '$f' for $c"
-        servers+=("$a") exports+=("$b") points+=("$c") modes+=("$d") caches+=("$e") options+=("$f")
+        [ -z "$f" ] || die "$conf: $c: unexpected '$f' after the cache field"
+        servers+=("$a") exports+=("$b") points+=("$c") modes+=("$d") caches+=("$e")
         [ "$e" = 1 ] && cached=1 ;;
       *) die "$conf: unknown line '$kind'" ;;
     esac
@@ -76,8 +77,14 @@ resolve() { # run on the host: systemd refuses a Where= that goes through a syml
   for i in "${!points[@]}"; do
     p="$(realpath -m -- "${points[$i]}" 2>/dev/null)" || p="${points[$i]}"
     [[ "$p" =~ $path_re ]] || die "${points[$i]} resolves to '$p', which a unit can't use"
+    [[ "$p" =~ $system_re ]] && die "${points[$i]} resolves to '$p', a system directory"
     where+=("$p")
   done
+  if [ -n "$fs_dir" ]; then
+    p="$(realpath -m -- "$fs_dir" 2>/dev/null)" || p="$fs_dir"
+    [[ "$p" =~ $system_re ]] && die "the fscache dir $fs_dir resolves to '$p', a system directory"
+  fi
+  return 0
 }
 
 unit_name() { # <mount point> <suffix> : systemd's escaped unit name (systemd-escape --path), for [A-Za-z0-9/_.-] paths
@@ -86,10 +93,9 @@ unit_name() { # <mount point> <suffix> : systemd's escaped unit name (systemd-es
   printf '%s.%s\n' "${p//\//-}" "$2"
 }
 
-mount_options() { # <i> : the tool's own options, then fsc for a cached share, then the share's options
+mount_options() { # <i> : the tool's fixed options, then fsc for a cached share
   local o="${modes[$1]},_netdev,hard,timeo=100,retrans=3,noatime"
-  if [ "${caches[$1]}" = 1 ] && [[ ",${options[$1]}," != *,fsc=* ]]; then o="$o,fsc"; fi
-  [ "${options[$1]}" = - ] || o="$o,${options[$1]}"
+  [ "${caches[$1]}" = 1 ] && o="$o,fsc"
   printf '%s\n' "$o"
 }
 
@@ -398,7 +404,7 @@ check() { # bounded by timeout, so an unreachable server fails the check instead
     esac
     opts=""
     if [ "${caches[$i]}" = 1 ]; then
-      if [[ ",$(findmnt -n -o OPTIONS -T "$m" 2>/dev/null)," == *,fsc[,=]* ]]; then opts=", fsc"; else opts=", no fsc yet (it mounted before the units changed)"; fi
+      if [[ ",$(findmnt -n -o OPTIONS -T "$m" 2>/dev/null)," == *,fsc,* ]]; then opts=", fsc"; else opts=", no fsc yet (it mounted before the units changed)"; fi
     fi
     f="$m/.network-shares-check.$$"
     # shellcheck disable=SC2016 # $1 expands in the sh -c child, which gets the path as an argument

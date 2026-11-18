@@ -1,0 +1,4 @@
+# expect: fscache.dir "/lib/fscache" is inside the system directory /lib
+schemaVersion = 1
+[fscache]
+dir = "/lib/fscache"

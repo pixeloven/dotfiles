@@ -10,7 +10,8 @@
 # sticks. With an empty list, Comfy's local default (~/ComfyUI-Shared/models) is listed first, so
 # downloads stay local. It waits (skips, and says so unless --quiet) until a folder exists, until
 # Comfy's first run has written settings.json, and while Comfy is running, since Comfy rewrites the file.
-# Checking that a folder exists never mounts an automounted share, so a down server can't stall apply.
+# Checking that a folder exists can mount an automounted share, so the check gives up after 5 s and a
+# down server can't stall apply.
 # Test seam: DOTFILES_COMFY_SETTINGS.
 
 set -uo pipefail
@@ -34,8 +35,8 @@ for dir in "$@"; do
   case "$dir" in /*) ;; *) echo "comfyui-models: '$dir' is not an absolute path; skipped" >&2; continue ;; esac
   jq -e --arg m "$dir" '(.modelsDirs // []) | index($m)' "$settings" >/dev/null && continue
   # Until a share is installed there is no mount point, and Comfy would get a folder that isn't there.
-  if [ ! -d "$dir" ]; then
-    say "no $dir yet; it is added at the first apply after it exists"
+  if ! timeout -k 2 5 test -d "$dir"; then
+    say "no $dir yet (or its share did not answer in 5 s); it is added at the first apply after it exists"
     continue
   fi
   add+=("$dir")

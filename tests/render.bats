@@ -271,8 +271,8 @@ SETTINGS="$BATS_TEST_DIRNAME/fixtures/settings"
   [[ "$output" == *.local/bin/network-shares* ]] || false
   conf="$TMP/linux/.config/network-shares/shares.conf"
   grep -qx 'fscache /var/cache/fscache 30 25 20 15 10 5' "$conf"
-  grep -qx 'share nas.example.lan /export/models /var/mnt/nas/models ro 1 vers=4.2,fsc=models' "$conf"
-  grep -qx 'share 192.0.2.10 /export/media /var/mnt/nas/media rw 0 -' "$conf"
+  grep -qx 'share nas.example.lan /export/models /var/mnt/nas/models ro 1' "$conf"
+  grep -qx 'share 192.0.2.10 /export/media /var/mnt/nas/media rw 0' "$conf"
   rm -rf "$TMP/linux" "$TMP/linux.boltdb"
   run render linux "$SETTINGS/minimal.toml"
   [[ "$output" != *network-shares* ]] || false
@@ -297,23 +297,35 @@ apply_step() { # <script> <os> <settings file> : render one apply step as chezmo
   printf '#!/bin/sh\necho "$*" >> "$HOME/calls"\nexit "${STUB_EXIT:-0}"\n' > "$TMP/run/.local/bin/network-shares"
   chmod +x "$TMP/run/.local/bin/network-shares"
   [ -z "$(apply_step run_after_46-network-shares linux "$SETTINGS/minimal.toml")" ]
+  mkdir -p "$TMP/stubs"
+  printf '#!/bin/sh\necho "sudo $*" >> "$HOME/sudo-calls"\n' > "$TMP/stubs/sudo"
+  chmod +x "$TMP/stubs/sudo"
   apply_step run_after_46-network-shares linux "$SETTINGS/ok.toml" > "$TMP/step.sh"
-  ! grep -q sudo "$TMP/step.sh"
   for rc in 0 1; do
     : > "$TMP/run/calls"
-    HOME="$TMP/run" STUB_EXIT="$rc" run sh "$TMP/step.sh"
+    HOME="$TMP/run" STUB_EXIT="$rc" PATH="$TMP/stubs:$PATH" run sh "$TMP/step.sh"
     [ "$status" -eq 0 ]
     [ "$(cat "$TMP/run/calls")" = 'status --quiet' ]
   done
+  [ ! -e "$TMP/run/sudo-calls" ]
   run sh -c "$(apply_step run_after_46-network-shares darwin "$SETTINGS/ok.toml")"
   [ "$status" -eq 0 ]
   [ "$output" = "network-shares: nfsShares in the dotfiles settings are Linux only; skipped on this machine" ]
 }
 
-@test "the Comfy models apply step passes each comfyui.modelsDirs folder, ~/ expanded, and never fails apply" {
+@test "the Comfy models apply step adds each comfyui.modelsDirs folder, ~/ expanded, to Comfy's settings and never fails apply" {
   [ -z "$(apply_step run_after_47-comfyui-models linux "$SETTINGS/minimal.toml")" ]
-  step="$(apply_step run_after_47-comfyui-models linux "$SETTINGS/ok.toml")"
-  [[ "$step" == *"/lib/comfyui-models.sh\" --quiet '/var/mnt/nas/models' '$TMP/run/models-extra' || true"* ]] || false
+  odd="$TMP/run/nas models/it's"
+  mkdir -p "$odd" "$TMP/run/models-extra" "$TMP/stubs" "$TMP/comfy"
+  printf 'schemaVersion = 1\n[comfyui]\nmodelsDirs = ["%s", "~/models-extra"]\n' "$odd" > "$TMP/comfy.toml"
+  printf '#!/bin/sh\nexit 1\n' > "$TMP/stubs/pgrep"
+  chmod +x "$TMP/stubs/pgrep"
+  echo '{"modelsDirs":[]}' > "$TMP/comfy/settings.json"
+  apply_step run_after_47-comfyui-models linux "$TMP/comfy.toml" > "$TMP/step.sh"
+  HOME="$TMP/run" DOTFILES_COMFY_SETTINGS="$TMP/comfy/settings.json" PATH="$TMP/stubs:$PATH" run sh "$TMP/step.sh"
+  [ "$status" -eq 0 ]
+  # Comfy's settings.json modelsDirs: its local default first, then each folder in order
+  [ "$(jq -c .modelsDirs "$TMP/comfy/settings.json")" = "$(jq -nc --arg a "$odd" --arg h "$TMP/run" '[$h + "/ComfyUI-Shared/models", $a, $h + "/models-extra"]')" ]
   run sh -c "$(apply_step run_after_47-comfyui-models darwin "$SETTINGS/ok.toml")"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Linux only for now"* ]] || false

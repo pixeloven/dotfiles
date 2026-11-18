@@ -55,9 +55,9 @@ settings() { # [file] : the partial's JSON for <file>, or for the default path
 @test "the full example is valid and fills in the defaults" {
   run settings "$FIXTURES/ok.toml"
   [ "$status" -eq 0 ]
-  [ "$(jq -c '.nfsShares[0]' <<<"$output")" = '{"cache":true,"export":"/export/models","mode":"ro","mountPoint":"/var/mnt/nas/models","options":["vers=4.2","fsc=models"],"server":"nas.example.lan"}' ]
-  # mode, cache and options default to rw, false and none
-  [ "$(jq -c '.nfsShares[1]' <<<"$output")" = '{"cache":false,"export":"/export/media","mode":"rw","mountPoint":"/var/mnt/nas/media","options":[],"server":"192.0.2.10"}' ]
+  [ "$(jq -c '.nfsShares[0]' <<<"$output")" = '{"cache":true,"export":"/export/models","mode":"ro","mountPoint":"/var/mnt/nas/models","server":"nas.example.lan"}' ]
+  # mode and cache default to rw and false
+  [ "$(jq -c '.nfsShares[1]' <<<"$output")" = '{"cache":false,"export":"/export/media","mode":"rw","mountPoint":"/var/mnt/nas/media","server":"192.0.2.10"}' ]
   [ "$(jq -c '.fscache' <<<"$output")" = '{"bcull":25,"brun":30,"bstop":20,"dir":"/var/cache/fscache","fcull":10,"frun":15,"fstop":5}' ]
   [ "$(jq -c '.comfyui.modelsDirs' <<<"$output")" = "[\"/var/mnt/nas/models\",\"$HOME/models-extra\"]" ]
   [ "$(jq .cache <<<"$output")" = true ]
@@ -87,7 +87,7 @@ settings() { # [file] : the partial's JSON for <file>, or for the default path
   run settings "$HOME/doc.toml"
   [ "$status" -eq 0 ]
   doc_keys="$(grep -oE '^[a-zA-Z]+ *=' "$HOME/doc.toml" | tr -d ' =' | LC_ALL=C sort -u | paste -sd ' ' -)"
-  [ "$doc_keys" = "bcull brun bstop cache dir export fcull frun fstop mode modelsDirs mountPoint options schemaVersion server" ]
+  [ "$doc_keys" = "bcull brun bstop cache dir export fcull frun fstop mode modelsDirs mountPoint schemaVersion server" ]
 }
 
 @test "dotfiles-settings check prints one line: what is on, nothing set, or the one problem" {

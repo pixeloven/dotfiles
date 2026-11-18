@@ -44,9 +44,9 @@ STUB
 
 teardown() { case "${HOME:-}" in */network-shares-*) rm -rf "$HOME" ;; esac; }
 
-conf() { # <media rw|ro> <models cache 0|1> [models options] : three shares, cache in a scratch dir
-  printf 'fscache %s/cache 30 25 20 30 25 20\nshare nas.example.lan /export/home /var/mnt/nas/home rw 0 -\nshare nas.example.lan /export/media /var/mnt/nas/media %s 0 -\nshare 192.0.2.10 /export/models /var/mnt/nas/models ro %s %s\n' \
-    "$HOME" "$1" "$2" "${3:--}" > "$NETWORK_SHARES_CONF"
+conf() { # <media rw|ro> <models cache 0|1> : three shares, cache in a scratch dir
+  printf 'fscache %s/cache 30 25 20 30 25 20\nshare nas.example.lan /export/home /var/mnt/nas/home rw 0\nshare nas.example.lan /export/media /var/mnt/nas/media %s 0\nshare 192.0.2.10 /export/models /var/mnt/nas/models ro %s\n' \
+    "$HOME" "$1" "$2" > "$NETWORK_SHARES_CONF"
 }
 
 A='var-mnt-nas'
@@ -71,14 +71,11 @@ A='var-mnt-nas'
   fi
 }
 
-@test "a cached share mounts with fsc, then its own options; fsc=<id> replaces the plain fsc" {
+@test "a cached share mounts with fsc after the fixed options, and an uncached one without it" {
   conf ro 1
   run "$CMD" units
   [[ "$output" == *$'What=192.0.2.10:/export/models\nWhere=/var/mnt/nas/models\nType=nfs\nOptions=ro,_netdev,hard,timeo=100,retrans=3,noatime,fsc\n'* ]] || false
   [[ "$output" == *$'What=nas.example.lan:/export/media\nWhere=/var/mnt/nas/media\nType=nfs\nOptions=ro,_netdev,hard,timeo=100,retrans=3,noatime\n'* ]] || false
-  conf rw 1 vers=4.2,fsc=models
-  run "$CMD" units
-  [[ "$output" == *$'Options=ro,_netdev,hard,timeo=100,retrans=3,noatime,vers=4.2,fsc=models\n'* ]] || false
   # ...and it shows the cachefilesd.conf install writes
   [[ "$output" == *"### $HOME/etc/cachefilesd.conf"* ]] || false
   [[ "$output" == *$'dir '"$HOME"$'/cache\nbrun 30%\nbcull 25%\nbstop 20%\nfrun 30%\nfcull 25%\nfstop 20%'* ]] || false
@@ -87,28 +84,39 @@ A='var-mnt-nas'
 @test "a mount point through a symlink is written as its real path, since systemd needs that" {
   mkdir -p "$HOME/real"
   ln -s "$HOME/real" "$HOME/link"
-  printf 'share nas.example.lan /export/media %s/link/media rw 0 -\n' "$HOME" > "$NETWORK_SHARES_CONF"
+  printf 'share nas.example.lan /export/media %s/link/media rw 0\n' "$HOME" > "$NETWORK_SHARES_CONF"
   run "$CMD" units
   [ "$status" -eq 0 ]
   [[ "$output" == *"Where=$HOME/real/media"* ]] || false
   [[ "$output" != *"$HOME/link"* ]] || false
+  # ...and the real path must still be outside the system directories
+  ln -s /usr/share "$HOME/syslink"
+  printf 'share nas.example.lan /export/media %s/syslink/media rw 0\n' "$HOME" > "$NETWORK_SHARES_CONF"
+  run "$CMD" units
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"resolves to '/usr/share/media', a system directory"* ]] || false
+  printf 'fscache %s/syslink/cache 30 25 20 30 25 20\nshare nas.example.lan /export/media /var/mnt/nas/media rw 1\n' "$HOME" > "$NETWORK_SHARES_CONF"
+  run "$CMD" units
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"resolves to '/usr/share/cache', a system directory"* ]] || false
 }
 
 @test "values that would reach a unit file are checked again" {
-  printf 'share nas.example.lan;rm /export/media /var/mnt/nas/media rw 0 -\n' > "$NETWORK_SHARES_CONF"
+  printf 'share nas.example.lan;rm /export/media /var/mnt/nas/media rw 0\n' > "$NETWORK_SHARES_CONF"
   run "$CMD" units
   [ "$status" -eq 1 ]
   [[ "$output" == *"bad server"* ]] || false
-  printf 'share nas.example.lan /export/media /var/mnt/../x rw 0 -\n' > "$NETWORK_SHARES_CONF"
+  printf 'share nas.example.lan /export/media /var/mnt/../x rw 0\n' > "$NETWORK_SHARES_CONF"
   run "$CMD" units
   [[ "$output" == *"bad mount point"* ]] || false
-  printf 'share nas.example.lan /export/media /var/mnt/nas/media rwx 0 -\n' > "$NETWORK_SHARES_CONF"
+  printf 'share nas.example.lan /export/media /var/mnt/nas/media rwx 0\n' > "$NETWORK_SHARES_CONF"
   run "$CMD" units
   [[ "$output" == *"must be rw or ro"* ]] || false
-  printf 'share nas.example.lan /export/media /var/mnt/nas/media rw 0 vers=4.2;reboot\n' > "$NETWORK_SHARES_CONF"
+  printf 'share nas.example.lan /export/media /var/mnt/nas/media rw 0 vers=4.2\n' > "$NETWORK_SHARES_CONF"
   run "$CMD" units
-  [[ "$output" == *"bad options"* ]] || false
-  printf 'share nas.example.lan /export/media /var/mnt/nas/media rw 1 -\n' > "$NETWORK_SHARES_CONF"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unexpected 'vers=4.2"* ]] || false
+  printf 'share nas.example.lan /export/media /var/mnt/nas/media rw 1\n' > "$NETWORK_SHARES_CONF"
   run "$CMD" units
   [[ "$output" == *"no fscache line"* ]] || false
   rm "$NETWORK_SHARES_CONF"
@@ -237,7 +245,7 @@ A='var-mnt-nas'
 @test "install drops units it wrote for a share that is gone, and leaves other units alone" {
   "$CMD" install
   printf '[Mount]\nWhat=other\n' > "$HOME/units/var-mnt-other.mount"
-  printf 'share nas.example.lan /export/home /var/mnt/nas/home rw 0 -\n' > "$NETWORK_SHARES_CONF"
+  printf 'share nas.example.lan /export/home /var/mnt/nas/home rw 0\n' > "$NETWORK_SHARES_CONF"
   run "$CMD" status
   [[ "$output" == *"no longer in $NETWORK_SHARES_CONF: "*"$A-media.automount"*"(network-shares install removes them)"* ]] || false
   : > "$HOME/calls"
@@ -294,7 +302,7 @@ A='var-mnt-nas'
 }
 
 @test "check fails clearly when a share is missing or is not NFS" {
-  printf 'share nas.example.lan /export/home %s/mnt/home rw 0 -\nshare nas.example.lan /export/models %s/mnt/models ro 0 -\n' "$HOME" "$HOME" > "$NETWORK_SHARES_CONF"
+  printf 'share nas.example.lan /export/home %s/mnt/home rw 0\nshare nas.example.lan /export/models %s/mnt/models ro 0\n' "$HOME" "$HOME" > "$NETWORK_SHARES_CONF"
   mkdir -p "$HOME/mnt/models"
   run "$CMD" check
   [ "$status" -eq 1 ]
