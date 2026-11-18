@@ -51,6 +51,7 @@ dirs() { jq -c .modelsDirs "$DOTFILES_COMFY_SETTINGS"; }
 }
 
 @test "a folder whose share does not answer is skipped after 5 s instead of stalling apply" {
+  command -v timeout >/dev/null 2>&1 || skip "no timeout(1) here, so the check is not bounded"
   comfy_settings '{"modelsDirs":["/a"]}'
   printf '#!/bin/sh\nsleep 60\n' > "$HOME/bin/test"
   chmod +x "$HOME/bin/test"

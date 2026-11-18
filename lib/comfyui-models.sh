@@ -30,12 +30,13 @@ command -v jq >/dev/null 2>&1 || { echo "comfyui-models: jq not found; Comfy Des
 jq -e 'type == "object" and ((.modelsDirs // []) | type == "array")' "$settings" >/dev/null 2>&1 ||
   { echo "comfyui-models: $settings is not the settings file expected; left alone" >&2; exit 1; }
 
+if command -v timeout >/dev/null 2>&1; then found() { timeout -k 2 5 test -d "$1"; }; else found() { test -d "$1"; }; fi
 add=()
 for dir in "$@"; do
   case "$dir" in /*) ;; *) echo "comfyui-models: '$dir' is not an absolute path; skipped" >&2; continue ;; esac
   jq -e --arg m "$dir" '(.modelsDirs // []) | index($m)' "$settings" >/dev/null && continue
   # Until a share is installed there is no mount point, and Comfy would get a folder that isn't there.
-  if ! timeout -k 2 5 test -d "$dir"; then
+  if ! found "$dir"; then
     say "no $dir yet (or its share did not answer in 5 s); it is added at the first apply after it exists"
     continue
   fi

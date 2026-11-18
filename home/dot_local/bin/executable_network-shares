@@ -394,7 +394,7 @@ check() { # bounded by timeout, so an unreachable server fails the check instead
       failed=1; continue
     fi
     if ! timeout -k 5 45 ls -d "$m/." >/dev/null 2>&1; then
-      echo "$m: FAIL: did not mount (is ${servers[$i]} up and exporting ${exports[$i]} to this machine? systemctl status $(unit_name "$m" mount))"
+      echo "$m: FAIL: did not mount (is ${servers[$i]} up and exporting ${exports[$i]} to this machine? systemctl status $(unit_name "$(realpath -m -- "$m" 2>/dev/null || echo "$m")" mount))"
       failed=1; continue
     fi
     type="$(findmnt -n -o FSTYPE,SOURCE -T "$m" 2>/dev/null | tr -s ' ')"
