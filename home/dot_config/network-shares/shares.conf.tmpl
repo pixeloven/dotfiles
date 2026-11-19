@@ -1,0 +1,10 @@
+{{- $s := includeTemplate "dotfiles-settings" . | fromJson -}}
+# network-shares: the NFS shares this machine mounts, read by `network-shares` (docs/network-shares.md).
+# chezmoi writes this file from nfsShares and fscache in {{ $s.file }}
+# (docs/settings.md), so change that file and run chezmoi apply, not this one.
+# fscache <dir> <brun> <bcull> <bstop> <frun> <fcull> <fstop>
+# share <server> <export> <mount point> <rw|ro> <cache 0|1>
+fscache {{ $s.fscache.dir }} {{ $s.fscache.brun }} {{ $s.fscache.bcull }} {{ $s.fscache.bstop }} {{ $s.fscache.frun }} {{ $s.fscache.fcull }} {{ $s.fscache.fstop }}
+{{- range $s.nfsShares }}
+share {{ .server }} {{ .export }} {{ .mountPoint }} {{ .mode }} {{ if .cache }}1{{ else }}0{{ end }}
+{{- end }}

@@ -1,0 +1,2 @@
+# expect: schemaVersion 2 is not supported by this dotfiles version (it reads 1)
+schemaVersion = 2

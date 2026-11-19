@@ -1,0 +1,14 @@
+{{- $s := includeTemplate "dotfiles-settings" . | fromJson -}}
+{{- if $s.nfsShares -}}
+#!/bin/sh
+# nfsShares in the settings file (docs/settings.md): the NFS shares network-shares mounts on first
+# use. Installing their automount units (and cachefilesd, for a cached share) needs sudo on the host,
+# which this step never runs, so it only says when `network-shares install` is still needed. Runs on
+# every apply and never fails it (docs/network-shares.md).
+set -u
+{{- if eq .chezmoi.os "linux" }}
+"$HOME/.local/bin/network-shares" status --quiet || true
+{{- else }}
+echo "network-shares: nfsShares in the dotfiles settings are Linux only; skipped on this machine"
+{{- end }}
+{{ end -}}

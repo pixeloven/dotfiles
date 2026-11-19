@@ -1,0 +1,4 @@
+# expect: unknown key "nfs_shares" (schema v1 keys: schemaVersion, nfsShares, fscache, comfyui)
+schemaVersion = 1
+[[nfs_shares]]
+server = "nas.example.lan"

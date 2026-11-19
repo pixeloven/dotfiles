@@ -1,0 +1,14 @@
+{{- $s := includeTemplate "dotfiles-settings" . | fromJson -}}
+{{- if $s.comfyui.modelsDirs -}}
+#!/bin/sh
+# comfyui.modelsDirs in the settings file (docs/settings.md): folders Comfy Desktop also reads models
+# from. Each is added once to its Shared Models, after the folders already listed, and never reordered
+# (lib/comfyui-models.sh). Runs on every apply, because it waits for Comfy's first run, for each folder
+# and for Comfy to be closed; it never fails the apply.
+set -u
+{{- if eq .chezmoi.os "linux" }}
+"{{ .chezmoi.workingTree }}/lib/comfyui-models.sh" --quiet{{ range $s.comfyui.modelsDirs }} {{ printf "'%s'" (replace "'" "'\\''" .) }}{{ end }} || true
+{{- else }}
+echo "comfyui-models: comfyui.modelsDirs in the dotfiles settings is Linux only for now; skipped on this machine"
+{{- end }}
+{{ end -}}

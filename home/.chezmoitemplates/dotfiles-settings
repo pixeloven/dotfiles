@@ -1,0 +1,126 @@
+{{- /*
+  dotfiles-settings: this machine's settings file, schema v1 (docs/settings.md is the reference).
+  Reads ${XDG_CONFIG_HOME:-~/.config}/dotfiles/settings.toml at apply time, validates every key and
+  returns the normalized settings as JSON, defaults filled in. No file: every feature is off.
+  Callers: `includeTemplate "dotfiles-settings" . | fromJson`. .chezmoiignore calls it first, so a bad
+  file fails the whole apply with one message before anything is written; each feature template
+  reuses it. The path comes from the dotfiles-settings-path partial.
+*/ -}}
+{{- $path := includeTemplate "dotfiles-settings-path" . -}}
+{{- $home := .chezmoi.homeDir -}}
+{{- $e := printf "dotfiles settings (%s): " $path -}}
+{{- /* Mount points and the cache directory: absolute, at least two plain components, no . or .. */ -}}
+{{- $pathRe := "^(/[A-Za-z0-9_][A-Za-z0-9_.-]*){2,}$" -}}
+{{- $system := list "/bin" "/boot" "/dev" "/etc" "/lib" "/lib64" "/proc" "/run" "/sbin" "/sys" "/usr" -}}
+{{- $systemDirs := list "/var/cache" "/var/lib" "/var/log" "/var/tmp" -}}
+{{- $fscache := dict "dir" "/var/cache/fscache" "brun" 30 "bcull" 25 "bstop" 20 "frun" 30 "fcull" 25 "fstop" 20 -}}
+{{- $shares := list -}}
+{{- $dirs := list -}}
+{{- $present := false -}}
+{{- $cache := false -}}
+{{- $st := stat $path -}}
+{{- if $st -}}
+{{-   if $st.isDir }}{{ fail (printf "%sis a directory, not a settings file" $e) }}{{ end -}}
+{{-   $present = true -}}
+{{-   $d := include $path | fromToml -}}
+{{-   $top := list "schemaVersion" "nfsShares" "fscache" "comfyui" -}}
+{{-   range $k, $_ := $d -}}
+{{-     if not (has $k $top) }}{{ fail (printf "%sunknown key %q (schema v1 keys: %s)" $e $k (join ", " $top)) }}{{ end -}}
+{{-   end -}}
+
+{{-   if not (hasKey $d "schemaVersion") }}{{ fail (printf "%sschemaVersion is missing; this dotfiles version reads schemaVersion = 1" $e) }}{{ end -}}
+{{-   if not (kindIs "int64" $d.schemaVersion) }}{{ fail (printf "%sschemaVersion must be the integer 1, not %v" $e $d.schemaVersion) }}{{ end -}}
+{{-   if ne $d.schemaVersion 1 }}{{ fail (printf "%sschemaVersion %v is not supported by this dotfiles version (it reads 1)" $e $d.schemaVersion) }}{{ end -}}
+
+{{-   if hasKey $d "nfsShares" -}}
+{{-     if not (kindIs "slice" $d.nfsShares) }}{{ fail (printf "%snfsShares must be a list of [[nfsShares]] tables" $e) }}{{ end -}}
+{{-     $shareKeys := list "server" "export" "mountPoint" "mode" "cache" -}}
+{{-     range $i, $s := $d.nfsShares -}}
+{{-       $k := printf "%snfsShares[%d]" $e $i -}}
+{{-       if not (kindIs "map" $s) }}{{ fail (printf "%s must be a table" $k) }}{{ end -}}
+{{-       range $key, $_ := $s -}}
+{{-         if not (has $key $shareKeys) }}{{ fail (printf "%s: unknown key %q (nfsShares keys: %s)" $k $key (join ", " $shareKeys)) }}{{ end -}}
+{{-       end -}}
+{{-       range list "server" "export" "mountPoint" -}}
+{{-         if not (hasKey $s .) }}{{ fail (printf "%s.%s is missing" $k .) }}{{ end -}}
+{{-         if not (kindIs "string" (get $s .)) }}{{ fail (printf "%s.%s must be a string" $k .) }}{{ end -}}
+{{-       end -}}
+{{-       if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._-]*$" $s.server) }}{{ fail (printf "%s.server must be a host name or IPv4 address, not %q" $k $s.server) }}{{ end -}}
+{{-       if not (regexMatch "^/[A-Za-z0-9/_.-]*$" $s.export) }}{{ fail (printf "%s.export must be an absolute path of letters, digits and /_.- on the server, not %q" $k $s.export) }}{{ end -}}
+{{-       $mp := $s.mountPoint -}}
+{{-       if not (regexMatch $pathRe $mp) }}{{ fail (printf "%s.mountPoint must be an absolute path of at least two parts made of letters, digits and _.- (no trailing /, no . or ..), not %q" $k $mp) }}{{ end -}}
+{{-       range $system -}}
+{{-         if hasPrefix (printf "%s/" .) $mp }}{{ fail (printf "%s.mountPoint %q is inside the system directory %s" $k $mp .) }}{{ end -}}
+{{-       end -}}
+{{-       if has $mp $systemDirs }}{{ fail (printf "%s.mountPoint %q is the system directory itself" $k $mp) }}{{ end -}}
+{{-       $mode := "rw" -}}
+{{-       if hasKey $s "mode" -}}
+{{-         $mode = $s.mode -}}
+{{-         if not (has (toString $mode) (list "rw" "ro")) }}{{ fail (printf "%s.mode must be rw or ro, not %v" $k $mode) }}{{ end -}}
+{{-         $mode = toString $mode -}}
+{{-       end -}}
+{{-       $c := false -}}
+{{-       if hasKey $s "cache" -}}
+{{-         if not (kindIs "bool" $s.cache) }}{{ fail (printf "%s.cache must be true or false, not %v" $k $s.cache) }}{{ end -}}
+{{-         $c = $s.cache -}}
+{{-       end -}}
+{{-       if $c }}{{ $cache = true }}{{ end -}}
+{{-       $shares = append $shares (dict "server" $s.server "export" $s.export "mountPoint" $mp "mode" $mode "cache" $c) -}}
+{{-     end -}}
+{{-     range $i, $a := $shares -}}
+{{-       range $j, $b := $shares -}}
+{{-         if lt $i $j -}}
+{{-           if eq $a.mountPoint $b.mountPoint }}{{ fail (printf "%snfsShares[%d] and nfsShares[%d] both mount at %s" $e $i $j $a.mountPoint) }}{{ end -}}
+{{-           if or (hasPrefix (printf "%s/" $a.mountPoint) $b.mountPoint) (hasPrefix (printf "%s/" $b.mountPoint) $a.mountPoint) -}}
+{{-             fail (printf "%snfsShares[%d] (%s) and nfsShares[%d] (%s): one mount point is inside the other" $e $i $a.mountPoint $j $b.mountPoint) -}}
+{{-           end -}}
+{{-         end -}}
+{{-       end -}}
+{{-     end -}}
+{{-   end -}}
+
+{{-   if hasKey $d "fscache" -}}
+{{-     if not (kindIs "map" $d.fscache) }}{{ fail (printf "%sfscache must be a table" $e) }}{{ end -}}
+{{-     $fsKeys := list "dir" "brun" "bcull" "bstop" "frun" "fcull" "fstop" -}}
+{{-     range $key, $v := $d.fscache -}}
+{{-       if not (has $key $fsKeys) }}{{ fail (printf "%sfscache: unknown key %q (fscache keys: %s)" $e $key (join ", " $fsKeys)) }}{{ end -}}
+{{-       if eq $key "dir" -}}
+{{-         if not (and (kindIs "string" $v) (regexMatch $pathRe (toString $v))) }}{{ fail (printf "%sfscache.dir must be an absolute path of at least two parts made of letters, digits and _.- (no trailing /, no . or ..), not %v" $e $v) }}{{ end -}}
+{{-         range $system -}}
+{{-           if hasPrefix (printf "%s/" .) $v }}{{ fail (printf "%sfscache.dir %q is inside the system directory %s" $e $v .) }}{{ end -}}
+{{-         end -}}
+{{-         if has $v $systemDirs }}{{ fail (printf "%sfscache.dir %q is the system directory itself" $e $v) }}{{ end -}}
+{{-       else if not (kindIs "int64" $v) -}}
+{{-         fail (printf "%sfscache.%s must be a whole percentage from 0 to 99, not %v" $e $key $v) -}}
+{{-       else if or (lt $v 0) (gt $v 99) -}}
+{{-         fail (printf "%sfscache.%s must be a whole percentage from 0 to 99, not %v" $e $key $v) -}}
+{{-       end -}}
+{{-       $_ := set $fscache $key $v -}}
+{{-     end -}}
+{{-     range list "b" "f" -}}
+{{-       $run := get $fscache (printf "%srun" .) -}}
+{{-       $cull := get $fscache (printf "%scull" .) -}}
+{{-       $stop := get $fscache (printf "%sstop" .) -}}
+{{-       if not (and (lt $stop $cull) (lt $cull $run)) -}}
+{{-         fail (printf "%sfscache needs %sstop < %scull < %srun, not %v, %v and %v" $e . . . $stop $cull $run) -}}
+{{-       end -}}
+{{-     end -}}
+{{-   end -}}
+
+{{-   if hasKey $d "comfyui" -}}
+{{-     if not (kindIs "map" $d.comfyui) }}{{ fail (printf "%scomfyui must be a table" $e) }}{{ end -}}
+{{-     range $key, $_ := $d.comfyui -}}
+{{-       if ne $key "modelsDirs" }}{{ fail (printf "%scomfyui: unknown key %q (comfyui keys: modelsDirs)" $e $key) }}{{ end -}}
+{{-     end -}}
+{{-     if hasKey $d.comfyui "modelsDirs" -}}
+{{-       if not (kindIs "slice" $d.comfyui.modelsDirs) }}{{ fail (printf "%scomfyui.modelsDirs must be a list of folder paths" $e) }}{{ end -}}
+{{-       range $d.comfyui.modelsDirs -}}
+{{-         if not (and (kindIs "string" .) (regexMatch "^(/|~/)[^[:cntrl:]]+$" (toString .))) }}{{ fail (printf "%scomfyui.modelsDirs: %v must be an absolute or ~/ folder path" $e .) }}{{ end -}}
+{{-         $dir := clean . -}}
+{{-         if hasPrefix "~/" . }}{{ $dir = joinPath $home (trimPrefix "~/" .) }}{{ end -}}
+{{-         if not (has $dir $dirs) }}{{ $dirs = append $dirs $dir }}{{ end -}}
+{{-       end -}}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}
+{{- dict "file" $path "present" $present "schemaVersion" 1 "nfsShares" $shares "cache" $cache "fscache" $fscache "comfyui" (dict "modelsDirs" $dirs) | toJson -}}

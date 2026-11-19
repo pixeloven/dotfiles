@@ -15,10 +15,11 @@ config() { # <terminal> : a fixed config rather than `chezmoi init`, because --o
 
 teardown() { rm -rf "$TMP"; }
 
-render() { # <os> : apply the source as <os> into $TMP/<os> (scripts excluded) and list what it wrote
+render() { # <os> [settings file] : apply the source as <os> into $TMP/<os> (scripts excluded) and list what it wrote
   mkdir -p "$TMP/$1"
-  HOME="$TMP/$1" chezmoi --source "$REPO" --config "$TMP/chezmoi.toml" --persistent-state "$TMP/$1.boltdb" \
-    --override-data "{\"chezmoi\":{\"os\":\"$1\"}}" apply --exclude scripts
+  # Without a settings file argument, none: the throwaway HOME has no ~/.config/dotfiles/settings.toml.
+  HOME="$TMP/$1" XDG_CONFIG_HOME="$TMP/$1/.config" chezmoi --source "$REPO" --config "$TMP/chezmoi.toml" --persistent-state "$TMP/$1.boltdb" \
+    --override-data "{\"chezmoi\":{\"os\":\"$1\"}${2:+,\"dotfilesSettingsFile\":\"$2\"}}" apply --exclude scripts
   (cd "$TMP/$1" && find . \( -type f -o -type l \) | sed 's#^\./##' | LC_ALL=C sort)
 }
 
@@ -47,6 +48,7 @@ init_config() { # <os> [chezmoi flags] : render .chezmoi.toml.tmpl as `chezmoi i
 .config/zsh/catppuccin_mocha-zsh-syntax-highlighting.zsh
 .config/zsh/dotfiles.zsh
 .config/zsh/op-env.zsh
+.local/bin/dotfiles-settings
 .local/bin/lastreply
 .local/bin/speak-kokoro
 .local/bin/toolsets
@@ -231,4 +233,100 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
   run init_config linux --promptMultichoice "Workstation apps to install (lib/workstation-apps.tsv; none by default)=$(paste -sd / - <<<"$ids")"
   [ "$status" -eq 0 ]
   [[ "$output" == *"workstationApps = [$want]"* ]] || false
+}
+
+SETTINGS="$BATS_TEST_DIRNAME/fixtures/settings"
+
+@test "with no settings file every feature is off: no network-shares on Linux, and both apply steps render nothing" {
+  run render linux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *.local/bin/dotfiles-settings* ]] || false
+  [[ "$output" != *network-shares* ]] || false
+  for s in run_after_46-network-shares run_after_47-comfyui-models; do
+    out="$(HOME="$TMP/linux" XDG_CONFIG_HOME="$TMP/linux/.config" chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \
+      --override-data '{"chezmoi":{"os":"linux"}}' < "$REPO/home/.chezmoiscripts/$s.sh.tmpl")"
+    [ -z "$out" ]
+  done
+}
+
+@test "the settings file is read from ~/.config/dotfiles/settings.toml at apply time" {
+  mkdir -p "$TMP/linux/.config/dotfiles"
+  cp "$SETTINGS/ok.toml" "$TMP/linux/.config/dotfiles/settings.toml"
+  run render linux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *.config/network-shares/shares.conf* ]] || false
+  rm "$TMP/linux/.config/dotfiles/settings.toml"
+  rm -rf "$TMP/linux/.config/network-shares" "$TMP/linux/.local/bin/network-shares"
+  run render linux
+  [[ "$output" != *network-shares* ]] || false
+}
+
+@test "only Linux with nfsShares gets network-shares, and shares.conf carries each share and the cache limits" {
+  run render darwin "$SETTINGS/ok.toml"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *network-shares* ]] || false
+  run render linux "$SETTINGS/ok.toml"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *.config/network-shares/shares.conf* ]] || false
+  [[ "$output" == *.local/bin/network-shares* ]] || false
+  conf="$TMP/linux/.config/network-shares/shares.conf"
+  grep -qx 'fscache /var/cache/fscache 30 25 20 15 10 5' "$conf"
+  grep -qx 'share nas.example.lan /export/models /var/mnt/nas/models ro 1' "$conf"
+  grep -qx 'share 192.0.2.10 /export/media /var/mnt/nas/media rw 0' "$conf"
+  rm -rf "$TMP/linux" "$TMP/linux.boltdb"
+  run render linux "$SETTINGS/minimal.toml"
+  [[ "$output" != *network-shares* ]] || false
+}
+
+@test "a bad settings file fails apply with one message before anything is written" {
+  mkdir -p "$TMP/linux"
+  run env HOME="$TMP/linux" XDG_CONFIG_HOME="$TMP/linux/.config" chezmoi --source "$REPO" --config "$TMP/chezmoi.toml" \
+    --persistent-state "$TMP/linux.boltdb" --override-data "{\"chezmoi\":{\"os\":\"linux\"},\"dotfilesSettingsFile\":\"$SETTINGS/bad-mode.toml\"}" apply --exclude scripts
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"error calling fail: dotfiles settings ($SETTINGS/bad-mode.toml): nfsShares[0].mode must be rw or ro, not rx"* ]] || false
+  [ -z "$(find "$TMP/linux" -type f)" ]
+}
+
+apply_step() { # <script> <os> <settings file> : render one apply step as chezmoi would
+  HOME="$TMP/run" chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \
+    --override-data "{\"chezmoi\":{\"os\":\"$2\"},\"dotfilesSettingsFile\":\"$3\"}" < "$REPO/home/.chezmoiscripts/$1.sh.tmpl"
+}
+
+@test "the network-shares apply step only says what to run, never fails apply, and is one line on macOS" {
+  mkdir -p "$TMP/run/.local/bin"
+  printf '#!/bin/sh\necho "$*" >> "$HOME/calls"\nexit "${STUB_EXIT:-0}"\n' > "$TMP/run/.local/bin/network-shares"
+  chmod +x "$TMP/run/.local/bin/network-shares"
+  [ -z "$(apply_step run_after_46-network-shares linux "$SETTINGS/minimal.toml")" ]
+  mkdir -p "$TMP/stubs"
+  printf '#!/bin/sh\necho "sudo $*" >> "$HOME/sudo-calls"\n' > "$TMP/stubs/sudo"
+  chmod +x "$TMP/stubs/sudo"
+  apply_step run_after_46-network-shares linux "$SETTINGS/ok.toml" > "$TMP/step.sh"
+  for rc in 0 1; do
+    : > "$TMP/run/calls"
+    HOME="$TMP/run" STUB_EXIT="$rc" PATH="$TMP/stubs:$PATH" run sh "$TMP/step.sh"
+    [ "$status" -eq 0 ]
+    [ "$(cat "$TMP/run/calls")" = 'status --quiet' ]
+  done
+  [ ! -e "$TMP/run/sudo-calls" ]
+  run sh -c "$(apply_step run_after_46-network-shares darwin "$SETTINGS/ok.toml")"
+  [ "$status" -eq 0 ]
+  [ "$output" = "network-shares: nfsShares in the dotfiles settings are Linux only; skipped on this machine" ]
+}
+
+@test "the Comfy models apply step adds each comfyui.modelsDirs folder, ~/ expanded, to Comfy's settings and never fails apply" {
+  [ -z "$(apply_step run_after_47-comfyui-models linux "$SETTINGS/minimal.toml")" ]
+  odd="$TMP/run/nas models/it's"
+  mkdir -p "$odd" "$TMP/run/models-extra" "$TMP/stubs" "$TMP/comfy"
+  printf 'schemaVersion = 1\n[comfyui]\nmodelsDirs = ["%s", "~/models-extra"]\n' "$odd" > "$TMP/comfy.toml"
+  printf '#!/bin/sh\nexit 1\n' > "$TMP/stubs/pgrep"
+  chmod +x "$TMP/stubs/pgrep"
+  echo '{"modelsDirs":[]}' > "$TMP/comfy/settings.json"
+  apply_step run_after_47-comfyui-models linux "$TMP/comfy.toml" > "$TMP/step.sh"
+  HOME="$TMP/run" DOTFILES_COMFY_SETTINGS="$TMP/comfy/settings.json" PATH="$TMP/stubs:$PATH" run sh "$TMP/step.sh"
+  [ "$status" -eq 0 ]
+  # Comfy's settings.json modelsDirs: its local default first, then each folder in order
+  [ "$(jq -c .modelsDirs "$TMP/comfy/settings.json")" = "$(jq -nc --arg a "$odd" --arg h "$TMP/run" '[$h + "/ComfyUI-Shared/models", $a, $h + "/models-extra"]')" ]
+  run sh -c "$(apply_step run_after_47-comfyui-models darwin "$SETTINGS/ok.toml")"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Linux only for now"* ]] || false
 }

@@ -1,0 +1,4 @@
+# expect: fscache.brun must be a whole percentage from 0 to 99, not 100
+schemaVersion = 1
+[fscache]
+brun = 100

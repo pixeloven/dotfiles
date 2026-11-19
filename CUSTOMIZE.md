@@ -159,6 +159,17 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
 - **Try it:** `workstation-apps`.
 - **Keep it:** the selection lives only in your local chezmoi config. `/codify` reports `app-missing`, `app-unselected`, `app-retired`, `app-vendor` and `app-unselected-vendor`, never `pkg-extra`, for catalog apps.
 
+## Machine settings: network shares, FS-Cache, Comfy model folders (off by default)
+
+- **Where it lives:** your untracked `~/.config/dotfiles/settings.toml`, schema v1 ([docs/settings.md](docs/settings.md)); no file means every feature is off. `home/.chezmoitemplates/dotfiles-settings` validates it and fills in the defaults, and `home/.chezmoiignore` runs that check before apply writes anything. `home/dot_config/network-shares/shares.conf.tmpl` turns `nfsShares` and `fscache` into the share list, `home/dot_local/bin/executable_network-shares` is the command ([docs/network-shares.md](docs/network-shares.md)), and `home/.chezmoiscripts/run_after_46-network-shares.sh.tmpl` runs its status on every apply. `home/.chezmoiscripts/run_after_47-comfyui-models.sh.tmpl` runs `lib/comfyui-models.sh` with `comfyui.modelsDirs`.
+- **Common changes:**
+  - Check the file: `dotfiles-settings check`; `dotfiles-settings show` prints what apply reads.
+  - See the shares: `network-shares`; `network-shares check` mounts them and tests a write.
+  - Add or change a share, or the cache: edit the settings file, `chezmoi apply`, then `network-shares install`.
+  - Turn the shares off: `network-shares remove`, then delete `nfsShares` and `chezmoi apply`.
+  - Add a setting: add the key to the partial (with its check and default), `docs/settings.md` (with the release that adds it), a fixture under `tests/fixtures/settings/` and a test. A new optional key keeps `schemaVersion = 1`.
+- **Try it:** `network-shares units` prints the units without installing anything.
+
 ## Packages
 
 - **Where they live:** `Brewfile`; the optional ops tools are in `lib/toolsets.txt` (Optional tool sets, above)

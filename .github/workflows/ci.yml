@@ -12,12 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: brew install shellcheck chezmoi
-      # Templates render as Linux with Ptyxis in a distrobox, so the Linux-only Ptyxis script isn't empty.
+      # Templates render as Linux with Ptyxis in a distrobox, so the Linux-only Ptyxis script isn't empty,
+      # and with the example settings file, so the network-shares and Comfy models steps aren't either.
       - name: shellcheck scripts and rendered chezmoi templates
         run: |
-          shellcheck lib/*.sh lib/distrobox/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh home/dot_local/bin/executable_workstation-apps
+          shellcheck lib/*.sh lib/distrobox/*.sh bin/* home/dot_claude/hooks/*.sh .githooks/* home/.chezmoiscripts/*.sh home/dot_local/bin/executable_workstation-apps home/dot_local/bin/executable_network-shares home/dot_local/bin/executable_dotfiles-settings
           for t in home/.chezmoiscripts/*.tmpl; do
-            chezmoi --source "$PWD" execute-template --override-data '{"chezmoi":{"os":"linux"},"terminal":"ptyxis","container":true,"installTarget":"distrobox","toolsets":["kubernetes","terraform"],"workstationApps":["codex","herdr-cli"]}' \
+            chezmoi --source "$PWD" execute-template --override-data '{"chezmoi":{"os":"linux"},"terminal":"ptyxis","container":true,"installTarget":"distrobox","toolsets":["kubernetes","terraform"],"workstationApps":["codex","herdr-cli"],"dotfilesSettingsFile":"'"$PWD"'/tests/fixtures/settings/ok.toml"}' \
               < "$t" > "${RUNNER_TEMP}/$(basename "$t" .tmpl)"
             # opt-in scripts (e.g. operatorPersona) render empty without their data key
             [ -s "${RUNNER_TEMP}/$(basename "$t" .tmpl)" ] || continue

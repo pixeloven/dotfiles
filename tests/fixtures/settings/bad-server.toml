@@ -1,0 +1,6 @@
+# expect: nfsShares[0].server must be a host name or IPv4 address, not "nas.example.lan;reboot"
+schemaVersion = 1
+[[nfsShares]]
+server = "nas.example.lan;reboot"
+export = "/export/media"
+mountPoint = "/var/mnt/nas/media"
