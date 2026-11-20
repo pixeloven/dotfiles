@@ -15,6 +15,10 @@ REPO="$BATS_TEST_DIRNAME/.."
   for pkg in font-jetbrains-mono bat git-delta glow chezmoi; do
     grep -qxF "$pkg" <<<"$output"
   done
+  # The base is minimal: the voice and aws packages come only from their tool sets.
+  for pkg in ffmpeg voiceink awscli pulseaudio whisper.cpp; do
+    ! grep -qxF "$pkg" <<<"$output" || { echo "unexpected $pkg in the base"; false; }
+  done
   if [ "$(uname -s)" = Darwin ]; then
     grep -qxF ghostty <<<"$output"
     ! grep -qxF xclip <<<"$output" || false
@@ -34,7 +38,7 @@ toolsets_list() { # <HOMEBREW_DOTFILES_TOOLSETS value> : the Brewfile's packages
   local pkg
   run env -u HOMEBREW_DOTFILES_TOOLSETS brew bundle list --file="$REPO/Brewfile" --all --taps
   [ "$status" -eq 0 ]
-  for pkg in $(sed 's/#.*//' "$REPO/lib/toolsets.txt" | awk 'NF { $1 = ""; print }') hashicorp/tap siderolabs/tap; do
+  for pkg in $(sed -E 's/#.*//; s/(^|[[:space:]])cask:/\1/g; s/@(darwin|linux)([[:space:]]|$)/\2/g' "$REPO/lib/toolsets.txt" | awk 'NF { $1 = ""; print }') hashicorp/tap siderolabs/tap; do
     ! grep -qxF "$pkg" <<<"$output" || { echo "unexpected $pkg"; false; }
   done
 }
@@ -45,10 +49,31 @@ toolsets_list() { # <HOMEBREW_DOTFILES_TOOLSETS value> : the Brewfile's packages
   [ "$(toolsets_list terraform | paste -sd ' ' -)" = "hashicorp/tap hashicorp/tap/terraform" ]
   [ "$(toolsets_list ansible)" = ansible ]
   [ "$(toolsets_list containers)" = docker ]
+  [ "$(toolsets_list aws)" = awscli ]
   [ "$(toolsets_list bogus,ansible)" = ansible ]
-  [ "$(toolsets_list all | wc -l | tr -d ' ')" -eq 10 ]
-  [ "$(toolsets_list all)" = "$(toolsets_list kubernetes,talos,terraform,ansible,containers)" ]
+  if [ "$(uname -s)" = Darwin ]; then
+    [ "$(toolsets_list voice | paste -sd ' ' -)" = "ffmpeg voiceink" ]
+    [ "$(toolsets_list all | wc -l | tr -d ' ')" -eq 13 ]
+  else
+    [ "$(toolsets_list voice | paste -sd ' ' -)" = "ffmpeg pulseaudio whisper.cpp" ]
+    [ "$(toolsets_list all | wc -l | tr -d ' ')" -eq 14 ]
+  fi
+  [ "$(toolsets_list all)" = "$(toolsets_list kubernetes,talos,terraform,ansible,containers,aws,voice)" ]
   ! toolsets_list all | grep -qxF opentofu || false
+}
+
+@test "brewfile keeps a versioned formula's @ and drops only another OS's @darwin or @linux entries" {
+  local dir="$BATS_TEST_TMPDIR/repo" this=linux other=darwin
+  [ "$(uname -s)" = Darwin ] && { this=darwin other=linux; }
+  mkdir -p "$dir/lib"
+  cp "$REPO/Brewfile" "$dir/Brewfile"
+  printf 'db  postgresql@16 python@3.12 openssl@3@%s otheros-only@%s\n' "$this" "$other" > "$dir/lib/toolsets.txt"
+  run env HOMEBREW_DOTFILES_TOOLSETS=db brew bundle list --file="$dir/Brewfile" --formula
+  [ "$status" -eq 0 ]
+  grep -qxF postgresql@16 <<<"$output"
+  grep -qxF python@3.12 <<<"$output"
+  grep -qxF openssl@3 <<<"$output"
+  ! grep -q otheros-only <<<"$output" || false
 }
 
 # The brew script as chezmoi renders it with the given chezmoi data, run with a stub brew that logs
