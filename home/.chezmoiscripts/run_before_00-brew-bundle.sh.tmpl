@@ -4,10 +4,8 @@
 # chezmoi run on the host (by hand or by an agent) never fills the host's Homebrew; "host", the
 # default, installs on the main OS. toolsets adds those sets from lib/toolsets.txt, through a
 # HOMEBREW_ variable because brew passes only those to the Brewfile; a machine that hasn't re-run
-# init since toolsets replaced opsTools gets every set for opsTools = true. A config without
-# minimalBase = true is from before the base Brewfile went minimal, so it also keeps voice and aws,
-# the sets that were in that base. Missing keys mean the defaults. DOTFILES_CONTAINER_MARKER is a
-# test seam.
+# init since toolsets replaced opsTools gets every set for opsTools = true. Missing keys mean the
+# defaults. DOTFILES_CONTAINER_MARKER is a test seam.
 set -eu
 {{ if eq (toString (get . "installTarget")) "distrobox" -}}
 [ -e "${DOTFILES_CONTAINER_MARKER:-/run/.containerenv}" ] || { echo "dotfiles: installTarget is distrobox and this is the host; skipping the Brewfile (run chezmoi apply in the box)" >&2; exit 0; }
@@ -18,9 +16,6 @@ command -v brew >/dev/null 2>&1 || { echo "dotfiles: brew not found; skipping th
 {{   range .toolsets }}{{ if regexMatch "^[A-Za-z0-9_-]+$" (toString .) }}{{ $sets = append $sets (toString .) }}{{ end }}{{ end -}}
 {{ else if eq (toString (get . "opsTools")) "true" -}}
 {{   $sets = list "all" -}}
-{{ end -}}
-{{ if and (ne (toString (get . "minimalBase")) "true") (not (has "all" $sets)) -}}
-{{   range list "voice" "aws" }}{{ if not (has . $sets) }}{{ $sets = append $sets . }}{{ end }}{{ end -}}
 {{ end -}}
 export HOMEBREW_DOTFILES_TOOLSETS="{{ join "," $sets }}"
 f="{{ .chezmoi.workingTree }}/Brewfile"

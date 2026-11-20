@@ -129,7 +129,7 @@ APPS_PROMPT="Workstation apps to install (lib/workstation-apps.tsv; herdr-cli, c
   [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "ghostty"'* ]] || false
   [[ "$output" == *'installTarget = "host"'* ]] || false
-  [[ "$output" == *$'\ntoolsets = []\nminimalBase = true\n'* ]] || false
+  [[ "$output" == *$'\ntoolsets = []\n'* ]] || false
   [[ "$output" != *"opsTools ="* ]] || false
 }
 
@@ -167,31 +167,18 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
     [ "$status" -eq 0 ]
     [[ "$output" == *'toolsets = ["kubernetes", "talos", "terraform", "ansible", "containers", "aws", "voice"]'* ]] || { echo "$os: $output"; false; }
     [[ "$output" != *"opsTools ="* ]] || false
-    # No: no ops sets, but voice and aws, which the base Brewfile had then.
     run re_init "$os" $'terminal = "ptyxis"\ninstallTarget = "host"\nopsTools = false' \
       --promptMultichoice "$TOOLSETS_PROMPT=kubernetes"
-    [[ "$output" == *$'\ntoolsets = ["voice", "aws"]\nminimalBase = true\n'* ]] || { echo "$os: $output"; false; }
+    [[ "$output" == *$'\ntoolsets = []\n'* ]] || { echo "$os: $output"; false; }
   done
 }
 
 @test "re-init keeps the tool sets already chosen" {
-  run re_init darwin $'toolsets = ["talos"]\nminimalBase = true'
+  run re_init darwin 'toolsets = ["talos"]'
   [ "$status" -eq 0 ]
-  [[ "$output" == *$'\ntoolsets = ["talos"]\nminimalBase = true\n'* ]] || false
-  run re_init darwin $'toolsets = []\nminimalBase = true'
+  [[ "$output" == *$'\ntoolsets = ["talos"]\n'* ]] || false
+  run re_init darwin $'terminal = "ghostty"\ntoolsets = []'
   [[ "$output" == *$'\ntoolsets = []\n'* ]] || false
-}
-
-@test "re-init of a config from before the minimal base adds voice and aws without asking, once" {
-  local os
-  for os in darwin linux; do
-    run re_init "$os" $'terminal = "ghostty"\ntoolsets = ["talos", "aws"]'
-    [ "$status" -eq 0 ]
-    [[ "$output" == *$'\ntoolsets = ["talos", "aws", "voice"]\nminimalBase = true\n'* ]] || { echo "$os: $output"; false; }
-  done
-  # A fresh init has no earlier answers, so it starts minimal.
-  run init_config darwin
-  [[ "$output" == *$'\ntoolsets = []\nminimalBase = true\n'* ]] || false
 }
 
 @test "re-init keeps the keys set by hand" {

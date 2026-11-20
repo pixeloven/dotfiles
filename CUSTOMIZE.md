@@ -145,7 +145,7 @@ Every tool follows the same loop: **change it → try it → keep it**. To keep 
   - Turn sets off: `toolsets off kubernetes`. Their tools stay installed. `toolsets off kubernetes --uninstall` also runs `brew uninstall` on them (`--cask` for a cask) and untaps the set's tap when nothing from it is left; `brew autoremove` then clears dependencies nothing needs.
   - Add or change a set: edit `lib/toolsets.txt` (`owner/tap/name` brings its tap), then `toolsets on <set>`. A new set starts off everywhere.
   - A machine from before tool sets has `opsTools` instead: `true` counts as every set and `false` as none, until `chezmoi init` replaces it with `toolsets` without asking.
-  - A machine from before the minimal base (no `minimalBase = true` under `[data]`) had `voice` and `aws` in its base Brewfile, so they count as on there. `chezmoi init`, `toolsets on` and `toolsets off` write them into `toolsets` and add `minimalBase = true`; from then on the list is the whole answer. A fresh `chezmoi init` writes `minimalBase = true` with no sets.
+  - A machine from before the minimal base had `voice` and `aws` in its base Brewfile. Their packages stay installed (`brew bundle` never uninstalls, and drift never flags a tool set's packages as `pkg-extra`), but the sets are off until you turn them on. Run `toolsets on voice aws` to keep them managed and reinstalled on a rebuild.
 - **Try it:** `toolsets`.
 - **Keep it:** the answer lives only in your local chezmoi config. `/codify` never reports a tool from any set as `pkg-extra`, and reports `pkg-missing` only for sets that are on.
 

@@ -53,7 +53,7 @@ picked = File.readlines(File.join(__dir__, "lib/toolsets.txt")).filter_map do |l
   set, *entries = line.sub(/#.*/, "").split
   entries if set && (wanted.include?("all") || wanted.include?(set))
 end.flatten.filter_map do |entry|
-  name, only = entry.split("@", 2)
+  name, only = entry.match(/\A(.+)@(darwin|linux)\z/)&.captures || [entry, nil]
   name unless only && only != os
 end
 casks, formulae = picked.partition { |e| e.start_with?("cask:") }

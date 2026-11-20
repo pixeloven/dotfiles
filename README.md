@@ -25,7 +25,7 @@ Every option below is off on a fresh install. Each says what it adds and how to 
 
 `chezmoi init` asks once for the tool sets (none ticked) and the workstation apps (`herdr-cli`, `claude-code` and `codex` ticked), and saves the answers in `~/.config/chezmoi/chezmoi.toml`. `toolsets` and `workstation-apps` change them later and install what you turn on. Turning something off never uninstalls it; `toolsets off <set> --uninstall` does.
 
-**Existing machines keep everything.** Before this, `voice` and `aws` were in every machine's base Brewfile. A config written before then (no `minimalBase = true` in `[data]`) counts both sets as on, so `chezmoi apply` keeps them. The next `chezmoi init`, or any `toolsets on` or `toolsets off`, writes them into `toolsets` and adds `minimalBase = true`, so after that the list says everything. Saved workstation app answers, an empty one included, are kept as they are; the new app defaults apply only to a machine answering for the first time.
+**Existing machines keep their packages.** Before this, `voice` and `aws` were in every machine's base Brewfile. They stay installed: `brew bundle` never uninstalls, and drift never flags a tool set's packages as `pkg-extra`. They are off in `toolsets status`, though, and a rebuilt machine won't reinstall them. To keep them managed, run `toolsets on voice aws` once. Saved workstation app answers, an empty one included, are kept as they are; the new app defaults apply only to a machine answering for the first time.
 
 **Mute:** `voice mute` and `voice unmute` silence or restore spoken alerts and summaries for Claude Code and Codex. `voice toggle` flips mute and can sit on a key in any desktop (RUNBOOK section 4c). `voice status` shows what is on.
 

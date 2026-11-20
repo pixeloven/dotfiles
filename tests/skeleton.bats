@@ -38,7 +38,7 @@ toolsets_list() { # <HOMEBREW_DOTFILES_TOOLSETS value> : the Brewfile's packages
   local pkg
   run env -u HOMEBREW_DOTFILES_TOOLSETS brew bundle list --file="$REPO/Brewfile" --all --taps
   [ "$status" -eq 0 ]
-  for pkg in $(sed -E 's/#.*//; s/(^|[[:space:]])cask:/\1/g; s/@[a-z]+//g' "$REPO/lib/toolsets.txt" | awk 'NF { $1 = ""; print }') hashicorp/tap siderolabs/tap; do
+  for pkg in $(sed -E 's/#.*//; s/(^|[[:space:]])cask:/\1/g; s/@(darwin|linux)([[:space:]]|$)/\2/g' "$REPO/lib/toolsets.txt" | awk 'NF { $1 = ""; print }') hashicorp/tap siderolabs/tap; do
     ! grep -qxF "$pkg" <<<"$output" || { echo "unexpected $pkg"; false; }
   done
 }
@@ -60,6 +60,20 @@ toolsets_list() { # <HOMEBREW_DOTFILES_TOOLSETS value> : the Brewfile's packages
   fi
   [ "$(toolsets_list all)" = "$(toolsets_list kubernetes,talos,terraform,ansible,containers,aws,voice)" ]
   ! toolsets_list all | grep -qxF opentofu || false
+}
+
+@test "brewfile keeps a versioned formula's @ and drops only another OS's @darwin or @linux entries" {
+  local dir="$BATS_TEST_TMPDIR/repo" this=linux other=darwin
+  [ "$(uname -s)" = Darwin ] && { this=darwin other=linux; }
+  mkdir -p "$dir/lib"
+  cp "$REPO/Brewfile" "$dir/Brewfile"
+  printf 'db  postgresql@16 python@3.12 openssl@3@%s otheros-only@%s\n' "$this" "$other" > "$dir/lib/toolsets.txt"
+  run env HOMEBREW_DOTFILES_TOOLSETS=db brew bundle list --file="$dir/Brewfile" --formula
+  [ "$status" -eq 0 ]
+  grep -qxF postgresql@16 <<<"$output"
+  grep -qxF python@3.12 <<<"$output"
+  grep -qxF openssl@3 <<<"$output"
+  ! grep -q otheros-only <<<"$output" || false
 }
 
 # The brew script as chezmoi renders it with the given chezmoi data, run with a stub brew that logs
@@ -103,23 +117,17 @@ brew_sets() { # <data-json> : the HOMEBREW_DOTFILES_TOOLSETS the brew script pas
 }
 
 @test "brew script passes the tool sets joined by commas, never an inherited value" {
-  [ "$(brew_sets '{"toolsets":["kubernetes","terraform"],"minimalBase":true}')" = "sets=kubernetes,terraform" ]
-  [ "$(brew_sets '{"toolsets":[],"minimalBase":true}')" = "sets=" ]
+  [ "$(brew_sets '{"toolsets":["kubernetes","terraform"]}')" = "sets=kubernetes,terraform" ]
+  [ "$(brew_sets '{"toolsets":[]}')" = "sets=" ]
+  [ "$(brew_sets '{}')" = "sets=" ]
   # Unknown names pass through for the Brewfile to ignore; ones a shell would read are dropped.
-  [ "$(brew_sets '{"toolsets":["bogus","talos","x;y"],"minimalBase":true}')" = "sets=bogus,talos" ]
-}
-
-@test "brew script keeps voice and aws on for a config from before the minimal base" {
-  [ "$(brew_sets '{}')" = "sets=voice,aws" ]
-  [ "$(brew_sets '{"toolsets":[]}')" = "sets=voice,aws" ]
-  [ "$(brew_sets '{"toolsets":["aws","talos"]}')" = "sets=aws,talos,voice" ]
-  [ "$(brew_sets '{"toolsets":["talos"],"minimalBase":false}')" = "sets=talos,voice,aws" ]
+  [ "$(brew_sets '{"toolsets":["bogus","talos","x;y"]}')" = "sets=bogus,talos" ]
 }
 
 @test "brew script follows opsTools until init replaces it with toolsets: true is all, false none" {
   [ "$(brew_sets '{"opsTools":true}')" = "sets=all" ]
-  [ "$(brew_sets '{"opsTools":false,"minimalBase":true}')" = "sets=" ]
-  [ "$(brew_sets '{"opsTools":true,"toolsets":["ansible"],"minimalBase":true}')" = "sets=ansible" ]
+  [ "$(brew_sets '{"opsTools":false}')" = "sets=" ]
+  [ "$(brew_sets '{"opsTools":true,"toolsets":["ansible"]}')" = "sets=ansible" ]
 }
 
 @test "installTarget host installs wherever chezmoi runs" {

@@ -10,7 +10,7 @@ setup() {
   unset XDG_CONFIG_HOME
   CONFIG="$HOME/.config/chezmoi/chezmoi.toml"
   mkdir -p "$HOME/.config/chezmoi" "$HOME/bin"
-  printf 'sourceDir = "~/Development/dotfiles"\n\n[data]\nterminal = "ghostty"\n# kept\nagentPlugins = false\nminimalBase = true\n' > "$CONFIG"
+  printf 'sourceDir = "~/Development/dotfiles"\n\n[data]\nterminal = "ghostty"\n# kept\nagentPlugins = false\n' > "$CONFIG"
   # brew: installed formulae, casks and taps come from files, so uninstall and untap change what it reports.
   printf 'helm\nsiderolabs/tap/talosctl\nansible\n' > "$HOME/formulae"
   : > "$HOME/casks"
@@ -61,20 +61,29 @@ teardown() { rm -rf "$HOME"; }
   [ "$(grep -c '^[a-z]* *off ' <<<"$output")" -eq 7 ]
 }
 
-@test "a config from before the minimal base counts voice and aws as on, and keeps them when it changes" {
-  sed -i.x '/^minimalBase/d' "$CONFIG"
+@test "no toolsets key means every set is off, voice and aws included" {
   printf 'awscli\n' >> "$HOME/formulae"
   run "$SCRIPT" status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"aws         on   awscli: installed"* ]] || false
-  [[ "$output" == *"voice       on   ffmpeg cask:voiceink: not installed (chezmoi apply installs it)"* ]] || false
-  [ "$(grep -c '^[a-z]* *on ' <<<"$output")" -eq 2 ]
-  run "$SCRIPT" off voice
+  [ "$(grep -c '^[a-z]* *off ' <<<"$output")" -eq 7 ]
+  [[ "$output" == *"aws         off  awscli: installed (set is off;"* ]] || false
+}
+
+@test "list keeps a versioned formula's @ and drops only another OS's @darwin or @linux entries" {
+  local dir="$HOME/repo"
+  mkdir -p "$dir/lib"
+  printf 'db  postgresql@16 python@3.12 openssl@3@darwin otheros-only@linux\n' > "$dir/lib/toolsets.txt"
+  TOOLSETS_REPO="$dir" run "$SCRIPT" list
   [ "$status" -eq 0 ]
-  grep -qxF 'toolsets = ["aws"]' "$CONFIG"
-  grep -qxF 'minimalBase = true' "$CONFIG"
-  run "$SCRIPT" status
-  [[ "$output" == *"voice       off  "* ]] || false
+  [ "$output" = "db          postgresql@16 python@3.12 openssl@3" ]
+}
+
+@test "--help prints the whole header comment" {
+  run "$SCRIPT" --help
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "toolsets: show, turn on or turn off"* ]] || false
+  [[ "$output" == *"TOOLSETS_OS one for the OS (darwin or linux; default: uname)." ]] || false
+  [[ "$output" != *"set -uo"* ]] || false
 }
 
 @test "on adds the sets, changes only the toolsets line, then applies the scripts" {

@@ -7,10 +7,9 @@
 #            --include scripts installs them (on a distrobox host, it skips, as apply does)
 #   off      removes the sets; their tools stay installed. --uninstall also runs brew uninstall
 #            on them and untaps a set's tap when nothing from it is left
-# Only the toolsets line changes, plus minimalBase = true on a config from before the minimal base
-# (which counts voice and aws as on until then); every other key and comment stays. It never runs
-# chezmoi init. TOOLSETS_REPO is a test seam for the dotfiles repo (default: chezmoi's working
-# tree), and TOOLSETS_OS one for the OS (darwin or linux; default: uname).
+# Only the toolsets line changes; every other key and comment stays. It never runs chezmoi init.
+# TOOLSETS_REPO is a test seam for the dotfiles repo (default: chezmoi's working tree), and
+# TOOLSETS_OS one for the OS (darwin or linux; default: uname).
 
 set -uo pipefail
 
@@ -27,18 +26,20 @@ table="$repo/lib/toolsets.txt"
 [ -f "$table" ] || { echo "toolsets: $table not found; is the dotfiles repo where chezmoi expects it?" >&2; exit 1; }
 
 os="${TOOLSETS_OS:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
-legacy=(voice aws) # in the base Brewfile before minimalBase; see lib/toolsets.txt
 
 sets() { sed 's/#.*//' "$table" | awk 'NF { print $1 }'; }
 formulae() { # <set> : its packages on this OS, without the @os suffix; a cask is cask:<name>
   sed 's/#.*//' "$table" | awk -v s="$1" -v os="$os" '$1 == s {
     out = ""
-    for (i = 2; i <= NF; i++) { n = split($i, p, "@"); if (n == 1 || p[2] == os) out = out (out == "" ? "" : " ") p[1] }
+    for (i = 2; i <= NF; i++) {
+      name = $i
+      if (match(name, /@(darwin|linux)$/)) { if (substr(name, RSTART + 1) != os) continue; name = substr(name, 1, RSTART - 1) }
+      out = out (out == "" ? "" : " ") name
+    }
     print out
   }'
 }
 known() { sets | grep -qxF "$1"; }
-pre_minimal() { [ "$("$repo/lib/toml-set.sh" --get "$config" data minimalBase)" != true ]; }
 
 current() { # the sets the brew-bundle script follows, one per line; unknown names included
   local raw
@@ -50,9 +51,7 @@ current() { # the sets the brew-bundle script follows, one per line; unknown nam
     esac
   elif [ "$("$repo/lib/toml-set.sh" --get "$config" data opsTools)" = true ]; then
     sets # a machine that hasn't re-run chezmoi init: opsTools = true means every set
-    return 0
   fi
-  if pre_minimal; then printf '%s\n' "${legacy[@]}"; fi # a config from before the minimal base keeps them
 }
 
 write() { # sets on stdin, one per line : the new toolsets line, in lib/toolsets.txt order, unknown names kept last
@@ -62,9 +61,7 @@ write() { # sets on stdin, one per line : the new toolsets line, in lib/toolsets
     grep -qxF "$s" <<<"$all" || continue
     value="$value${value:+, }\"$s\""
   done
-  "$repo/lib/toml-set.sh" "$config" data toolsets "[$value]" || return 1
-  # The list now says everything, voice and aws included, so the config leaves the pre-minimal rule.
-  if pre_minimal; then "$repo/lib/toml-set.sh" "$config" data minimalBase true; fi
+  "$repo/lib/toml-set.sh" "$config" data toolsets "[$value]"
 }
 
 summary() { local l; l="$(current | paste -sd ' ' -)"; echo "toolsets: on: ${l:-none}"; }
@@ -173,6 +170,6 @@ case "$cmd" in
   list) for s in $(sets); do printf '%-11s %s\n' "$s" "$(formulae "$s")"; done ;;
   on) on "$@" ;;
   off) off "$@" ;;
-  -h|--help) sed -n '2,12s/^# \{0,1\}//p' "$0" ;;
+  -h|--help) awk 'NR == 1 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "$0" ;;
   *) echo "toolsets: unknown command '$cmd' (try --help)" >&2; exit 2 ;;
 esac
