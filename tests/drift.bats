@@ -130,12 +130,21 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "a tool set's missing tools are pkg-missing only while the set is on" {
-  printf '[data]\ntoolsets = ["kubernetes"]\n' > "$TMP/chezmoi.toml"
+  printf '[data]\ntoolsets = ["kubernetes"]\nminimalBase = true\n' > "$TMP/chezmoi.toml"
   run "$R/bin/drift"
   [[ "$output" == *$'pkg-missing\tkubernetes-cli\tHOMEBREW_DOTFILES_TOOLSETS=kubernetes brew bundle'* ]] || false
-  printf '[data]\ntoolsets = []\n' > "$TMP/chezmoi.toml"
+  printf '[data]\ntoolsets = []\nminimalBase = true\n' > "$TMP/chezmoi.toml"
   run "$R/bin/drift"
   [[ "$output" != *kubernetes-cli* ]] || false
+}
+
+@test "a config from before the minimal base still checks voice and aws" {
+  printf '[data]\ntoolsets = ["kubernetes"]\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" == *$'pkg-missing\tkubernetes-cli\tHOMEBREW_DOTFILES_TOOLSETS=kubernetes,voice,aws brew bundle'* ]] || false
+  printf '[data]\ntoolsets = ["kubernetes", "aws"]\nminimalBase = true\n' > "$TMP/chezmoi.toml"
+  run "$R/bin/drift"
+  [[ "$output" == *$'HOMEBREW_DOTFILES_TOOLSETS=kubernetes,aws brew bundle'* ]] || false
 }
 
 @test "before re-init, opsTools = true still turns on every tool set" {

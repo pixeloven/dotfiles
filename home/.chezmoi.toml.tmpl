@@ -14,23 +14,37 @@
 {{- if and (not (hasKey . "toolsets")) (hasKey . "opsTools") -}}
 {{-   if eq (toString .opsTools) "true" }}{{ $toolsets = $sets }}{{ end -}}
 {{- else -}}
-{{-   $toolsets = promptMultichoiceOnce . "toolsets" "Ops tool sets to install (lib/toolsets.txt; none by default)" $sets (get . "toolsets" | default list) -}}
+{{-   $toolsets = promptMultichoiceOnce . "toolsets" "Optional tool sets to install (lib/toolsets.txt; none by default)" $sets (get . "toolsets" | default list) -}}
+{{- end -}}
+{{- /* A config from before the minimal base (no minimalBase key, but answers from an earlier init)
+       had voice and aws in its base Brewfile: they stay on, written out here without asking. */ -}}
+{{- $earlier := false -}}
+{{- range list "terminal" "installTarget" "toolsets" "opsTools" "workstationApps" "container" }}{{ if hasKey $ . }}{{ $earlier = true }}{{ end }}{{ end -}}
+{{- if and $earlier (ne (toString (get . "minimalBase")) "true") -}}
+{{-   range list "voice" "aws" }}{{ if not (has . $toolsets) }}{{ $toolsets = append $toolsets . }}{{ end }}{{ end -}}
 {{- end -}}
 {{- $apps := list -}}
 {{- range include "../lib/workstation-apps.tsv" | splitList "\n" -}}
 {{-   if and (trim .) (not (hasPrefix "#" .)) }}{{ $id := regexFind "^[^|]+" . }}{{ if not (has $id $apps) }}{{ $apps = append $apps $id }}{{ end }}{{ end -}}
 {{- end -}}
-{{- $workstationApps := promptMultichoiceOnce . "workstationApps" "Workstation apps to install (lib/workstation-apps.tsv; none by default)" $apps (get . "workstationApps" | default list) -}}
+{{- /* An answer already saved is kept, an empty one included (promptMultichoiceOnce would ask again). */ -}}
+{{- $workstationApps := get . "workstationApps" -}}
+{{- if not (hasKey . "workstationApps") -}}
+{{-   $workstationApps = promptMultichoiceOnce . "workstationApps" "Workstation apps to install (lib/workstation-apps.tsv; herdr-cli, claude-code and codex by default)" $apps (list "herdr-cli" "claude-code" "codex") -}}
+{{- end -}}
 {{- $container := or (env "CONTAINER_ID") (stat "/run/.containerenv") (stat "/.dockerenv") | not | not -}}
-# Linux asks the terminal and where tools install; both OSes ask which ops tool sets and workstation apps to install
-# (a machine from before that question keeps its old opsTools answer: yes is every set, no is none).
-# Each is asked once. Keys set by hand are kept. This repo holds no names, emails, or other personal data.
+# Linux asks the terminal and where tools install; both OSes ask which optional tool sets (none by default) and
+# workstation apps (herdr-cli, claude-code and codex by default) to install. A machine from before the tool sets
+# question keeps its old opsTools answer (yes is every set, no is none), and one from before minimalBase keeps
+# voice and aws, which its base Brewfile had. Each is asked once. Keys set by hand are kept. This repo holds no
+# names, emails, or other personal data.
 sourceDir = "~/Development/dotfiles"
 
 [data]
 terminal = {{ $terminal | quote }}
 installTarget = {{ $installTarget | quote }}
 toolsets = {{ $toolsets | toToml }}
+minimalBase = true
 workstationApps = {{ $workstationApps | toToml }}
 container = {{ $container }}
 {{- range list "agentPlugins" "operatorPersona" "operatorHome" }}

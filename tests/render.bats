@@ -120,7 +120,8 @@ Library/Preferences/glow/glow.yml"
   [ ! -e "$TMP/paged" ]
 }
 
-TOOLSETS_PROMPT="Ops tool sets to install (lib/toolsets.txt; none by default)"
+TOOLSETS_PROMPT="Optional tool sets to install (lib/toolsets.txt; none by default)"
+APPS_PROMPT="Workstation apps to install (lib/workstation-apps.tsv; herdr-cli, claude-code and codex by default)"
 
 @test "macOS init asks only about the tool sets, and picks Ghostty and the host" {
   run init_config darwin --promptChoice "Terminal app on this Linux machine=other" \
@@ -128,7 +129,7 @@ TOOLSETS_PROMPT="Ops tool sets to install (lib/toolsets.txt; none by default)"
   [ "$status" -eq 0 ]
   [[ "$output" == *'terminal = "ghostty"'* ]] || false
   [[ "$output" == *'installTarget = "host"'* ]] || false
-  [[ "$output" == *$'\ntoolsets = []\n'* ]] || false
+  [[ "$output" == *$'\ntoolsets = []\nminimalBase = true\n'* ]] || false
   [[ "$output" != *"opsTools ="* ]] || false
 }
 
@@ -146,7 +147,7 @@ TOOLSETS_PROMPT="Ops tool sets to install (lib/toolsets.txt; none by default)"
   want="$(sed 's/#.*//' "$REPO/lib/toolsets.txt" | awk 'NF { print $1 }' | paste -sd / -)"
   run init_config darwin --promptMultichoice "$TOOLSETS_PROMPT=$want"
   [ "$status" -eq 0 ]
-  [[ "$output" == *'toolsets = ["kubernetes", "talos", "terraform", "ansible", "containers"]'* ]] || false
+  [[ "$output" == *'toolsets = ["kubernetes", "talos", "terraform", "ansible", "containers", "aws", "voice"]'* ]] || false
 }
 
 re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template over an existing config, as a re-init does
@@ -164,18 +165,33 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
     run re_init "$os" $'terminal = "ptyxis"\ninstallTarget = "host"\nopsTools = true' \
       --promptMultichoice "$TOOLSETS_PROMPT=kubernetes"
     [ "$status" -eq 0 ]
-    [[ "$output" == *'toolsets = ["kubernetes", "talos", "terraform", "ansible", "containers"]'* ]] || { echo "$os: $output"; false; }
+    [[ "$output" == *'toolsets = ["kubernetes", "talos", "terraform", "ansible", "containers", "aws", "voice"]'* ]] || { echo "$os: $output"; false; }
     [[ "$output" != *"opsTools ="* ]] || false
+    # No: no ops sets, but voice and aws, which the base Brewfile had then.
     run re_init "$os" $'terminal = "ptyxis"\ninstallTarget = "host"\nopsTools = false' \
       --promptMultichoice "$TOOLSETS_PROMPT=kubernetes"
-    [[ "$output" == *$'\ntoolsets = []\n'* ]] || { echo "$os: $output"; false; }
+    [[ "$output" == *$'\ntoolsets = ["voice", "aws"]\nminimalBase = true\n'* ]] || { echo "$os: $output"; false; }
   done
 }
 
 @test "re-init keeps the tool sets already chosen" {
-  run re_init darwin 'toolsets = ["talos"]'
+  run re_init darwin $'toolsets = ["talos"]\nminimalBase = true'
   [ "$status" -eq 0 ]
-  [[ "$output" == *'toolsets = ["talos"]'* ]] || false
+  [[ "$output" == *$'\ntoolsets = ["talos"]\nminimalBase = true\n'* ]] || false
+  run re_init darwin $'toolsets = []\nminimalBase = true'
+  [[ "$output" == *$'\ntoolsets = []\n'* ]] || false
+}
+
+@test "re-init of a config from before the minimal base adds voice and aws without asking, once" {
+  local os
+  for os in darwin linux; do
+    run re_init "$os" $'terminal = "ghostty"\ntoolsets = ["talos", "aws"]'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *$'\ntoolsets = ["talos", "aws", "voice"]\nminimalBase = true\n'* ]] || { echo "$os: $output"; false; }
+  done
+  # A fresh init has no earlier answers, so it starts minimal.
+  run init_config darwin
+  [[ "$output" == *$'\ntoolsets = []\nminimalBase = true\n'* ]] || false
 }
 
 @test "re-init keeps the keys set by hand" {
@@ -217,20 +233,29 @@ re_init() { # <os> <old [data] lines> [chezmoi flags] : render the init template
   [[ "$output" == *$'\ncontainer = '* ]] || false
 }
 
-@test "workstation apps default to none and preserve per-machine choices" {
-  run init_config darwin
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'workstationApps = []'* ]] || false
+@test "workstation apps default to herdr and the agent CLIs and preserve per-machine choices" {
+  local os
+  for os in darwin linux; do
+    run init_config "$os"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'workstationApps = ["herdr-cli", "claude-code", "codex"]'* ]] || { echo "$os: $output"; false; }
+  done
+  run init_config darwin --promptMultichoice "$APPS_PROMPT=blender"
+  [[ "$output" == *'workstationApps = ["blender"]'* ]] || false
   run re_init linux 'workstationApps = ["herdr-cli", "codex", "blender"]'
   [ "$status" -eq 0 ]
   [[ "$output" == *'workstationApps = ["herdr-cli", "codex", "blender"]'* ]] || false
+  # An earlier answer of none stays none; the new defaults never reach an existing machine.
+  run re_init linux 'workstationApps = []' --promptMultichoice "$APPS_PROMPT=codex"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\nworkstationApps = []\n'* ]] || false
 }
 
 @test "workstation init choices come from the app catalog" {
   local ids want
   ids="$(awk -F '|' '!/^#/ && NF && !seen[$1]++ {print $1}' "$REPO/lib/workstation-apps.tsv")"
   want="$(sed 's/.*/"&"/' <<<"$ids" | paste -sd , - | sed 's/,/, /g')"
-  run init_config linux --promptMultichoice "Workstation apps to install (lib/workstation-apps.tsv; none by default)=$(paste -sd / - <<<"$ids")"
+  run init_config linux --promptMultichoice "$APPS_PROMPT=$(paste -sd / - <<<"$ids")"
   [ "$status" -eq 0 ]
   [[ "$output" == *"workstationApps = [$want]"* ]] || false
 }

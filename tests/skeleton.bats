@@ -15,6 +15,10 @@ REPO="$BATS_TEST_DIRNAME/.."
   for pkg in font-jetbrains-mono bat git-delta glow chezmoi; do
     grep -qxF "$pkg" <<<"$output"
   done
+  # The base is minimal: the voice and aws packages come only from their tool sets.
+  for pkg in ffmpeg voiceink awscli pulseaudio whisper.cpp; do
+    ! grep -qxF "$pkg" <<<"$output" || { echo "unexpected $pkg in the base"; false; }
+  done
   if [ "$(uname -s)" = Darwin ]; then
     grep -qxF ghostty <<<"$output"
     ! grep -qxF xclip <<<"$output" || false
@@ -34,7 +38,7 @@ toolsets_list() { # <HOMEBREW_DOTFILES_TOOLSETS value> : the Brewfile's packages
   local pkg
   run env -u HOMEBREW_DOTFILES_TOOLSETS brew bundle list --file="$REPO/Brewfile" --all --taps
   [ "$status" -eq 0 ]
-  for pkg in $(sed 's/#.*//' "$REPO/lib/toolsets.txt" | awk 'NF { $1 = ""; print }') hashicorp/tap siderolabs/tap; do
+  for pkg in $(sed -E 's/#.*//; s/(^|[[:space:]])cask:/\1/g; s/@[a-z]+//g' "$REPO/lib/toolsets.txt" | awk 'NF { $1 = ""; print }') hashicorp/tap siderolabs/tap; do
     ! grep -qxF "$pkg" <<<"$output" || { echo "unexpected $pkg"; false; }
   done
 }
@@ -45,9 +49,16 @@ toolsets_list() { # <HOMEBREW_DOTFILES_TOOLSETS value> : the Brewfile's packages
   [ "$(toolsets_list terraform | paste -sd ' ' -)" = "hashicorp/tap hashicorp/tap/terraform" ]
   [ "$(toolsets_list ansible)" = ansible ]
   [ "$(toolsets_list containers)" = docker ]
+  [ "$(toolsets_list aws)" = awscli ]
   [ "$(toolsets_list bogus,ansible)" = ansible ]
-  [ "$(toolsets_list all | wc -l | tr -d ' ')" -eq 10 ]
-  [ "$(toolsets_list all)" = "$(toolsets_list kubernetes,talos,terraform,ansible,containers)" ]
+  if [ "$(uname -s)" = Darwin ]; then
+    [ "$(toolsets_list voice | paste -sd ' ' -)" = "ffmpeg voiceink" ]
+    [ "$(toolsets_list all | wc -l | tr -d ' ')" -eq 13 ]
+  else
+    [ "$(toolsets_list voice | paste -sd ' ' -)" = "ffmpeg pulseaudio whisper.cpp" ]
+    [ "$(toolsets_list all | wc -l | tr -d ' ')" -eq 14 ]
+  fi
+  [ "$(toolsets_list all)" = "$(toolsets_list kubernetes,talos,terraform,ansible,containers,aws,voice)" ]
   ! toolsets_list all | grep -qxF opentofu || false
 }
 
@@ -92,17 +103,23 @@ brew_sets() { # <data-json> : the HOMEBREW_DOTFILES_TOOLSETS the brew script pas
 }
 
 @test "brew script passes the tool sets joined by commas, never an inherited value" {
-  [ "$(brew_sets '{"toolsets":["kubernetes","terraform"]}')" = "sets=kubernetes,terraform" ]
-  [ "$(brew_sets '{"toolsets":[]}')" = "sets=" ]
-  [ "$(brew_sets '{}')" = "sets=" ]
+  [ "$(brew_sets '{"toolsets":["kubernetes","terraform"],"minimalBase":true}')" = "sets=kubernetes,terraform" ]
+  [ "$(brew_sets '{"toolsets":[],"minimalBase":true}')" = "sets=" ]
   # Unknown names pass through for the Brewfile to ignore; ones a shell would read are dropped.
-  [ "$(brew_sets '{"toolsets":["bogus","talos","x;y"]}')" = "sets=bogus,talos" ]
+  [ "$(brew_sets '{"toolsets":["bogus","talos","x;y"],"minimalBase":true}')" = "sets=bogus,talos" ]
+}
+
+@test "brew script keeps voice and aws on for a config from before the minimal base" {
+  [ "$(brew_sets '{}')" = "sets=voice,aws" ]
+  [ "$(brew_sets '{"toolsets":[]}')" = "sets=voice,aws" ]
+  [ "$(brew_sets '{"toolsets":["aws","talos"]}')" = "sets=aws,talos,voice" ]
+  [ "$(brew_sets '{"toolsets":["talos"],"minimalBase":false}')" = "sets=talos,voice,aws" ]
 }
 
 @test "brew script follows opsTools until init replaces it with toolsets: true is all, false none" {
   [ "$(brew_sets '{"opsTools":true}')" = "sets=all" ]
-  [ "$(brew_sets '{"opsTools":false}')" = "sets=" ]
-  [ "$(brew_sets '{"opsTools":true,"toolsets":["ansible"]}')" = "sets=ansible" ]
+  [ "$(brew_sets '{"opsTools":false,"minimalBase":true}')" = "sets=" ]
+  [ "$(brew_sets '{"opsTools":true,"toolsets":["ansible"],"minimalBase":true}')" = "sets=ansible" ]
 }
 
 @test "installTarget host installs wherever chezmoi runs" {

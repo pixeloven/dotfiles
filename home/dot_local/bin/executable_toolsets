@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# toolsets: show, turn on or turn off the optional ops tool sets (lib/toolsets.txt).
+# toolsets: show, turn on or turn off the optional tool sets (lib/toolsets.txt).
 # Usage: toolsets [status] | list | on <set>... | off <set>... [--uninstall]
-#   status   each set: on or off, and whether its formulae are installed (the default)
-#   list     each set and its formulae
+#   status   each set: on or off, and whether its packages are installed (the default)
+#   list     each set and its packages on this OS (a cask shows as cask:<name>)
 #   on       adds the sets to toolsets in ~/.config/chezmoi/chezmoi.toml, then chezmoi apply
 #            --include scripts installs them (on a distrobox host, it skips, as apply does)
 #   off      removes the sets; their tools stay installed. --uninstall also runs brew uninstall
 #            on them and untaps a set's tap when nothing from it is left
-# Only the toolsets line changes; every other key and comment stays. It never runs chezmoi init.
-# TOOLSETS_REPO is a test seam for the dotfiles repo (default: chezmoi's working tree).
+# Only the toolsets line changes, plus minimalBase = true on a config from before the minimal base
+# (which counts voice and aws as on until then); every other key and comment stays. It never runs
+# chezmoi init. TOOLSETS_REPO is a test seam for the dotfiles repo (default: chezmoi's working
+# tree), and TOOLSETS_OS one for the OS (darwin or linux; default: uname).
 
 set -uo pipefail
 
@@ -24,9 +26,19 @@ case "$repo" in /*) ;; *) echo "toolsets: TOOLSETS_REPO must be an absolute path
 table="$repo/lib/toolsets.txt"
 [ -f "$table" ] || { echo "toolsets: $table not found; is the dotfiles repo where chezmoi expects it?" >&2; exit 1; }
 
+os="${TOOLSETS_OS:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
+legacy=(voice aws) # in the base Brewfile before minimalBase; see lib/toolsets.txt
+
 sets() { sed 's/#.*//' "$table" | awk 'NF { print $1 }'; }
-formulae() { sed 's/#.*//' "$table" | awk -v s="$1" '$1 == s { $1 = ""; print substr($0, 2) }'; }
+formulae() { # <set> : its packages on this OS, without the @os suffix; a cask is cask:<name>
+  sed 's/#.*//' "$table" | awk -v s="$1" -v os="$os" '$1 == s {
+    out = ""
+    for (i = 2; i <= NF; i++) { n = split($i, p, "@"); if (n == 1 || p[2] == os) out = out (out == "" ? "" : " ") p[1] }
+    print out
+  }'
+}
 known() { sets | grep -qxF "$1"; }
+pre_minimal() { [ "$("$repo/lib/toml-set.sh" --get "$config" data minimalBase)" != true ]; }
 
 current() { # the sets the brew-bundle script follows, one per line; unknown names included
   local raw
@@ -38,7 +50,9 @@ current() { # the sets the brew-bundle script follows, one per line; unknown nam
     esac
   elif [ "$("$repo/lib/toml-set.sh" --get "$config" data opsTools)" = true ]; then
     sets # a machine that hasn't re-run chezmoi init: opsTools = true means every set
+    return 0
   fi
+  if pre_minimal; then printf '%s\n' "${legacy[@]}"; fi # a config from before the minimal base keeps them
 }
 
 write() { # sets on stdin, one per line : the new toolsets line, in lib/toolsets.txt order, unknown names kept last
@@ -48,12 +62,14 @@ write() { # sets on stdin, one per line : the new toolsets line, in lib/toolsets
     grep -qxF "$s" <<<"$all" || continue
     value="$value${value:+, }\"$s\""
   done
-  "$repo/lib/toml-set.sh" "$config" data toolsets "[$value]"
+  "$repo/lib/toml-set.sh" "$config" data toolsets "[$value]" || return 1
+  # The list now says everything, voice and aws included, so the config leaves the pre-minimal rule.
+  if pre_minimal; then "$repo/lib/toml-set.sh" "$config" data minimalBase true; fi
 }
 
 summary() { local l; l="$(current | paste -sd ' ' -)"; echo "toolsets: on: ${l:-none}"; }
 
-installed() { brew list --formula --full-name 2>/dev/null; }
+installed() { brew list --formula --full-name 2>/dev/null; brew list --cask 2>/dev/null | sed 's/^/cask:/'; }
 
 state() { # <set> <installed list> : installed, not installed, or which are missing
   local f have=() miss=()
@@ -104,19 +120,24 @@ on() {
   chezmoi apply --include scripts
 }
 
-uninstall() { # <set> : brew uninstall its installed formulae, then untap taps nothing uses now
-  local f tap have gone=() taps=()
+uninstall() { # <set> : brew uninstall its installed packages, then untap taps nothing uses now
+  local f tap have gone=() casks=() taps=()
   have="$(installed)"
   for f in $(formulae "$1"); do
-    grep -qxF "$f" <<<"$have" && gone+=("$f")
+    if grep -qxF "$f" <<<"$have"; then
+      case "$f" in cask:*) casks+=("${f#cask:}") ;; *) gone+=("$f") ;; esac
+    fi
     [[ "$f" == */*/* ]] && taps+=("${f%/*}")
   done
   if [ "${#gone[@]}" -gt 0 ]; then
     echo "toolsets: brew uninstall ${gone[*]}"
     brew uninstall "${gone[@]}" || return 1
-  else
-    echo "toolsets: nothing from $1 is installed"
   fi
+  if [ "${#casks[@]}" -gt 0 ]; then
+    echo "toolsets: brew uninstall --cask ${casks[*]}"
+    brew uninstall --cask "${casks[@]}" || return 1
+  fi
+  [ "$(( ${#gone[@]} + ${#casks[@]} ))" -gt 0 ] || echo "toolsets: nothing from $1 is installed"
   have="$(installed)"
   for tap in $(printf '%s\n' ${taps[@]+"${taps[@]}"} | sort -u); do
     grep -q "^$tap/" <<<"$have" && continue

@@ -91,7 +91,7 @@ if ! recording; then
     exit 1
   fi
   if ! command -v parecord >/dev/null 2>&1; then
-    notify "no recorder: install parecord (pulseaudio)"
+    notify "no recorder: install parecord (pulseaudio: run toolsets on voice)"
     exit 1
   fi
   rec=(parecord --channels=1 --rate=16000 --format=s16le --file-format=wav)

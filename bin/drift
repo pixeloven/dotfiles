@@ -199,13 +199,15 @@ packages() {
   local data listed pkg sets
   # The same chezmoi init answers the brew-bundle script follows: with installTarget = distrobox
   # the host installs nothing, and toolsets (or, before re-init, opsTools = true for all) turns on
-  # sets from lib/toolsets.txt. A tool from any set counts as listed, so one installed by hand or
+  # sets from lib/toolsets.txt; a config without minimalBase = true (from before the minimal base)
+  # also keeps voice and aws on. A tool from any set counts as listed, so one installed by hand or
   # left by a set turned off is never pkg-extra; only the sets that are on can be pkg-missing.
   data="$("${CZ[@]}" data --format json 2>/dev/null)"
   if [ "$(jq -r '.installTarget // empty' <<<"$data" 2>/dev/null)" = distrobox ]; then
     [ -e "${DOTFILES_CONTAINER_MARKER:-/run/.containerenv}" ] || return 0
   fi
-  sets="$(jq -r 'if has("toolsets") then [.toolsets[]? | tostring] | join(",") elif .opsTools == true then "all" else "" end' <<<"$data" 2>/dev/null)"
+  sets="$(jq -r '(if has("toolsets") then [.toolsets[]? | tostring] elif .opsTools == true then ["all"] else [] end) as $s
+    | (if .minimalBase == true or ($s | index("all")) then $s else $s + (["voice", "aws"] - $s) end) | join(",")' <<<"$data" 2>/dev/null)"
   listed="$(HOMEBREW_DOTFILES_TOOLSETS=all brew bundle list --all --file="$REPO/Brewfile" 2>/dev/null)"
   # Workstation app packages are never pkg-extra: workstation_apps reports them against the selection.
   if [ -f "$REPO/lib/workstation-apps.tsv" ]; then

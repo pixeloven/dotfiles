@@ -4,7 +4,7 @@ Rebuilding a development environment is `chezmoi init --apply` plus the saved se
 
 ## Choose and install
 
-`chezmoi init` asks once which apps to install; none are selected by default. The answer is the `workstationApps` list in your untracked `~/.config/chezmoi/chezmoi.toml`. Every `chezmoi apply` then installs the selected apps that are missing and leaves installed ones alone, the way it installs the ops `toolsets`. A rebuild needs no extra step.
+`chezmoi init` asks once which apps to install. `herdr-cli`, `claude-code` and `codex` are ticked by default, because the agent setup needs them; the desktop apps, Blender and Comfy Desktop stay off until you select them. An answer saved earlier, an empty one included, is kept. The answer is the `workstationApps` list in your untracked `~/.config/chezmoi/chezmoi.toml`. Every `chezmoi apply` then installs the selected apps that are missing and leaves installed ones alone, the way it installs the ops `toolsets`. A rebuild needs no extra step.
 
 ```sh
 workstation-apps                          # list: every app, on or off, and how it installs here
