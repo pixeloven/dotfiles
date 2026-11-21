@@ -160,9 +160,10 @@ codex_sync() { # `codex plugin add` re-enables a disabled plugin, so only missin
     run codex plugin marketplace add "$SOURCE" --ref "$REF" --json
   else
     codex_declared || codex_declare || return 0
-    # The upgrade re-points installed plugins too: a moved marketplace needs no re-add.
-    { [ "$MODE" = update ] || ! codex_cloned; } && run codex plugin marketplace upgrade "$MARKET" --json
   fi
+  # The upgrade re-points installed plugins too: a moved marketplace needs no re-add. `marketplace
+  # add` writes no install record, so a fresh clone is upgraded once to record its pin.
+  { [ "$MODE" = update ] || ! codex_cloned; } && run codex plugin marketplace upgrade "$MARKET" --json
   for p in $(names); do
     case "$(listed "$list" "$p")" in
       true) [ "$MODE" = update ] && run codex plugin add "$p@$MARKET" --json ;;

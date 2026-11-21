@@ -79,7 +79,7 @@ case "$*" in
   "plugin marketplace add "*)
     [ ! -e "$d/offline" ] || exit 1
     printf '\n[marketplaces.pixeloven]\nsource_type = "git"\nsource = "https://github.com/%s.git"\nref = "%s"\n' "$4" "$6" >> "$d/config.toml"
-    fetch ;;
+    fetch; rm "$m/.codex-marketplace-install.json" ;; # codex 0.164 writes the install record on upgrade only
   "plugin marketplace upgrade "*) fetch ;;
   "plugin add "*)
     n="${3%@*}"
@@ -175,7 +175,9 @@ old_machine() { # a machine set up from the pre-fold pixeloven/marketplace catal
   calls | grep -qxF "pi install git:github.com/pixeloven/crew@$REF"
   [ "$(pi_packages)" = "[\"git:github.com/pixeloven/crew@$REF\"]" ] # one unfiltered package carries every pack
   [ "$(installs | wc -l | tr -d ' ')" -eq 11 ]
-  [ -z "$(calls | grep -E 'marketplace (update|upgrade|remove)')" ] # a marketplace added just now is current
+  [ -z "$(calls | grep -E 'marketplace (update|remove)')" ] # a marketplace added just now is current
+  # Codex's `marketplace add` writes no install record; one upgrade straight after records the pin.
+  [ "$(calls | grep -E 'marketplace upgrade')" = "codex plugin marketplace upgrade pixeloven --json" ]
   run "$LIB" check
   [ "$status" -eq 0 ]; [ -z "$output" ]
   rm "$TMP/calls"
