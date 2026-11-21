@@ -206,18 +206,11 @@ pi_old() { # the plugins, other than crew, that still have their own pre-fold pa
 # shellcheck disable=SC2016  # jq variables
 PI_MATCH='(if type == "object" then .source else . end | split("@")[0]) == $pkg'
 
-pi_retire() { # <name> : drop name's pre-fold package; a pack you turned off there stays off in crew's
-  local s="$PI_DIR/settings.json" pkg="git:github.com/pixeloven/$1" filtered
-  filtered="$(jq -r --arg pkg "$pkg" "[(.packages // [])[] | select($PI_MATCH) | select(type == \"object\")
-    | if .skills == [] then \"off\" elif (del(.source) | length) > 0 then \"filtered\" else empty end][0] // empty" "$s")"
-  case "$filtered" in
-    off) say "pi: $1 was turned off; excluding packs/$1 from crew's package"
-      json_write "$s" --arg pkg "$PI_PKG" --arg x "!packs/$1/**" ".packages |= map(if $PI_MATCH
-        then (if type == \"object\" then . else {source: .} end)
-          | if .skills == [] or ((.skills // []) | index(\$x)) then . else .skills = ((.skills // []) + [\$x]) end
-        else . end)" || { say "failed: could not write $s"; FAILED=1; return 1; } ;;
-    filtered) say "pi: $1 had resource filters; set them again on crew's package with pi config (paths under packs/$1/)" ;;
-  esac
+pi_retire() { # <name> : drop name's pre-fold package; crew's stays unfiltered, so a filter on the old one is reported
+  local pkg="git:github.com/pixeloven/$1"
+  jq -e --arg pkg "$pkg" "any((.packages // [])[]; select($PI_MATCH) | type == \"object\" and (del(.source) | length) > 0)" \
+    "$PI_DIR/settings.json" >/dev/null 2>&1 &&
+    say "pi: $1 was turned off or filtered; crew's package loads it now, filter packs/$1/ there: https://github.com/pixeloven/crew/blob/$REF/docs/quickstart-pi.md"
   run pi remove "$(pi_entry "$pkg")"
 }
 

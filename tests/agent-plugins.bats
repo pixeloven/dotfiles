@@ -223,7 +223,7 @@ old_machine() { # a machine set up from the pre-fold pixeloven/marketplace catal
   [ -z "$(moves)" ]; [ -z "$(installs)" ]
 }
 
-@test "a plugin turned off before the move stays off after it" {
+@test "a pack turned off or filtered before the move is reported, and crew's package stays unfiltered" {
   old_machine
   set_enabled planning-skills false
   jq '.packages |= map(if test("/planning-skills@") then {source: ., skills: []} elif test("/identity-skills@") then {source: ., skills: ["skills/a"]} else . end)' \
@@ -232,8 +232,12 @@ old_machine() { # a machine set up from the pre-fold pixeloven/marketplace catal
   [ "$status" -eq 0 ]
   [ -z "$(calls | grep planning-skills | grep -E '^(claude|codex) ')" ]
   [ "$(jq '.[] | select(.id == "planning-skills@pixeloven") | .enabled' "$CLAUDE_CONFIG_DIR/claude-list.json")" = false ]
-  [ "$(pi_packages)" = "[\"npm:other\",{\"source\":\"git:github.com/pixeloven/crew@$REF\",\"skills\":[\"!packs/planning-skills/**\"]}]" ]
-  [[ "$output" == *"pi: identity-skills had resource filters; set them again on crew's package"* ]] || false
+  [ "$(pi_packages)" = "[\"npm:other\",\"git:github.com/pixeloven/crew@$REF\"]" ]
+  local quickstart="https://github.com/pixeloven/crew/blob/$REF/docs/quickstart-pi.md"
+  for p in planning-skills identity-skills; do
+    [[ "$output" == *"pi: $p was turned off or filtered; crew's package loads it now, filter packs/$p/ there: $quickstart"* ]] || false
+  done
+  for p in infra-skills language-skills; do [[ "$output" != *"pi: $p was turned off"* ]] || false; done
   run "$LIB" check
   [ -z "$output" ] # disabled plugins are never reported
 }
