@@ -11,8 +11,8 @@
 # skill-ahead, untracked-config, settings-invalid.
 # settings-invalid: the settings file (docs/settings.md) fails validation, so every chezmoi call fails; it is
 # then the only finding, since the others would come from failed calls.
-# plugin-behind: an installed plugin differs from this machine's local catalogue copy. The check is offline,
-# so a newly published marketplace re-pin is found by the operator's crew check and lib/agent-plugins.sh update.
+# plugin-behind: an installed plugin isn't at the crew release tag pinned in lib/agent-plugins.txt. The check is
+# offline; the pin lives in the repo, so a re-pin shows up here once it is pulled.
 # skill-*: the Impeccable skill against the version in lib/impeccable.txt (lib/impeccable.sh check).
 # Paths in lib/denylist.txt and packages in lib/drift-ignore.txt are never reported.
 # DRIFT_CHEZMOI_ARGS adds chezmoi flags (tests use it to point at a scratch source/state).
