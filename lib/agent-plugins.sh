@@ -1,79 +1,59 @@
 #!/usr/bin/env bash
 # Keep the plugins in lib/agent-plugins.txt installed at user scope for Claude Code, Codex and pi,
-# all at the pixeloven marketplace's pins. A tool that isn't installed is skipped.
+# all at one release of pixeloven/crew: that repo serves crew and its packs as the pixeloven
+# marketplace, and the release tag in lib/agent-plugins.txt (its @ line) is the only pin.
+# A tool that isn't installed is skipped.
 #
 # Usage: agent-plugins.sh ensure|update|check
-#   ensure  install only what is missing (run by chezmoi apply); a plugin you disabled stays disabled
-#   update  bring every installed, enabled plugin to the catalogue's current pins
-#   check   read-only; one drift line per finding, as bin/drift prints them:
+#   ensure  point each tool at the pinned release, install what is missing, and bring each installed,
+#           enabled plugin that isn't at the pin up to it (run by chezmoi apply). A plugin you disabled
+#           stays disabled. A machine still on the old pixeloven/marketplace catalogue moves here too.
+#   update  as ensure for what is installed, refreshing even what looks current; installs nothing new
+#   check   read-only and offline; one drift line per finding, as bin/drift prints them:
 #           plugin-missing / plugin-behind <tab> <tool> <name>@pixeloven <tab> <suggested action>
-#           plugin-behind means the installed commit differs from this machine's local catalogue copy.
-#           check stays offline (bin/drift runs it at session start), so it never sees a re-pin newly
-#           published in the marketplace; the operator's crew check (on demand) and `update` detect that.
-# Exit 0, or 1 when an install or update failed (check always exits 0).
-# CLAUDE_CONFIG_DIR, CODEX_HOME and PI_CODING_AGENT_DIR move each tool's home, as the tools themselves do;
-# AGENT_PLUGINS_MARKETPLACE_URL moves the catalogue that `update` and a pi install fetch (tests use it).
+#           plugin-behind means not at the pinned release's commit: Claude Code's marketplace is on
+#           another source or ref, or a plugin's gitCommitSha isn't that marketplace clone's commit;
+#           Codex's marketplace is declared or cloned at another source or ref; pi's crew package
+#           entry isn't crew at the tag, or an old per-pack package entry is still there.
+# Exit 0, or 1 when a step failed (check always exits 0).
+# CLAUDE_CONFIG_DIR, CODEX_HOME and PI_CODING_AGENT_DIR move each tool's home, as the tools themselves do.
+#
+# Moving the pin never uses `claude plugin marketplace remove`: it uninstalls every plugin from that
+# marketplace. Claude Code needs the settings declaration changed first, then `marketplace add` of the
+# same source; Codex needs its config table rewritten, then `marketplace upgrade`.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+LIST="$REPO/lib/agent-plugins.txt"
 MARKET=pixeloven
-SOURCE=pixeloven/marketplace
-URL="${AGENT_PLUGINS_MARKETPLACE_URL:-https://github.com/$SOURCE.git}"
+SOURCE=pixeloven/crew
+CREW="${SOURCE#*/}"                       # the plugin the source repo itself is
+GIT_URL="https://github.com/$SOURCE.git"  # how Codex records an owner/repo source
+PI_PKG="git:github.com/$SOURCE"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
 PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 MODE="${1:-}"
 FAILED=0
-CATALOGUE=""
-TMPD=""
-trap '[ -z "$TMPD" ] || rm -rf "$TMPD"' EXIT
+REF="$(sed -nE 's/^[[:space:]]*@[[:space:]]*([^[:space:]]+).*/\1/p' "$LIST" 2>/dev/null | head -n 1)"
 
-names() { grep -vE '^[[:space:]]*(#|$)' "$REPO/lib/agent-plugins.txt"; }
+names() { grep -vE '^[[:space:]]*(#|@|$)' "$LIST"; }
 say() { echo "agent plugins: $*" >&2; }
-BEHIND="installed differs from this machine's local catalogue copy; run $REPO/lib/agent-plugins.sh update"
+BEHIND="not at the pinned crew release $REF; run $REPO/lib/agent-plugins.sh update"
 emit() { printf '%s\t%s\t%s\n' "$1" "$2 $3@$MARKET" "$4"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-run() { # run a tool command quietly, reporting it and any failure
+run() { # run a tool command quietly, reporting it and any failure; returns its status
   say "$*"
-  "$@" </dev/null >/dev/null || { say "failed: $*"; FAILED=1; }
+  "$@" </dev/null >/dev/null && return 0
+  say "failed: $*"; FAILED=1; return 1
 }
 
-fetch() { # set CATALOGUE to a fresh clone of the marketplace catalogue
-  TMPD="$(mktemp -d)"
-  git clone --quiet --depth 1 "$URL" "$TMPD/m" 2>/dev/null || { say "could not fetch $URL"; return 1; }
-  CATALOGUE="$TMPD/m/.claude-plugin/marketplace.json"
-}
-
-local_copy() { # set CATALOGUE to the copy Claude Code or Codex keeps on this machine, which may be behind
-  local f
-  for f in "$CLAUDE_DIR/plugins/marketplaces/$MARKET/.claude-plugin/marketplace.json" \
-           "$CODEX_DIR/.tmp/marketplaces/$MARKET/.claude-plugin/marketplace.json"; do
-    [ -f "$f" ] && { CATALOGUE="$f"; return 0; }
-  done
-  return 1
-}
-
-catalogue() { # set CATALOGUE once: check stays offline on the local copy; ensure and update fetch the
-  # current catalogue, and ensure falls back to the local copy when the fetch fails (offline)
-  [ -n "$CATALOGUE" ] && return 0
-  case "$MODE" in
-    check) local_copy ;;
-    update) fetch || { FAILED=1; return 1; } ;;
-    ensure) fetch || { local_copy && say "using this machine's local catalogue copy, which may be behind"; } ||
-      { FAILED=1; return 1; } ;;
-  esac
-}
-
-refresh() { # <tool> <args...> : refresh a tool's marketplace clone before ensure installs from it; when that
-  # fails (offline), warn and let the install use this machine's local copy, as catalogue does for pi
-  say "$*"
-  "$@" </dev/null >/dev/null || say "could not refresh $1's $MARKET marketplace; using this machine's local copy, which may be behind"
-}
-
-pinned() { # <name> : the catalogue's commit SHA for name, or nothing
-  [ -n "$CATALOGUE" ] || return 0
-  jq -r --arg n "$1" '.plugins[]? | select(.name == $n) | .source.sha // empty' "$CATALOGUE" 2>/dev/null
+json_write() { # <file> <jq args...> : rewrite a JSON file in place through jq, keeping its inode and mode
+  local f="$1" tmp; shift
+  tmp="$(mktemp "$f.XXXXXX")" || return 1
+  jq "$@" "$f" > "$tmp" && cat "$tmp" > "$f"
+  local rc=$?; rm -f "$tmp"; return "$rc"
 }
 
 listed() { # <list> <name> : print name's enabled flag from "<name> <enabled>" lines; fail when absent
@@ -86,41 +66,62 @@ claude_list() { # "<name> <enabled>" for each pixeloven plugin installed at user
     jq -r --arg m "@$MARKET" '.[]? | select(.scope == "user" and (.id | endswith($m))) | "\(.id | rtrimstr($m)) \(.enabled)"'
 }
 
-claude_ensure() { # a marketplace added just now is current; an existing one is refreshed before the first install
-  local list p fresh=""
-  claude plugin marketplace list --json 2>/dev/null | jq -e --arg m "$MARKET" 'any(.[]?; .name == $m)' >/dev/null ||
-    { run claude plugin marketplace add "$SOURCE" --json; fresh=1; }
-  list="$(claude_list)"
-  for p in $(names); do
-    listed "$list" "$p" >/dev/null && continue
-    [ -n "$fresh" ] || { refresh claude plugin marketplace update "$MARKET" --json; fresh=1; }
-    run claude plugin install "$p@$MARKET" --scope user --json
-  done
+claude_head() { # the commit of Claude Code's marketplace clone when it is the pinned release; else nothing
+  local known="$CLAUDE_DIR/plugins/known_marketplaces.json" dir
+  dir="$(jq -r --arg m "$MARKET" --arg r "$SOURCE" --arg ref "$REF" \
+    '.[$m] | select(.source.repo == $r and .source.ref == $ref) | .installLocation // empty' "$known" 2>/dev/null)" || return 0
+  [ -n "$dir" ] && git -C "$dir" rev-parse HEAD 2>/dev/null
 }
 
-claude_update() {
-  local list p
+claude_sha() { # <name> : the commit Claude Code installed name from
+  jq -r --arg id "$1@$MARKET" '.plugins[$id][]? | select(.scope == "user") | .gitCommitSha // empty' \
+    "$CLAUDE_DIR/plugins/installed_plugins.json" 2>/dev/null
+}
+
+claude_declare() { # declare the pinned source in settings; `marketplace add` refuses one that differs from it
+  local f="$CLAUDE_DIR/settings.json" want
+  want="$(jq -cn --arg r "$SOURCE" --arg ref "$REF" '{source: "github", repo: $r, ref: $ref}')"
+  [ -e "$f" ] || { mkdir -p "$CLAUDE_DIR" && echo '{}' > "$f"; }
+  jq -e --arg m "$MARKET" --argjson w "$want" '.extraKnownMarketplaces[$m].source == $w' "$f" >/dev/null 2>&1 && return 0
+  jq -e . "$f" >/dev/null 2>&1 || { say "$f is not valid JSON; leaving it and Claude Code's plugins alone"; FAILED=1; return 1; }
+  say "declaring the $MARKET marketplace as $SOURCE at $REF in $f"
+  # shellcheck disable=SC2016  # jq variables
+  json_write "$f" --arg m "$MARKET" --argjson w "$want" '.extraKnownMarketplaces[$m].source = $w' ||
+    { say "failed: could not write $f"; FAILED=1; return 1; }
+}
+
+claude_sync() {
+  local list p head
   list="$(claude_list)"
-  [ -n "$list" ] || return 0
-  run claude plugin marketplace update "$MARKET" --json
+  [ "$MODE" = update ] && [ -z "$list" ] && return 0
+  claude_declare || return 0
+  if [ -z "$(claude_head)" ]; then
+    run claude plugin marketplace add "$SOURCE#$REF" --json
+  elif [ "$MODE" = update ]; then
+    run claude plugin marketplace update "$MARKET" --json
+  fi
+  head="$(claude_head)" # empty when the marketplace couldn't move (offline): install only, update nothing
   for p in $(names); do
-    [ "$(listed "$list" "$p")" = true ] && run claude plugin update "$p@$MARKET" --scope user --json
+    case "$(listed "$list" "$p")" in
+      true) [ -n "$head" ] && { [ "$MODE" = update ] || [ "$(claude_sha "$p")" != "$head" ]; } &&
+        run claude plugin update "$p@$MARKET" --scope user --json ;;
+      false) ;;
+      *) [ "$MODE" = ensure ] && run claude plugin install "$p@$MARKET" --scope user --json ;;
+    esac
   done
 }
 
 claude_check() {
-  local list p want got
+  local list p head
   list="$(claude_list)"
+  head="$(claude_head)"
   for p in $(names); do
     case "$(listed "$list" "$p")" in
       true) ;;
       false) continue ;;
       *) emit plugin-missing claude "$p" "chezmoi apply"; continue ;;
     esac
-    want="$(pinned "$p")"
-    got="$(jq -r --arg id "$p@$MARKET" '.plugins[$id][]? | select(.scope == "user") | .gitCommitSha // empty' \
-      "$CLAUDE_DIR/plugins/installed_plugins.json" 2>/dev/null)"
-    [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind claude "$p" "$BEHIND"
+    [ -n "$head" ] && [ "$(claude_sha "$p")" = "$head" ] || emit plugin-behind claude "$p" "$BEHIND"
   done
 }
 
@@ -130,95 +131,128 @@ codex_list() { # "<name> <enabled> <version>" for each installed pixeloven plugi
     jq -r '.installed[]? | select(.installed != false) | "\(.name) \(.enabled) \(.version)"'
 }
 
-codex_ensure() { # as claude_ensure
-  local list p fresh=""
-  codex plugin marketplace list --json 2>/dev/null | jq -e --arg m "$MARKET" 'any(.marketplaces[]?; .name == $m)' >/dev/null ||
-    { run codex plugin marketplace add "$SOURCE" --json; fresh=1; }
-  list="$(codex_list)"
-  for p in $(names); do
-    listed "$list" "$p" >/dev/null && continue
-    [ -n "$fresh" ] || { refresh codex plugin marketplace upgrade "$MARKET" --json; fresh=1; }
-    run codex plugin add "$p@$MARKET" --json
-  done
+codex_get() { "$REPO/lib/toml-set.sh" --get "$CODEX_DIR/config.toml" "marketplaces.$MARKET" "$1" 2>/dev/null; }
+
+codex_declared() { [ "$(codex_get source)" = "\"$GIT_URL\"" ] && [ "$(codex_get ref)" = "\"$REF\"" ]; }
+
+codex_cloned() { # Codex's marketplace clone is the pinned release: its install record names the source
+  # and ref, and the clone's HEAD is the commit that record says the ref resolved to
+  local dir="$CODEX_DIR/.tmp/marketplaces/$MARKET" rev
+  rev="$(jq -r --arg s "$GIT_URL" --arg r "$REF" 'select(.source == $s and .ref_name == $r) | .revision // empty' \
+    "$dir/.codex-marketplace-install.json" 2>/dev/null)"
+  [ -n "$rev" ] && [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$rev" ]
 }
 
-codex_update() { # `codex plugin add` re-enables a disabled plugin, so only enabled ones are re-added
+codex_declare() { # rewrite the existing [marketplaces.pixeloven] table in place, keeping the rest of the file
+  local f="$CODEX_DIR/config.toml" t="marketplaces.$MARKET"
+  say "declaring the $MARKET marketplace as $GIT_URL at $REF in $f"
+  if ! { "$REPO/lib/toml-set.sh" "$f" "$t" source_type '"git"' && "$REPO/lib/toml-set.sh" "$f" "$t" source "\"$GIT_URL\"" &&
+    "$REPO/lib/toml-set.sh" "$f" "$t" ref "\"$REF\""; }; then
+    say "failed: could not write $f"; FAILED=1; return 1
+  fi
+}
+
+codex_sync() { # `codex plugin add` re-enables a disabled plugin, so only missing or enabled ones are added
   local list p
   list="$(codex_list)"
-  [ -n "$list" ] || return 0
-  run codex plugin marketplace upgrade "$MARKET" --json
+  [ "$MODE" = update ] && [ -z "$list" ] && return 0
+  if [ -z "$(codex_get source)" ]; then
+    run codex plugin marketplace add "$SOURCE" --ref "$REF" --json
+  else
+    codex_declared || codex_declare || return 0
+    # The upgrade re-points installed plugins too: a moved marketplace needs no re-add.
+    { [ "$MODE" = update ] || ! codex_cloned; } && run codex plugin marketplace upgrade "$MARKET" --json
+  fi
   for p in $(names); do
-    [ "$(listed "$list" "$p")" = true ] && run codex plugin add "$p@$MARKET" --json
+    case "$(listed "$list" "$p")" in
+      true) [ "$MODE" = update ] && run codex plugin add "$p@$MARKET" --json ;;
+      false) ;;
+      *) [ "$MODE" = ensure ] && run codex plugin add "$p@$MARKET" --json ;;
+    esac
   done
 }
 
 codex_check() {
-  local list p want got version
+  local list p pinned=""
   list="$(codex_list)"
+  codex_declared && codex_cloned && pinned=1
   for p in $(names); do
     case "$(listed "$list" "$p")" in
       true) ;;
       false) continue ;;
       *) emit plugin-missing codex "$p" "chezmoi apply"; continue ;;
     esac
-    want="$(pinned "$p")"
-    version="$(awk -v n="$p" '$1 == n { print $3 }' <<<"$list")"
-    got="$(git -C "$CODEX_DIR/plugins/cache/$MARKET/$p/$version" rev-parse HEAD 2>/dev/null)"
-    [ -n "$want" ] && [ "$got" != "$want" ] && emit plugin-behind codex "$p" "$BEHIND"
+    [ -n "$pinned" ] || emit plugin-behind codex "$p" "$BEHIND"
   done
 }
 
 # --- pi --------------------------------------------------------------------------------------
-# pi has no plugin marketplace: each plugin is a git package pinned to the catalogue's SHA.
-pi_ref() { echo "git:github.com/pixeloven/$1"; }
-
-pi_entry() { # <name> : the settings entry for name (a source string, from an object entry too); fail when absent
+# pi has no plugin marketplace: crew is one git package at the tag, and its manifest declares every
+# pack's skills, so the unfiltered package carries them all. Machines from before the fold have one
+# git:github.com/pixeloven/<name>@<sha> package per plugin; ensure replaces those with crew's.
+pi_entry() { # <package> : the settings entry for it (a source string, from an object entry too); fail when absent
   jq -r '(.packages // [])[] | if type == "object" then .source else . end' "$PI_DIR/settings.json" 2>/dev/null |
-    awk -v r="$(pi_ref "$1")" 'index($0, r) == 1 && (length($0) == length(r) || substr($0, length(r) + 1, 1) == "@") { print; found = 1; exit }
+    awk -v r="$1" 'index($0, r) == 1 && (length($0) == length(r) || substr($0, length(r) + 1, 1) == "@") { print; found = 1; exit }
       END { exit !found }'
 }
 
-pi_ensure() {
-  local p sha
+pi_old() { # the plugins, other than crew, that still have their own pre-fold package entry
+  local p
   for p in $(names); do
-    pi_entry "$p" >/dev/null && continue
-    catalogue || return 0
-    sha="$(pinned "$p")"
-    [ -n "$sha" ] || { say "pi: $p is not in the $MARKET catalogue; skipping"; continue; }
-    run pi install "$(pi_ref "$p")@$sha"
+    [ "$p" != "$CREW" ] && pi_entry "git:github.com/pixeloven/$p" >/dev/null && echo "$p"
   done
 }
 
-pi_update() { # re-pinning replaces the entry in place and keeps any `pi config` filters on it
-  local p entry sha
-  catalogue || return 0
-  for p in $(names); do
-    entry="$(pi_entry "$p")" || continue
-    sha="$(pinned "$p")"
-    [ -n "$sha" ] && [ "$entry" != "$(pi_ref "$p")@$sha" ] && run pi install "$(pi_ref "$p")@$sha"
-  done
+# shellcheck disable=SC2016  # jq variables
+PI_MATCH='(if type == "object" then .source else . end | split("@")[0]) == $pkg'
+
+pi_retire() { # <name> : drop name's pre-fold package; a pack you turned off there stays off in crew's
+  local s="$PI_DIR/settings.json" pkg="git:github.com/pixeloven/$1" filtered
+  filtered="$(jq -r --arg pkg "$pkg" "[(.packages // [])[] | select($PI_MATCH) | select(type == \"object\")
+    | if .skills == [] then \"off\" elif (del(.source) | length) > 0 then \"filtered\" else empty end][0] // empty" "$s")"
+  case "$filtered" in
+    off) say "pi: $1 was turned off; excluding packs/$1 from crew's package"
+      json_write "$s" --arg pkg "$PI_PKG" --arg x "!packs/$1/**" ".packages |= map(if $PI_MATCH
+        then (if type == \"object\" then . else {source: .} end)
+          | if .skills == [] or ((.skills // []) | index(\$x)) then . else .skills = ((.skills // []) + [\$x]) end
+        else . end)" || { say "failed: could not write $s"; FAILED=1; return 1; } ;;
+    filtered) say "pi: $1 had resource filters; set them again on crew's package with pi config (paths under packs/$1/)" ;;
+  esac
+  run pi remove "$(pi_entry "$pkg")"
+}
+
+pi_sync() {
+  local entry p
+  entry="$(pi_entry "$PI_PKG")"
+  [ "$MODE" = update ] && [ -z "$entry" ] && [ -z "$(pi_old)" ] && return 0
+  # Re-installing replaces the entry in place and keeps any `pi config` filters on it.
+  [ "$entry" = "$PI_PKG@$REF" ] || run pi install "$PI_PKG@$REF" || return 0
+  for p in $(pi_old); do pi_retire "$p"; done
 }
 
 pi_check() {
-  local p entry want
-  for p in $(names); do
-    entry="$(pi_entry "$p")" || { emit plugin-missing pi "$p" "chezmoi apply"; continue; }
-    want="$(pinned "$p")"
-    [ -n "$want" ] && [ "$entry" != "$(pi_ref "$p")@$want" ] && emit plugin-behind pi "$p" "$BEHIND"
-  done
+  local entry p
+  if entry="$(pi_entry "$PI_PKG")"; then
+    [ "$entry" = "$PI_PKG@$REF" ] || emit plugin-behind pi "$CREW" "$BEHIND"
+  else
+    emit plugin-missing pi "$CREW" "chezmoi apply"
+  fi
+  for p in $(pi_old); do emit plugin-behind pi "$p" "$BEHIND"; done
 }
 
 case "$MODE" in
   ensure | update | check) ;;
   *) echo "usage: agent-plugins.sh ensure|update|check" >&2; exit 2 ;;
 esac
-[ "$MODE" = check ] && catalogue
+if [ -z "$REF" ]; then
+  [ "$MODE" = check ] && exit 0
+  say "no @<release tag> line in $LIST"; exit 1
+fi
 for tool in claude codex pi; do
   have "$tool" || { [ "$MODE" = check ] || say "$tool not found; skipping"; continue; }
   case "$tool $MODE" in
-    "claude ensure") claude_ensure ;; "claude update") claude_update ;; "claude check") claude_check ;;
-    "codex ensure") codex_ensure ;;   "codex update") codex_update ;;   "codex check") codex_check ;;
-    "pi ensure") pi_ensure ;;         "pi update") pi_update ;;         "pi check") pi_check ;;
+    "claude check") claude_check ;; "codex check") codex_check ;; "pi check") pi_check ;;
+    "claude "*) claude_sync ;;      "codex "*) codex_sync ;;      "pi "*) pi_sync ;;
   esac
 done
 [ "$MODE" = check ] && exit 0
