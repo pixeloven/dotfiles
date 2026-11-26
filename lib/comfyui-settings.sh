@@ -83,11 +83,12 @@ set_folders() { # --root: Comfy's folder keys under $root, before its first run
   for d in installs models input output cache; do
     mkdir -p "$root/$d" || { warn "could not create $root/$d; folders not set"; return 1; }
   done
-  # shellcheck disable=SC2016 # a jq filter: $r and $shared are jq's
+  # shellcheck disable=SC2016 # a jq filter: $r, $shared and $old are jq's
   merge --arg r "$root" --arg shared "$HOME/ComfyUI-Shared/models" '
-      .installDir = ($r + "/installs") | .inputDir = ($r + "/input") | .outputDir = ($r + "/output")
+      (.installDir | if type == "string" and endswith("/installs") then [.[:-9] + "/models"] else [] end) as $old
+      | .installDir = ($r + "/installs") | .inputDir = ($r + "/input") | .outputDir = ($r + "/output")
       | .cacheDir = ($r + "/cache")
-      | .modelsDirs = [$r + "/models"] + ((.modelsDirs // []) - [$r + "/models", $shared])
+      | .modelsDirs = [$r + "/models"] + ((.modelsDirs // []) - [$r + "/models", $shared] - $old)
     '
   case $? in
     0) echo "comfyui-settings: Comfy Desktop's folders are now under $root (installs, models, input, output, cache) for its first run" ;;

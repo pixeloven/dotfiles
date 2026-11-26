@@ -169,3 +169,15 @@ dirs() { jq -c .modelsDirs "$DOTFILES_COMFY_SETTINGS"; }
   run "$CMD" --root relative/dir
   [ "$status" -eq 1 ]
 }
+
+@test "--root changed before the first run drops the models folder an earlier root wrote" {
+  installed
+  rm -f "$DOTFILES_COMFY_SETTINGS"
+  run "$CMD" --quiet --root "$R" "$M"
+  [ "$status" -eq 0 ]
+  [ "$(dirs)" = "[\"$R/models\",\"$M\"]" ]
+  N="$HOME/data/ComfyUI"
+  run "$CMD" --quiet --root "$N" "$M"
+  [ "$status" -eq 0 ]
+  [ "$(folders)" = "$(jq -nc --arg n "$N" --arg m "$M" '[$n + "/installs", [$n + "/models", $m], $n + "/input", $n + "/output", $n + "/cache"]')" ]
+}
