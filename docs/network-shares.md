@@ -53,7 +53,7 @@ When some share is cached, `network-shares install` also:
 4. **Labels the cache directory on SELinux hosts.** The policy already labels the default `/var/cache/fscache`, so that only gets `restorecon`. Another directory first gets a local `semanage fcontext` rule for `cachefiles_var_t`.
 5. **Enables cachefilesd** (`systemctl enable --now`), and restarts it when its config changed.
 
-The limits are percentages of **free** space (and free files) on the cache directory's filesystem, not a size. With the defaults (30/25/20), the cache grows while more than 30 % of that filesystem is free, gives space back once free space falls below 25 %, and stops growing below 20 %. On a disk shared with your data that keeps the cache out of the way; for a hard size cap, put `fscache.dir` on its own filesystem. [settings.md](settings.md) has the rules.
+The limits are percentages of **free** space (and free files) on the cache directory's filesystem, not a size. With the defaults (30/25/20), the cache grows freely while more than 25 % of that filesystem is free. Below 25 % it culls its oldest files until 30 % is free again, and below 20 % it caches nothing new. On a disk shared with your data that keeps the cache out of the way, but on a fuller disk it leaves the cache little room: at 66 % full it gets about 4 to 9 % of the disk, and at 75 % full nothing. Lower the limits in that machine's settings file to give it more; for a hard size cap, put `fscache.dir` on its own filesystem. [settings.md](settings.md#keys) has the rules and a worked example.
 
 `network-shares status` shows whether cachefilesd is running and whether a cache is bound (`/proc/fs/fscache/caches`). `network-shares check` shows `fsc` on each cached share that is mounted with it.
 

@@ -254,7 +254,7 @@ SETTINGS="$BATS_TEST_DIRNAME/fixtures/settings"
   [ "$status" -eq 0 ]
   [[ "$output" == *.local/bin/dotfiles-settings* ]] || false
   [[ "$output" != *network-shares* ]] || false
-  for s in run_after_46-network-shares run_after_47-comfyui-models; do
+  for s in run_after_46-network-shares run_after_47-comfyui; do
     out="$(HOME="$TMP/linux" XDG_CONFIG_HOME="$TMP/linux/.config" chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \
       --override-data '{"chezmoi":{"os":"linux"}}' < "$REPO/home/.chezmoiscripts/$s.sh.tmpl")"
     [ -z "$out" ]
@@ -299,9 +299,9 @@ SETTINGS="$BATS_TEST_DIRNAME/fixtures/settings"
   [ -z "$(find "$TMP/linux" -type f)" ]
 }
 
-apply_step() { # <script> <os> <settings file> : render one apply step as chezmoi would
+apply_step() { # <script> <os> <settings file> [extra data] : render one apply step as chezmoi would
   HOME="$TMP/run" chezmoi --source "$REPO" --config "$TMP/none.toml" execute-template \
-    --override-data "{\"chezmoi\":{\"os\":\"$2\"},\"dotfilesSettingsFile\":\"$3\"}" < "$REPO/home/.chezmoiscripts/$1.sh.tmpl"
+    --override-data "{\"chezmoi\":{\"os\":\"$2\"},\"dotfilesSettingsFile\":\"$3\"${4:+,$4}}" < "$REPO/home/.chezmoiscripts/$1.sh.tmpl"
 }
 
 @test "the network-shares apply step only says what to run, never fails apply, and is one line on macOS" {
@@ -326,19 +326,38 @@ apply_step() { # <script> <os> <settings file> : render one apply step as chezmo
 }
 
 @test "the Comfy models apply step adds each comfyui.modelsDirs folder, ~/ expanded, to Comfy's settings and never fails apply" {
-  [ -z "$(apply_step run_after_47-comfyui-models linux "$SETTINGS/minimal.toml")" ]
+  [ -z "$(apply_step run_after_47-comfyui linux "$SETTINGS/minimal.toml")" ]
   odd="$TMP/run/nas models/it's"
   mkdir -p "$odd" "$TMP/run/models-extra" "$TMP/stubs" "$TMP/comfy"
   printf 'schemaVersion = 1\n[comfyui]\nmodelsDirs = ["%s", "~/models-extra"]\n' "$odd" > "$TMP/comfy.toml"
   printf '#!/bin/sh\nexit 1\n' > "$TMP/stubs/pgrep"
   chmod +x "$TMP/stubs/pgrep"
   echo '{"modelsDirs":[]}' > "$TMP/comfy/settings.json"
-  apply_step run_after_47-comfyui-models linux "$TMP/comfy.toml" > "$TMP/step.sh"
+  apply_step run_after_47-comfyui linux "$TMP/comfy.toml" > "$TMP/step.sh"
   HOME="$TMP/run" DOTFILES_COMFY_SETTINGS="$TMP/comfy/settings.json" PATH="$TMP/stubs:$PATH" run sh "$TMP/step.sh"
   [ "$status" -eq 0 ]
   # Comfy's settings.json modelsDirs: its local default first, then each folder in order
   [ "$(jq -c .modelsDirs "$TMP/comfy/settings.json")" = "$(jq -nc --arg a "$odd" --arg h "$TMP/run" '[$h + "/ComfyUI-Shared/models", $a, $h + "/models-extra"]')" ]
-  run sh -c "$(apply_step run_after_47-comfyui-models darwin "$SETTINGS/ok.toml")"
+  run sh -c "$(apply_step run_after_47-comfyui darwin "$SETTINGS/ok.toml")"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Linux only for now"* ]] || false
+}
+
+@test "with comfyui among the workstation apps, the Comfy apply step nests its folders under comfyui.root, ~/ComfyUI by default" {
+  apps='"workstationApps":["blender","comfyui"]'
+  [ -z "$(apply_step run_after_47-comfyui linux "$SETTINGS/minimal.toml" '"workstationApps":["blender"]')" ]
+  [ -z "$(apply_step run_after_47-comfyui darwin "$SETTINGS/minimal.toml" "$apps")" ]
+  mkdir -p "$TMP/stubs" "$TMP/comfy"
+  printf '#!/bin/sh\nexit 1\n' > "$TMP/stubs/pgrep"
+  printf '#!/bin/sh\nexit 0\n' > "$TMP/stubs/comfyui-desktop-2"
+  chmod +x "$TMP/stubs/pgrep" "$TMP/stubs/comfyui-desktop-2"
+  echo '{"telemetryEnabled":true}' > "$TMP/comfy/settings.json"
+  apply_step run_after_47-comfyui linux "$SETTINGS/minimal.toml" "$apps" > "$TMP/step.sh"
+  grep -q -- "--root '$TMP/run/ComfyUI'" "$TMP/step.sh"
+  HOME="$TMP/run" DOTFILES_COMFY_SETTINGS="$TMP/comfy/settings.json" DOTFILES_COMFY_APP="$TMP/stubs/comfyui-desktop-2" \
+    DOTFILES_COMFY_INSTALLATIONS="$TMP/comfy/none.json" PATH="$TMP/stubs:$PATH" run sh "$TMP/step.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.telemetryEnabled, .installDir, .modelsDirs, .cacheDir]' "$TMP/comfy/settings.json")" = "$(jq -nc --arg r "$TMP/run/ComfyUI" '[true, $r + "/installs", [$r + "/models"], $r + "/cache"]')" ]
+  printf 'schemaVersion = 1\n[comfyui]\nroot = "~/AI/Comfy"\n' > "$TMP/root.toml"
+  grep -q -- "--root '$TMP/run/AI/Comfy'" <(apply_step run_after_47-comfyui linux "$TMP/root.toml" "$apps")
 }

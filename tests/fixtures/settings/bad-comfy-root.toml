@@ -1,0 +1,4 @@
+# expect: comfyui.root must be an absolute or ~/ folder path, not ComfyUI
+schemaVersion = 1
+[comfyui]
+root = "ComfyUI"

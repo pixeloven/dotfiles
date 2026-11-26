@@ -117,8 +117,8 @@ apt_recipe() { # <package> : the vendor's documented Ubuntu install, plus libsec
     comfyui-desktop-2) # Comfy's Ubuntu package, pinned with the sha512 from Comfy's latest-linux.yml;
       # its postinst adds Comfy's apt source, so apt updates it from then on. No models are set up.
       tmp="$(mktemp -d)"
-      fetch_verified https://download.todesktop.com/241130tqe9q3y/comfyui-desktop-2-1.1.9-build-2611063zxyb71c9-amd64.deb 512 \
-        60fdc25374000d0c26b94257d8907fb5a1aa318df8bbad0c867b6ae0831859eef611d594446d7fcb8db4adac57850c72d4a5bf65159a0de2431e3c35092bb68c \
+      fetch_verified https://download.todesktop.com/241130tqe9q3y/comfyui-desktop-2-1.2.2-build-261125wtbx8bz4v-amd64.deb 512 \
+        89813994ff67c97323924205d5779fab424937a9a9b694cfbdd6cc44b4bb2506904ff2e70b3de0f791aea25d93fc2f7673d5e36a253d17b71f066fc9b8715ac7 \
         "$tmp/comfyui-desktop-2_amd64.deb" &&
         as_root apt-get install -y "$tmp/comfyui-desktop-2_amd64.deb"
       local rc=$?; rm -rf "$tmp"; return "$rc" ;;

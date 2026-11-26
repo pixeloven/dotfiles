@@ -1,6 +1,6 @@
 # Machine settings (schema v1)
 
-The settings file is the one way to turn on this repo's per-machine features: network shares, FS-Cache and Comfy Desktop model folders. It is optional. **With no file, every feature is off**, and the repo works as it always has.
+The settings file is the one way to turn on this repo's per-machine features: network shares, FS-Cache and extra Comfy Desktop model folders, and to move Comfy Desktop's own folders. It is optional. **With no file, every feature is off**, and the repo works as it always has. The one default is Comfy Desktop's folders: with `comfyui` among the [workstation apps](workstation-apps.md#comfy-desktop-folders), they go under `~/ComfyUI` before Comfy's first run, file or no file.
 
 - **Where:** `${XDG_CONFIG_HOME:-~/.config}/dotfiles/settings.toml`, from the environment chezmoi runs in (an unset or relative `XDG_CONFIG_HOME` means `~/.config`). If your shells set `XDG_CONFIG_HOME` differently in different places, such as a host and a container, keep it at `~/.config` or the same in both. `dotfiles-settings path` prints it, and `dotfiles-settings check` names it.
 - **Who writes it:** you, by hand, or any tool you use to manage your machines. dotfiles only reads it; it never writes or manages this file.
@@ -37,7 +37,8 @@ fcull = 25
 fstop = 20
 
 [comfyui]
-modelsDirs = ["/var/mnt/nas/models"]   # folders Comfy Desktop also reads models from. Linux only
+root       = "~/ComfyUI"               # where Comfy Desktop's folders go before its first run. Linux only
+modelsDirs = ["/var/mnt/nas/models"]   # more folders Comfy Desktop reads models from. Linux only
 ```
 
 ## Keys
@@ -56,9 +57,12 @@ modelsDirs = ["/var/mnt/nas/models"]   # folders Comfy Desktop also reads models
 | `fscache.brun`, `bcull`, `bstop` | integer | `30`, `25`, `20` | Whole percentages from 0 to 99 of free space on the cache directory's filesystem, with `bstop < bcull < brun` | v1.0.0 |
 | `fscache.frun`, `fcull`, `fstop` | integer | `30`, `25`, `20` | The same, for free files (inodes), with `fstop < fcull < frun` | v1.0.0 |
 | `comfyui` | table | none | | v1.0.0 |
-| `comfyui.modelsDirs` | list of strings | none | Absolute or `~/` folder paths, added to Comfy Desktop's Shared Models ([workstation apps](workstation-apps.md#comfy-desktop-model-folders)). Linux only for now | v1.0.0 |
+| `comfyui.root` | string | `"~/ComfyUI"` | An absolute or `~/` folder path, not `/` or the home folder itself. With `comfyui` among the workstation apps, Comfy Desktop's install, models, input, output and cache folders are set under it before Comfy's first run ([workstation apps](workstation-apps.md#comfy-desktop-folders)). Changing it after that first run changes nothing. Linux only for now | v1.1.0 |
+| `comfyui.modelsDirs` | list of strings | none | Absolute or `~/` folder paths, added to Comfy Desktop's Shared Models, after its first folder ([workstation apps](workstation-apps.md#comfy-desktop-model-folders)). Linux only for now | v1.0.0 |
 
-The cache limits are percentages of **free** space on the filesystem that holds the cache, not a size. With the defaults, the cache grows while more than 30 % of that filesystem is free, gives space back to other data once free space falls below 25 %, and stops growing below 20 %. There is no fixed size cap unless the cache directory is on its own filesystem. On a large disk shared with your data, the defaults keep the cache out of the way; on a disk given only to the cache, lower limits (such as cachefilesd's own 10/7/3) use more of it.
+The cache limits are percentages of **free** space on the filesystem that holds the cache, not a size, and they are set per machine. cachefilesd lets the cache grow freely while free space is above `bcull`. Below `bcull` it starts culling (deleting the least recently used cached files) and keeps culling until free space is back above `brun`. Below `bstop` it caches nothing new. There is no fixed size cap unless the cache directory is on its own filesystem.
+
+So the room the cache gets is the gap between the disk's free space and `bcull`, and that gap shrinks as your own data grows. With the defaults (30/25/20) on a disk that is 66 % full (34 % free), the cache can take about 9 % of the disk before culling, and settles between about 4 % and 9 % (on a 2 TB disk, roughly 80 to 180 GB). Once the disk is 75 % full, the cache gets nothing. The defaults suit a disk shared with your data, where the cache must never crowd it out. If the cache should get more room on a given machine, lower the three numbers in that machine's settings file. For example, 15/10/5 lets it grow until 10 % of the disk is free (about 24 % of the disk at 66 % full) and still never takes the last 5 %. On a disk given only to the cache, cachefilesd's own 10/7/3 uses most of it.
 
 ## Versions
 

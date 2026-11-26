@@ -23,4 +23,5 @@ fcull = 10
 fstop = 5
 
 [comfyui]
+root = "~/AI/ComfyUI"
 modelsDirs = ["/var/mnt/nas/models", "~/models-extra"]

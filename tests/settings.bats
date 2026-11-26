@@ -34,6 +34,8 @@ settings() { # [file] : the partial's JSON for <file>, or for the default path
   run settings
   [ "$status" -eq 0 ]
   [ "$(jq -c '[.present, .nfsShares, .cache, .comfyui.modelsDirs]' <<<"$output")" = '[false,[],false,[]]' ]
+  # Comfy Desktop's folders still default to ~/ComfyUI; they apply only with comfyui among the workstation apps
+  [ "$(jq -r .comfyui.root <<<"$output")" = "$HOME/ComfyUI" ]
   [ "$(jq -r .file <<<"$output")" = "$HOME/.config/dotfiles/settings.toml" ]
 }
 
@@ -62,6 +64,7 @@ settings() { # [file] : the partial's JSON for <file>, or for the default path
   [ "$(jq -c '.nfsShares[1]' <<<"$output")" = '{"cache":false,"export":"/export/media","mode":"rw","mountPoint":"/var/mnt/nas/media","server":"192.0.2.10"}' ]
   [ "$(jq -c '.fscache' <<<"$output")" = '{"bcull":25,"brun":30,"bstop":20,"dir":"/var/cache/fscache","fcull":10,"frun":15,"fstop":5}' ]
   [ "$(jq -c '.comfyui.modelsDirs' <<<"$output")" = "[\"/var/mnt/nas/models\",\"$HOME/models-extra\"]" ]
+  [ "$(jq -r .comfyui.root <<<"$output")" = "$HOME/AI/ComfyUI" ]
   [ "$(jq .cache <<<"$output")" = true ]
 }
 
@@ -89,7 +92,7 @@ settings() { # [file] : the partial's JSON for <file>, or for the default path
   run settings "$HOME/doc.toml"
   [ "$status" -eq 0 ]
   doc_keys="$(grep -oE '^[a-zA-Z]+ *=' "$HOME/doc.toml" | tr -d ' =' | LC_ALL=C sort -u | paste -sd ' ' -)"
-  [ "$doc_keys" = "bcull brun bstop cache dir export fcull frun fstop mode modelsDirs mountPoint schemaVersion server" ]
+  [ "$doc_keys" = "bcull brun bstop cache dir export fcull frun fstop mode modelsDirs mountPoint root schemaVersion server" ]
 }
 
 @test "dotfiles-settings check prints one line: what is on, nothing set, or the one problem" {
