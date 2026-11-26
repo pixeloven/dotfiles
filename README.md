@@ -40,7 +40,7 @@ Every option below is off on a fresh install. Each says what it adds and how to 
 | `~/.config/zsh/`, `~/.config/starship.toml` | |
 | Linux with Ptyxis: `~/.local/share/org.gnome.Ptyxis/palettes/catppuccin-mocha.palette` | Ptyxis GSettings: only the default profile's palette in `home/.chezmoiscripts/run_onchange_after_50-ptyxis.sh.tmpl` |
 | | Claude Code, Codex and pi plugin registries (`~/.claude/plugins/`, `~/.codex/config.toml`, `~/.pi/agent/settings.json`, and the `pixeloven` entry under `extraKnownMarketplaces` in `~/.claude/settings.json`): only the plugins in `lib/agent-plugins.txt`, kept at its pinned crew release; a disabled one is never re-installed |
-| Linux with `nfsShares` in the settings file (opt-in): `~/.config/network-shares/shares.conf` and `~/.local/bin/network-shares` | `/etc/systemd/system`: only the share units `network-shares install` writes, and with a cached share `/etc/cachefilesd.conf` (with sudo, never from an apply); Comfy Desktop's `settings.json`: only the `comfyui.modelsDirs` folders in `modelsDirs` |
+| Linux with `nfsShares` in the settings file (opt-in): `~/.config/network-shares/shares.conf` and `~/.local/bin/network-shares` | `/etc/systemd/system`: only the share units `network-shares install` writes, and with a cached share `/etc/cachefilesd.conf` (with sudo, never from an apply); Comfy Desktop's `settings.json`: only the `comfyui.modelsDirs` folders in `modelsDirs`, and, with `comfyui` selected and before Comfy's first run, its five folder keys |
 | | The Impeccable design skill (`~/.claude/skills/impeccable/`, `~/.agents/skills/impeccable/`, `~/.pi/agent/skills/impeccable/`): kept at the version in `lib/impeccable.txt` by its own installer |
 
 Files that can hold secrets (`lib/denylist.txt`) are blocked by a pre-commit hook and by CI.
@@ -90,7 +90,7 @@ Then follow [RUNBOOK.md](RUNBOOK.md) section 9: oh-my-zsh, fnm's Node and the gl
 A few features are per machine and off unless you turn them on in one settings file, `~/.config/dotfiles/settings.toml` (schema v1, [docs/settings.md](docs/settings.md)). With no file, nothing changes. `chezmoi apply` validates it first and fails with one message, changing nothing, if it is wrong; `dotfiles-settings check` runs the same check.
 
 - **Network shares** (Linux): NFS shares mounted on first use, so a down server never holds up boot, optionally cached on local disk with FS-Cache. `network-shares install` (sudo, on the host) sets them up; network-shares never runs sudo from an apply. See [network shares](docs/network-shares.md) and RUNBOOK.md section 13.
-- **Comfy Desktop model folders** (Linux): folders added to Comfy's Shared Models. See [workstation apps](docs/workstation-apps.md#comfy-desktop-model-folders).
+- **Comfy Desktop folders** (Linux): where its folders go before its first run, `~/ComfyUI` by default, and extra folders added to its Shared Models. See [workstation apps](docs/workstation-apps.md#comfy-desktop-folders).
 
 ## Day to day
 

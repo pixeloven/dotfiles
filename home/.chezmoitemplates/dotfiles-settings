@@ -16,6 +16,7 @@
 {{- $fscache := dict "dir" "/var/cache/fscache" "brun" 30 "bcull" 25 "bstop" 20 "frun" 30 "fcull" 25 "fstop" 20 -}}
 {{- $shares := list -}}
 {{- $dirs := list -}}
+{{- $comfyRoot := joinPath $home "ComfyUI" -}}
 {{- $present := false -}}
 {{- $cache := false -}}
 {{- $st := stat $path -}}
@@ -34,7 +35,7 @@
 
 {{-   if hasKey $d "nfsShares" -}}
 {{-     if not (kindIs "slice" $d.nfsShares) }}{{ fail (printf "%snfsShares must be a list of [[nfsShares]] tables" $e) }}{{ end -}}
-{{-     $shareKeys := list "server" "export" "mountPoint" "mode" "cache" -}}
+{{-     $shareKeys := list "server" "export" "mountPoint" "mode" "cache" "comfyuiModels" -}}
 {{-     range $i, $s := $d.nfsShares -}}
 {{-       $k := printf "%snfsShares[%d]" $e $i -}}
 {{-       if not (kindIs "map" $s) }}{{ fail (printf "%s must be a table" $k) }}{{ end -}}
@@ -66,6 +67,11 @@
 {{-       end -}}
 {{-       if $c }}{{ $cache = true }}{{ end -}}
 {{-       $shares = append $shares (dict "server" $s.server "export" $s.export "mountPoint" $mp "mode" $mode "cache" $c) -}}
+{{- /* comfyuiModels: the share is a Comfy Desktop models folder, before comfyui.modelsDirs */ -}}
+{{-       if hasKey $s "comfyuiModels" -}}
+{{-         if not (kindIs "bool" $s.comfyuiModels) }}{{ fail (printf "%s.comfyuiModels must be true or false, not %v" $k $s.comfyuiModels) }}{{ end -}}
+{{-         if and $s.comfyuiModels (not (has $mp $dirs)) }}{{ $dirs = append $dirs $mp }}{{ end -}}
+{{-       end -}}
 {{-     end -}}
 {{-     range $i, $a := $shares -}}
 {{-       range $j, $b := $shares -}}
@@ -110,7 +116,14 @@
 {{-   if hasKey $d "comfyui" -}}
 {{-     if not (kindIs "map" $d.comfyui) }}{{ fail (printf "%scomfyui must be a table" $e) }}{{ end -}}
 {{-     range $key, $_ := $d.comfyui -}}
-{{-       if ne $key "modelsDirs" }}{{ fail (printf "%scomfyui: unknown key %q (comfyui keys: modelsDirs)" $e $key) }}{{ end -}}
+{{-       if not (has $key (list "root" "modelsDirs")) }}{{ fail (printf "%scomfyui: unknown key %q (comfyui keys: root, modelsDirs)" $e $key) }}{{ end -}}
+{{-     end -}}
+{{-     if hasKey $d.comfyui "root" -}}
+{{-       $r := $d.comfyui.root -}}
+{{-       if not (and (kindIs "string" $r) (regexMatch "^(/|~/)[^[:cntrl:]]+$" (toString $r))) }}{{ fail (printf "%scomfyui.root must be an absolute or ~/ folder path, not %v" $e $r) }}{{ end -}}
+{{-       $comfyRoot = clean $r -}}
+{{-       if hasPrefix "~/" $r }}{{ $comfyRoot = joinPath $home (trimPrefix "~/" $r) }}{{ end -}}
+{{-       if or (eq $comfyRoot "/") (eq $comfyRoot (clean $home)) }}{{ fail (printf "%scomfyui.root must be a folder of its own, not %v" $e $r) }}{{ end -}}
 {{-     end -}}
 {{-     if hasKey $d.comfyui "modelsDirs" -}}
 {{-       if not (kindIs "slice" $d.comfyui.modelsDirs) }}{{ fail (printf "%scomfyui.modelsDirs must be a list of folder paths" $e) }}{{ end -}}
@@ -123,4 +136,4 @@
 {{-     end -}}
 {{-   end -}}
 {{- end -}}
-{{- dict "file" $path "present" $present "schemaVersion" 1 "nfsShares" $shares "cache" $cache "fscache" $fscache "comfyui" (dict "modelsDirs" $dirs) | toJson -}}
+{{- dict "file" $path "present" $present "schemaVersion" 1 "nfsShares" $shares "cache" $cache "fscache" $fscache "comfyui" (dict "root" $comfyRoot "modelsDirs" $dirs) | toJson -}}

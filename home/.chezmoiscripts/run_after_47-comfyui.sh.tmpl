@@ -1,0 +1,19 @@
+{{- $s := includeTemplate "dotfiles-settings" . | fromJson -}}
+{{- $apps := get . "workstationApps" -}}
+{{- $linux := eq .chezmoi.os "linux" -}}
+{{- $folders := and $linux (kindIs "slice" $apps) (has "comfyui" $apps) -}}
+{{- if or $folders $s.comfyui.modelsDirs -}}
+#!/bin/sh
+# Comfy Desktop's folders (lib/comfyui-settings.sh, docs/workstation-apps.md). With comfyui among the
+# workstation apps: until Comfy's first run is done, its install, models, input, output and cache folders
+# nest under comfyui.root in the settings file (docs/settings.md; ~/ComfyUI by default). Then each
+# comfyui.modelsDirs folder is added once to its Shared Models, after the folders already listed, and
+# never reordered. Runs on every apply, because it waits for Comfy to be installed, for each folder
+# and for Comfy to be closed; it never fails the apply.
+set -u
+{{- if $linux }}
+"{{ .chezmoi.workingTree }}/lib/comfyui-settings.sh" --quiet{{ if $folders }} --root {{ printf "'%s'" (replace "'" "'\\''" $s.comfyui.root) }}{{ end }}{{ range $s.comfyui.modelsDirs }} {{ printf "'%s'" (replace "'" "'\\''" .) }}{{ end }} || true
+{{- else }}
+echo "comfyui-settings: comfyui.modelsDirs in the dotfiles settings is Linux only for now; skipped on this machine"
+{{- end }}
+{{ end -}}

@@ -38,7 +38,7 @@ On Bazzite the `ubuntu-dev` distrobox is the Linux workstation and the host is t
 | `claude-desktop` | Cask `claude` | apt `claude-desktop` from [Anthropic's repository](https://code.claude.com/docs/en/desktop-linux) (beta) |
 | `chatgpt-desktop` | Cask `chatgpt`, which includes Codex's desktop app | apt `chatgpt` from [OpenAI's Ubuntu package](https://learn.chatgpt.com/docs/linux/linux-app) (preview), x86_64 |
 | `blender` | Cask `blender` | [Blender's official tarball](https://www.blender.org/download/) 5.3.0, x86_64, checked against its published sha256 and unpacked into `~/.local/opt/blender` |
-| `comfyui` | Cask `comfy`, Apple silicon only | apt `comfyui-desktop-2` from [Comfy's official Ubuntu package](https://docs.comfy.org/installation/desktop/linux) 1.1.9, x86_64, checked against its published sha512 |
+| `comfyui` | Cask `comfy`, Apple silicon only | apt `comfyui-desktop-2` from [Comfy's official Ubuntu package](https://docs.comfy.org/installation/desktop/linux) 1.2.2, x86_64, checked against its published sha512 |
 
 How it splits:
 
@@ -48,7 +48,7 @@ How it splits:
 - **Link handling:** after each export, dotfiles refreshes the host's link-handler index (`update-desktop-database`), which the export's own refresh can miss. Blender and Comfy Desktop register no link scheme, so they get no hidden launcher or `xdg-mime` default. Each app with a scheme rewrites its link default to its own desktop name (`chatgpt.desktop`, `com.anthropic.Claude.desktop`) every time it starts. So dotfiles adds a hidden launcher with that name that opens the box's copy, and points `codex://` and `claude://` at it with `xdg-mime`. If another install already owns that name, such as a host ChatGPT, dotfiles leaves it alone and points the link at the exported launcher instead. Until that install is removed, its own launcher wins on the app's next start. ChatGPT also registers for `http` and `https`, so after an export dotfiles puts back the host's previous default browser for both.
 - **Apt packages:** `libsecret-1-0` is installed alongside, so sign-ins are stored in the host's keyring rather than in plaintext (Comfy's package depends on it already). Anthropic's signing key is checked against its published fingerprint before its repository is added. OpenAI's package adds OpenAI's own repository. Comfy's package is pinned to one release, checked against the sha512 that Comfy publishes for it, and adds Comfy's own apt source. If the sum doesn't match, nothing is installed and that app fails; the other apps still install. Apt updates all three: `sudo apt update && sudo apt upgrade` in the box.
 - **Blender:** the official x86_64 tarball, pinned to one release and checked against the sha256 that blender.org publishes. If the sum doesn't match, nothing is unpacked and Blender fails; the other apps still install. The download comes from `mirror.blender.org`, the link on blender.org's download page; `download.blender.org` refuses scripted downloads. It unpacks into `~/.local/opt/blender/<version>`, with a `current` link and a launcher that calls `current/blender`. In the box that launcher is exported to the host's menu. On a host without a box, it goes in `~/.local/share/applications`, unless another install already has a `blender.desktop` there. The tarball is in the shared home, so it survives a box rebuild. Blender doesn't update itself. A new release is a new pin in `lib/workstation-apps.tsv`, and older versions stay in `~/.local/opt/blender` until you delete them. Where apt is usable (in the box, or on an Ubuntu or Debian host), dotfiles also installs any of the X11 and OpenGL libraries the official build loads that are missing: `libxi6`, `libsm6`, `libxkbcommon0`, `libxrender1`, `libxxf86vm1`, `libxfixes3` and `libgl1`. On another distro's host, those are left to you. From a terminal in the box, run `~/.local/opt/blender/current/blender`. Nothing is added to `PATH`.
-- **Comfy Desktop:** the deb installs under `/opt/Comfy Desktop` in the box. dotfiles downloads no models. With `comfyui.modelsDirs` in the settings file it adds those folders to Comfy's Shared Models ([below](#comfy-desktop-model-folders)); without it, it sets no model paths.
+- **Comfy Desktop:** the deb installs under `/opt/Comfy Desktop` in the box. Before its first run, dotfiles sets its folders under `~/ComfyUI` ([below](#comfy-desktop-folders)). dotfiles downloads no models. With `comfyui.modelsDirs` in the settings file it also adds those folders to Comfy's Shared Models ([below](#comfy-desktop-model-folders)).
 - **Herdr desktop:** its window runs on the host. On Bazzite, dotfiles also writes `~/.config/herdr-core/config.toml` with `shell = ["distrobox", "enter", "ubuntu-dev"]`, so the terminals Herdr opens are zsh in the box. Herdr still sees the agents running there. Two limits:
   - Commands Herdr starts with an argument list run on the host: its agent menu, `hc run`, templates, and sub-agents started from inside the box.
   - Plain programs in a box terminal show as `distrobox`.
@@ -103,27 +103,70 @@ Settings, sign-ins and data (`~/.claude`, `~/.codex`, `~/.config/herdr`) stay. O
 ## Left to you
 
 - Signing in to every app, desktop-control permissions and credential stores. Never copy another machine's auth files.
-- Each desktop app's first-run choices: at Comfy Desktop's first launch, create a ComfyUI instance. Keep the NVIDIA build it preselects for the GPU, and skip a starter template if you don't want its models downloaded. Comfy's shared models and outputs default to `~/ComfyUI-Shared`; with `comfyui.modelsDirs` set, the next apply after that first run adds those folders ([below](#comfy-desktop-model-folders)), once Comfy is closed. Also Blender's preferences and add-ons: to render on the GPU, pick OptiX or CUDA under Preferences > System. Herdr Desktop's own settings in `~/.config/herdr-app` are separate from the herdr CLI's `~/.config/herdr`, and this repo doesn't write them.
+- Each desktop app's first-run choices: at Comfy Desktop's first launch, create a ComfyUI instance. Keep the NVIDIA build it preselects for the GPU, and skip a starter template if you don't want its models downloaded. Its folders are already under `~/ComfyUI` ([below](#comfy-desktop-folders)), and each `comfyui.modelsDirs` folder that exists is already in its Shared Models ([below](#comfy-desktop-model-folders)). Also Blender's preferences and add-ons: to render on the GPU, pick OptiX or CUDA under Preferences > System. Herdr Desktop's own settings in `~/.config/herdr-app` are separate from the herdr CLI's `~/.config/herdr`, and this repo doesn't write them.
 - GPU drivers. `lib/distrobox/ubuntu-dev.ini` sets `nvidia=true`, and every apply in the box adds the NVIDIA EGL and Vulkan manifests that distrobox doesn't map (`lib/distrobox/nvidia-manifests.sh`). Without them, native Wayland and Vulkan apps silently render on the CPU. Rebuilding an existing box to get the GPU is RUNBOOK §9c.
 
 The tests use stub `brew`, `apt-get`, `curl`, `sha256sum`, `sha512sum`, `distrobox-export`, `xdg-mime` and `npm` in a throwaway home. They show the routing and guard logic, not that a real app installs, launches or uses the GPU.
 
-## Comfy Desktop model folders
+## Comfy Desktop folders
 
-Opt-in, Linux only for now. List folders under `comfyui.modelsDirs` in the [settings file](settings.md), such as a model library on a [network share](network-shares.md):
+On Linux, with `comfyui` among the workstation apps, every apply until Comfy Desktop's first run is done sets its folders under one folder, `~/ComfyUI` unless `comfyui.root` in the [settings file](settings.md) says otherwise:
+
+| Folder | Comfy's setting | Holds | Comfy's own default |
+|---|---|---|---|
+| `~/ComfyUI/installs` | `installDir` | ComfyUI instances, one folder each | `~/ComfyUI-Installs` |
+| `~/ComfyUI/models` | `modelsDirs`, first entry | Shared Models, the primary, where downloads go | `~/ComfyUI-Shared/models` |
+| `~/ComfyUI/input` | `inputDir` | Input images | `~/ComfyUI-Shared/input` |
+| `~/ComfyUI/output` | `outputDir` | Generated output | `~/ComfyUI-Shared/output` |
+| `~/ComfyUI/cache` | `cacheDir` | Download cache | `~/.cache/comfyui-desktop-2/download-cache` |
 
 ```toml
 schemaVersion = 1
 
 [comfyui]
-modelsDirs = ["/var/mnt/nas/models", "~/models-extra"]
+root = "/data/ComfyUI"   # per machine; ~/ComfyUI when left out
 ```
 
-The Linux Comfy Desktop (`comfyui-desktop-2`) keeps its shared model folders in `~/.config/comfyui-desktop-2/settings.json`, as the `modelsDirs` list. Its Settings window calls them Shared Models, and the first one is the primary, where downloads go. At each launch it writes a `--extra-model-paths-config` file from that list and passes it to ComfyUI, so that file isn't the one to edit. Every `chezmoi apply` adds each listed folder once, after the folders already there (`lib/comfyui-models.sh`). With an empty list it lists the local folder `~/ComfyUI-Shared/models`, Comfy's default, first. The first folder stays the primary, so downloads stay local; to change that, use Settings > Shared Models > Make primary.
+Comfy keeps these in `~/.config/comfyui-desktop-2/settings.json`, which also holds its telemetry choice, device and workspace ids and its other preferences. dotfiles merges only the five keys above (`lib/comfyui-settings.sh`); it never replaces the file or writes any other key. It runs in the box, where Comfy is installed; where Comfy Desktop isn't installed, it does nothing. So a fresh `chezmoi apply` installs Comfy, then sets its folders, before you first open it.
 
-It never reorders a folder already listed, so a reorder you make in Comfy sticks. A removal doesn't: while a folder is in `comfyui.modelsDirs`, the next apply adds it back. To stop that, take it out of the settings file. It waits until each folder exists (checking can mount an automounted share, so it gives up after 5 s and a down server can't stall an apply), until Comfy's first run has written `settings.json`, and skips while Comfy is running, since Comfy rewrites the file: quit Comfy, then run `chezmoi apply`. In a distrobox it runs in the box, where Comfy is installed. On macOS apply prints one line and skips it, until the macOS settings path is verified.
+It creates each folder first, and that matters. At every launch Comfy puts `inputDir` and `outputDir` back to `~/ComfyUI-Shared` when their folder is missing, and lists `~/ComfyUI-Shared/models` first, as the primary, when none of its models folders exists. A first launch of Comfy Desktop 1.2.2 in a throwaway container kept all five keys when the folders existed, and reverted those three when they didn't. Setting `firstUseCompleted` changes nothing about the folders, so dotfiles leaves it alone, and Comfy's first-run setup still runs. That setup creates your first ComfyUI instance in `~/ComfyUI/installs`.
 
-`tests/comfyui-models.bats` covers the edit on a scratch `settings.json`.
+The first run is done once `settings.json` has `firstUseCompleted`, or Comfy has recorded an instance in `~/.local/share/comfyui-desktop-2/installations.json`. From then on the folders are Comfy's: change them in its Settings. A later `comfyui.root` change doesn't move them, and nothing is ever moved or deleted. A Comfy that already ran keeps its folders, such as `~/ComfyUI-Installs` and `~/ComfyUI-Shared`. To start one over under `~/ComfyUI`, quit Comfy and remove its first-run state yourself: the `settings.json` and `installations.json` above, which also resets its other preferences. Then run `chezmoi apply`. Comfy then no longer lists the old instance, but its files stay where they were until you delete them. Like the model folders, this skips while Comfy is running: quit it, then run `chezmoi apply`.
+
+On macOS this is not managed yet. The Homebrew cask is the same Comfy Desktop, and its code keeps the same `settings.json` in `~/Library/Application Support/Comfy Desktop`, but that hasn't been checked on a Mac. Choose the folders in its first-run setup.
+
+## Comfy Desktop model folders
+
+Opt-in, Linux only for now. A model library on a [network share](network-shares.md) is the usual case: mark that share with `comfyuiModels = true` in the [settings file](settings.md), so its mount point is written once, and list any other folders under `comfyui.modelsDirs`. The repo ships no share; each machine names its own. For example, a read-only, cached models share next to the local folder:
+
+```toml
+schemaVersion = 1
+
+[[nfsShares]]
+server        = "nas.example.lan"
+export        = "/export/models"
+mountPoint    = "/var/mnt/nas/models"
+mode          = "ro"
+cache         = true
+comfyuiModels = true
+
+[comfyui]
+modelsDirs = ["~/models-extra"]
+```
+
+The order is deliberate:
+
+1. `~/ComfyUI/models` ([above](#comfy-desktop-folders)), the primary. Downloads go there, so they stay on local disk, and so do models you keep on this machine only. A read-only share can't take downloads, so it is never put first.
+2. Each share with `comfyuiModels = true`, in the order of `nfsShares`. Comfy reads the shared library from there, through FS-Cache when the share has `cache = true`.
+3. Each `comfyui.modelsDirs` folder, in order. A folder already listed above is listed once.
+
+With the example, that is `~/ComfyUI/models`, `/var/mnt/nas/models`, then `~/models-extra`.
+
+The Linux Comfy Desktop (`comfyui-desktop-2`) keeps its shared model folders in `~/.config/comfyui-desktop-2/settings.json`, as the `modelsDirs` list. Its Settings window calls them Shared Models, and the first one is the primary, where downloads go. At each launch it writes a `--extra-model-paths-config` file from that list and passes it to ComfyUI, so that file isn't the one to edit. Every `chezmoi apply` adds each of those folders once, after the folders already there (`lib/comfyui-settings.sh`). For a Comfy that already ran with Comfy's own folders, that is after its default `~/ComfyUI-Shared/models`, or first after that default when its list is empty. The first folder stays the primary; to change that, use Settings > Shared Models > Make primary.
+
+It never reorders a folder already listed, so a reorder you make in Comfy sticks. A removal doesn't: while a folder is in `comfyui.modelsDirs`, or a share has `comfyuiModels = true`, the next apply adds it back. To stop that, take it out of the settings file. It waits until each folder exists (checking can mount an automounted share, so it gives up after 5 s and a down server can't stall an apply), until `settings.json` exists (dotfiles writes it before the first run, or Comfy does at its first launch), and skips while Comfy is running, since Comfy rewrites the file: quit Comfy, then run `chezmoi apply`. In a distrobox it runs in the box, where Comfy is installed. On macOS apply prints one line and skips it, until the macOS settings path is verified.
+
+`tests/comfyui-settings.bats` covers both edits on a scratch `settings.json`.
 
 ## Repairing ChatGPT MCP paths after a Linux migration
 
