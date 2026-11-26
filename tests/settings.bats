@@ -68,13 +68,6 @@ settings() { # [file] : the partial's JSON for <file>, or for the default path
   [ "$(jq .cache <<<"$output")" = true ]
 }
 
-@test "a share with comfyuiModels = true is a Comfy models folder, ahead of comfyui.modelsDirs and listed once" {
-  run settings "$FIXTURES/comfy-share.toml"
-  [ "$status" -eq 0 ]
-  [ "$(jq -c '.comfyui.modelsDirs' <<<"$output")" = "[\"/var/mnt/nas/models\",\"$HOME/models-extra\"]" ]
-  [ "$(jq -c '.nfsShares[0]' <<<"$output")" = '{"cache":true,"export":"/export/models","mode":"ro","mountPoint":"/var/mnt/nas/models","server":"nas.example.lan"}' ]
-}
-
 @test "the fscache defaults are 30/25/20 percent of free space and of free files on the cache's filesystem" {
   run settings "$FIXTURES/minimal.toml"
   [ "$status" -eq 0 ]
@@ -99,7 +92,7 @@ settings() { # [file] : the partial's JSON for <file>, or for the default path
   run settings "$HOME/doc.toml"
   [ "$status" -eq 0 ]
   doc_keys="$(grep -oE '^[a-zA-Z]+ *=' "$HOME/doc.toml" | tr -d ' =' | LC_ALL=C sort -u | paste -sd ' ' -)"
-  [ "$doc_keys" = "bcull brun bstop cache comfyuiModels dir export fcull frun fstop mode modelsDirs mountPoint root schemaVersion server" ]
+  [ "$doc_keys" = "bcull brun bstop cache dir export fcull frun fstop mode modelsDirs mountPoint root schemaVersion server" ]
 }
 
 @test "dotfiles-settings check prints one line: what is on, nothing set, or the one problem" {

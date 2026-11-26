@@ -21,7 +21,6 @@ export     = "/export/models"          # the path the server exports
 mountPoint = "/var/mnt/nas/models"     # where it mounts on this machine
 mode       = "ro"                      # "rw" (default) or "ro"
 cache      = true                      # false (default) or true: cache reads on local disk (FS-Cache)
-comfyuiModels = true                   # false (default) or true: a Comfy Desktop models folder
 
 [[nfsShares]]
 server     = "192.0.2.10"
@@ -39,7 +38,7 @@ fstop = 20
 
 [comfyui]
 root       = "~/ComfyUI"               # where Comfy Desktop's folders go before its first run. Linux only
-modelsDirs = ["~/models-extra"]        # more folders Comfy Desktop reads models from. Linux only
+modelsDirs = ["/var/mnt/nas/models"]   # more folders Comfy Desktop reads models from. Linux only
 ```
 
 ## Keys
@@ -53,7 +52,6 @@ modelsDirs = ["~/models-extra"]        # more folders Comfy Desktop reads models
 | `nfsShares[].mountPoint` | string | (required) | An absolute path of at least two parts made of letters, digits and `_.-` (no trailing `/`, `.` or `..`), not under `/bin`, `/boot`, `/dev`, `/etc`, `/lib`, `/lib64`, `/proc`, `/run`, `/sbin`, `/sys` or `/usr`, and not `/var/cache`, `/var/lib`, `/var/log` or `/var/tmp` itself. network-shares checks the same after resolving symlinks. Unique, and none inside another. A path through a symlink (such as `/mnt` on an image-based system, a link to `/var/mnt`) is resolved when the units are written | v1.0.0 |
 | `nfsShares[].mode` | string | `"rw"` | `"rw"` or `"ro"` | v1.0.0 |
 | `nfsShares[].cache` | boolean | `false` | `true` adds `fsc`, so reads are cached on local disk by FS-Cache. Best on read-mostly shares: opening a file for writing drops its cached copy | v1.0.0 |
-| `nfsShares[].comfyuiModels` | boolean | `false` | `true` adds the share's `mountPoint` to Comfy Desktop's Shared Models, after its own models folder and before `comfyui.modelsDirs` ([workstation apps](workstation-apps.md#comfy-desktop-model-folders)), so the mount point is written once | v1.1.0 |
 | `fscache` | table | the defaults below | Read only when some share has `cache = true`; allowed (and unused) otherwise | v1.0.0 |
 | `fscache.dir` | string | `"/var/cache/fscache"` | The same path rules as `mountPoint`. On an SELinux system, a directory other than the default is labelled for cachefilesd when network-shares installs | v1.0.0 |
 | `fscache.brun`, `bcull`, `bstop` | integer | `30`, `25`, `20` | Whole percentages from 0 to 99 of free space on the cache directory's filesystem, with `bstop < bcull < brun` | v1.0.0 |

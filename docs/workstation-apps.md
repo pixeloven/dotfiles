@@ -137,7 +137,7 @@ On macOS this is not managed yet. The Homebrew cask is the same Comfy Desktop, a
 
 ## Comfy Desktop model folders
 
-Opt-in, Linux only for now. A model library on a [network share](network-shares.md) is the usual case: mark that share with `comfyuiModels = true` in the [settings file](settings.md), so its mount point is written once, and list any other folders under `comfyui.modelsDirs`. The repo ships no share; each machine names its own. For example, a read-only, cached models share next to the local folder:
+Opt-in, Linux only for now. A model library on a [network share](network-shares.md) is the usual case: list its `mountPoint` under `comfyui.modelsDirs` in the [settings file](settings.md), followed by any other folders. The repo ships no share; each machine names its own. For example, a read-only, cached models share next to the local folder:
 
 ```toml
 schemaVersion = 1
@@ -148,23 +148,21 @@ export        = "/export/models"
 mountPoint    = "/var/mnt/nas/models"
 mode          = "ro"
 cache         = true
-comfyuiModels = true
 
 [comfyui]
-modelsDirs = ["~/models-extra"]
+modelsDirs = ["/var/mnt/nas/models", "~/models-extra"]
 ```
 
 The order is deliberate:
 
 1. `~/ComfyUI/models` ([above](#comfy-desktop-folders)), the primary. Downloads go there, so they stay on local disk, and so do models you keep on this machine only. A read-only share can't take downloads, so it is never put first.
-2. Each share with `comfyuiModels = true`, in the order of `nfsShares`. Comfy reads the shared library from there, through FS-Cache when the share has `cache = true`.
-3. Each `comfyui.modelsDirs` folder, in order. A folder already listed above is listed once.
+2. Each `comfyui.modelsDirs` folder, in order: here the share's mount point first, where Comfy reads the shared library, through FS-Cache when the share has `cache = true`, then any others. A folder already listed is listed once.
 
 With the example, that is `~/ComfyUI/models`, `/var/mnt/nas/models`, then `~/models-extra`.
 
 The Linux Comfy Desktop (`comfyui-desktop-2`) keeps its shared model folders in `~/.config/comfyui-desktop-2/settings.json`, as the `modelsDirs` list. Its Settings window calls them Shared Models, and the first one is the primary, where downloads go. At each launch it writes a `--extra-model-paths-config` file from that list and passes it to ComfyUI, so that file isn't the one to edit. Every `chezmoi apply` adds each of those folders once, after the folders already there (`lib/comfyui-settings.sh`). For a Comfy that already ran with Comfy's own folders, that is after its default `~/ComfyUI-Shared/models`, or first after that default when its list is empty. The first folder stays the primary; to change that, use Settings > Shared Models > Make primary.
 
-It never reorders a folder already listed, so a reorder you make in Comfy sticks. A removal doesn't: while a folder is in `comfyui.modelsDirs`, or a share has `comfyuiModels = true`, the next apply adds it back. To stop that, take it out of the settings file. It waits until each folder exists (checking can mount an automounted share, so it gives up after 5 s and a down server can't stall an apply), until `settings.json` exists (dotfiles writes it before the first run, or Comfy does at its first launch), and skips while Comfy is running, since Comfy rewrites the file: quit Comfy, then run `chezmoi apply`. In a distrobox it runs in the box, where Comfy is installed. On macOS apply prints one line and skips it, until the macOS settings path is verified.
+It never reorders a folder already listed, so a reorder you make in Comfy sticks. A removal doesn't: while a folder is in `comfyui.modelsDirs`, the next apply adds it back. To stop that, take it out of the settings file. It waits until each folder exists (checking can mount an automounted share, so it gives up after 5 s and a down server can't stall an apply), until `settings.json` exists (dotfiles writes it before the first run, or Comfy does at its first launch), and skips while Comfy is running, since Comfy rewrites the file: quit Comfy, then run `chezmoi apply`. In a distrobox it runs in the box, where Comfy is installed. On macOS apply prints one line and skips it, until the macOS settings path is verified.
 
 `tests/comfyui-settings.bats` covers both edits on a scratch `settings.json`.
 

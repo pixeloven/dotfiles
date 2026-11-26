@@ -35,7 +35,7 @@
 
 {{-   if hasKey $d "nfsShares" -}}
 {{-     if not (kindIs "slice" $d.nfsShares) }}{{ fail (printf "%snfsShares must be a list of [[nfsShares]] tables" $e) }}{{ end -}}
-{{-     $shareKeys := list "server" "export" "mountPoint" "mode" "cache" "comfyuiModels" -}}
+{{-     $shareKeys := list "server" "export" "mountPoint" "mode" "cache" -}}
 {{-     range $i, $s := $d.nfsShares -}}
 {{-       $k := printf "%snfsShares[%d]" $e $i -}}
 {{-       if not (kindIs "map" $s) }}{{ fail (printf "%s must be a table" $k) }}{{ end -}}
@@ -67,11 +67,6 @@
 {{-       end -}}
 {{-       if $c }}{{ $cache = true }}{{ end -}}
 {{-       $shares = append $shares (dict "server" $s.server "export" $s.export "mountPoint" $mp "mode" $mode "cache" $c) -}}
-{{- /* comfyuiModels: the share is a Comfy Desktop models folder, before comfyui.modelsDirs */ -}}
-{{-       if hasKey $s "comfyuiModels" -}}
-{{-         if not (kindIs "bool" $s.comfyuiModels) }}{{ fail (printf "%s.comfyuiModels must be true or false, not %v" $k $s.comfyuiModels) }}{{ end -}}
-{{-         if and $s.comfyuiModels (not (has $mp $dirs)) }}{{ $dirs = append $dirs $mp }}{{ end -}}
-{{-       end -}}
 {{-     end -}}
 {{-     range $i, $a := $shares -}}
 {{-       range $j, $b := $shares -}}

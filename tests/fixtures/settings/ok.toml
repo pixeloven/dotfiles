@@ -7,7 +7,6 @@ export = "/export/models"
 mountPoint = "/var/mnt/nas/models"
 mode = "ro"
 cache = true
-comfyuiModels = true
 
 [[nfsShares]]
 server = "192.0.2.10"

@@ -21,8 +21,6 @@ export = "/export/media"
 mountPoint = "/var/mnt/nas/media"
 ```
 
-A share with `comfyuiModels = true` is also one of Comfy Desktop's model folders, after its local one ([workstation apps](workstation-apps.md#comfy-desktop-model-folders)). That doesn't change how the share mounts.
-
 ## How it works
 
 - `chezmoi apply` validates the settings file, writes `~/.config/network-shares/shares.conf` from `nfsShares` and `fscache`, and installs the `network-shares` command in `~/.local/bin`.
